@@ -14,7 +14,7 @@ if ($result['secrets_exists']) {
   $result['db_pass_set'] = defined('DB_PASS') && DB_PASS !== '';
   try {
     $pdo = new PDO(
-      'mysql:host=mysql2.cesky-hosting.cz;dbname=besixcz;charset=utf8mb4',
+      'mysql:host=localhost;dbname=besixcz;charset=utf8mb4',
       'besixcz',
       defined('DB_PASS') ? DB_PASS : '',
       [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
