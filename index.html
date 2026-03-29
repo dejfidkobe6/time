@@ -1771,27 +1771,35 @@ async function init() {
 /* ═══════════════════════════════════════════════════
    PROJECT SELECTOR
 ═══════════════════════════════════════════════════ */
+function _esc(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
 async function showProjectSelector() {
   const overlay = document.getElementById('project-overlay');
   overlay.classList.remove('hidden');
 
   // Zobraz uživatele
-  const userEl = document.getElementById('proj-sel-user');
-  const initials = (currentUser.name || '?').split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
-  userEl.innerHTML = `
-    <div class="proj-sel-avatar" style="background:${currentUser.avatar_color || '#4A5340'}">${initials}</div>
-    Přihlášen jako <strong>${escHtml(currentUser.name)}</strong>
-    <span style="margin-left:auto;cursor:pointer;color:var(--text-muted);font-size:10px;" onclick="logoutUser()">Odhlásit</span>
-  `;
+  try {
+    const userEl = document.getElementById('proj-sel-user');
+    const name = (currentUser && currentUser.name) ? currentUser.name : '';
+    const initials = name.split(' ').filter(Boolean).map(w => w[0]).join('').slice(0,2).toUpperCase() || '?';
+    const color = (currentUser && currentUser.avatar_color) ? currentUser.avatar_color : '#4A5340';
+    userEl.innerHTML =
+      '<div class="proj-sel-avatar" style="background:' + color + '">' + initials + '</div>' +
+      'Přihlášen jako <strong>' + _esc(name) + '</strong>' +
+      '<span style="margin-left:auto;cursor:pointer;color:var(--text-muted);font-size:10px;" onclick="logoutUser()">Odhlásit</span>';
+  } catch(e) {}
 
   // Načti projekty
   try {
     const res = await fetch('/api/projects.php?action=list');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
     renderProjectList(data.projects || []);
   } catch (e) {
     document.getElementById('proj-sel-list').innerHTML =
-      '<div class="proj-sel-empty">Nepodařilo se načíst projekty.</div>';
+      '<div class="proj-sel-empty">Nepodařilo se načíst projekty.<br><small>' + e.message + '</small></div>';
   }
 }
 
