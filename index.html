@@ -1425,7 +1425,7 @@ html, body {
 <!-- SIDEBAR -->
 <nav id="sidebar">
   <div class="sidebar-logo">
-    <img src="/besix_logo_highres_transparent.png" alt="BeSix" style="height:32px;width:auto;filter:invert(1);opacity:0.9;">
+    <img src="/besix_logo_highres_transparent.png" alt="BeSix" style="height:32px;width:auto;">
   </div>
   <div class="sidebar-nav">
     <button class="nav-btn active" onclick="switchMainView('gantt')" title="">
@@ -1442,13 +1442,17 @@ html, body {
     </button>
   </div>
   <div class="sidebar-bottom">
+    <button class="nav-btn" onclick="openProjectOverview()" title="">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      <span class="nav-tooltip">Přehled projektu</span>
+    </button>
+    <button class="nav-btn" onclick="openMembersModal()" title="">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      <span class="nav-tooltip">Správa uživatelů</span>
+    </button>
     <button class="nav-btn" onclick="saveProject()" title="">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
       <span class="nav-tooltip">Uložit projekt</span>
-    </button>
-    <button class="nav-btn" onclick="loadProject()" title="">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-      <span class="nav-tooltip">Načíst projekt</span>
     </button>
   </div>
 </nav>
@@ -1885,6 +1889,110 @@ async function confirmCreateProject() {
 async function logoutUser() {
   await fetch('/api/auth.php?action=logout');
   window.location.href = '/login.php';
+}
+
+/* ═══════════════════════════════════════════════════
+   PŘEHLED PROJEKTU
+═══════════════════════════════════════════════════ */
+function openProjectOverview() {
+  let totalBudget = 0, taskCount = 0, doneCount = 0;
+  let allDates = [];
+  project.phases.forEach(ph => ph.tasks.forEach(t => {
+    totalBudget += (t.budget || 0);
+    taskCount++;
+    if ((t.progress || 0) >= 100) doneCount++;
+    if (t.startDate) allDates.push(new Date(t.startDate));
+    if (t.endDate)   allDates.push(new Date(t.endDate));
+  }));
+  const fmt = d => d.toLocaleDateString('cs-CZ', {day:'numeric', month:'long', year:'numeric'});
+  const start = allDates.length ? fmt(new Date(Math.min(...allDates))) : '—';
+  const end   = allDates.length ? fmt(new Date(Math.max(...allDates))) : '—';
+  const budgetFmt = totalBudget >= 1000000
+    ? (totalBudget/1000000).toFixed(1) + ' mil. Kč'
+    : totalBudget.toLocaleString('cs-CZ') + ' Kč';
+
+  openModal(`
+    <div class="modal">
+      <div class="modal-header">
+        <span class="modal-title">Přehled projektu</span>
+        <button class="modal-close" onclick="closeModal()">×</button>
+      </div>
+      <div class="modal-body">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
+          <div style="background:var(--bg);border-radius:var(--radius);padding:14px;">
+            <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-muted);margin-bottom:4px;">Název</div>
+            <div style="font-size:13px;font-weight:700;">${_esc(project.name)}</div>
+          </div>
+          <div style="background:var(--bg);border-radius:var(--radius);padding:14px;">
+            <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-muted);margin-bottom:4px;">Kód</div>
+            <div style="font-size:13px;font-weight:700;">${_esc(project.code)}</div>
+          </div>
+          <div style="background:var(--bg);border-radius:var(--radius);padding:14px;">
+            <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-muted);margin-bottom:4px;">Zahájení</div>
+            <div style="font-size:12px;font-weight:600;">${start}</div>
+          </div>
+          <div style="background:var(--bg);border-radius:var(--radius);padding:14px;">
+            <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-muted);margin-bottom:4px;">Dokončení</div>
+            <div style="font-size:12px;font-weight:600;">${end}</div>
+          </div>
+          <div style="background:var(--bg);border-radius:var(--radius);padding:14px;">
+            <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-muted);margin-bottom:4px;">Rozpočet</div>
+            <div style="font-size:13px;font-weight:700;color:var(--olive);">${budgetFmt}</div>
+          </div>
+          <div style="background:var(--bg);border-radius:var(--radius);padding:14px;">
+            <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-muted);margin-bottom:4px;">Úkoly</div>
+            <div style="font-size:13px;font-weight:700;">${doneCount} / ${taskCount} hotovo</div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal();document.getElementById('project-overlay').classList.remove('hidden');showProjectSelector()">Změnit projekt</button>
+        <button class="btn btn-primary" onclick="closeModal()">Zavřít</button>
+      </div>
+    </div>
+  `);
+}
+
+/* ═══════════════════════════════════════════════════
+   SPRÁVA UŽIVATELŮ
+═══════════════════════════════════════════════════ */
+async function openMembersModal() {
+  openModal(`
+    <div class="modal">
+      <div class="modal-header">
+        <span class="modal-title">Správa uživatelů</span>
+        <button class="modal-close" onclick="closeModal()">×</button>
+      </div>
+      <div class="modal-body" id="members-modal-body">
+        <div style="text-align:center;padding:20px;color:var(--text-muted);font-size:12px;">Načítám…</div>
+      </div>
+    </div>
+  `);
+
+  try {
+    const res = await fetch('/api/projects.php?action=members&project_id=' + currentProjectId);
+    const data = await res.json();
+    const members = data.members || [];
+    const roleLabel = { owner: 'Vlastník', admin: 'Admin', member: 'Člen', viewer: 'Viewer' };
+    document.getElementById('members-modal-body').innerHTML = `
+      <div style="margin-bottom:12px;font-size:12px;color:var(--text-muted);font-weight:600;">${members.length} člen${members.length === 1 ? '' : 'ů'}</div>
+      ${members.map(m => `
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border-light);">
+          <div style="width:32px;height:32px;border-radius:50%;background:${m.avatar_color||'var(--olive)'};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:white;flex-shrink:0;">
+            ${_esc((m.name||'?').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase())}
+          </div>
+          <div style="flex:1;">
+            <div style="font-size:13px;font-weight:700;">${_esc(m.name)}</div>
+            <div style="font-size:11px;color:var(--text-muted);">${_esc(m.email)}</div>
+          </div>
+          <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);background:var(--bg);padding:3px 8px;border-radius:20px;border:1px solid var(--border);">${roleLabel[m.role]||m.role}</span>
+        </div>
+      `).join('')}
+    `;
+  } catch(e) {
+    document.getElementById('members-modal-body').innerHTML =
+      '<div style="color:var(--danger);font-size:12px;">Nepodařilo se načíst členy.</div>';
+  }
 }
 
 /* ═══════════════════════════════════════════════════

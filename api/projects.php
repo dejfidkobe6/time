@@ -70,5 +70,21 @@ if ($action === 'create' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     exit;
 }
 
+// --- MEMBERS ---
+if ($action === 'members') {
+    $projectId = (int)($_GET['project_id'] ?? 0);
+    requireProjectRole($projectId, 'viewer');
+    $stmt = $pdo->prepare(
+        "SELECT u.id, u.name, u.email, u.avatar_color, pm.role
+         FROM project_members pm
+         JOIN users u ON u.id = pm.user_id
+         WHERE pm.project_id = ?
+         ORDER BY FIELD(pm.role,'owner','admin','member','viewer'), u.name"
+    );
+    $stmt->execute([$projectId]);
+    echo json_encode(['ok' => true, 'members' => $stmt->fetchAll()]);
+    exit;
+}
+
 http_response_code(400);
 echo json_encode(['ok' => false, 'error' => 'Neznámá akce']);
