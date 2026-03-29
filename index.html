@@ -1756,13 +1756,13 @@ async function init() {
     const res = await fetch('/api/auth.php?action=me');
     const data = await res.json();
     if (!data.user) {
-      window.location.href = 'https://plans.besix.cz/login.php?redirect=' + encodeURIComponent(window.location.href);
+      window.location.href = '/login.php';
       return;
     }
     currentUser = data.user;
   } catch (e) {
-    // Fallback: offline mode
-    currentUser = { name: 'Offline', email: '', avatar_color: '#4A5340' };
+    window.location.href = '/login.php';
+    return;
   }
 
   await showProjectSelector();
@@ -1876,7 +1876,7 @@ async function confirmCreateProject() {
 
 async function logoutUser() {
   await fetch('/api/auth.php?action=logout');
-  window.location.href = 'https://plans.besix.cz/login.php';
+  window.location.href = '/login.php';
 }
 
 /* ═══════════════════════════════════════════════════
