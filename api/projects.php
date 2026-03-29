@@ -44,23 +44,29 @@ if ($action === 'create' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
-    $pdo->beginTransaction();
-    $stmt = $pdo->prepare(
-        "INSERT INTO projects (app_id, name, description, created_by) VALUES (?, ?, ?, ?)"
-    );
-    $stmt->execute([$app['id'], $name, trim($body['description'] ?? ''), $userId]);
-    $projectId = (int)$pdo->lastInsertId();
+    try {
+        $pdo->beginTransaction();
+        $stmt = $pdo->prepare(
+            "INSERT INTO projects (app_id, name, description, created_by) VALUES (?, ?, ?, ?)"
+        );
+        $stmt->execute([$app['id'], $name, trim($body['description'] ?? ''), $userId]);
+        $projectId = (int)$pdo->lastInsertId();
 
-    $stmt = $pdo->prepare(
-        "INSERT INTO project_members (project_id, user_id, role) VALUES (?, ?, 'owner')"
-    );
-    $stmt->execute([$projectId, $userId]);
-    $pdo->commit();
+        $stmt = $pdo->prepare(
+            "INSERT INTO project_members (project_id, user_id, role) VALUES (?, ?, 'owner')"
+        );
+        $stmt->execute([$projectId, $userId]);
+        $pdo->commit();
 
-    echo json_encode([
-        'ok'      => true,
-        'project' => ['id' => $projectId, 'name' => $name, 'role' => 'owner'],
-    ]);
+        echo json_encode([
+            'ok'      => true,
+            'project' => ['id' => $projectId, 'name' => $name, 'role' => 'owner'],
+        ]);
+    } catch (Exception $e) {
+        $pdo->rollBack();
+        http_response_code(500);
+        echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
+    }
     exit;
 }
 
