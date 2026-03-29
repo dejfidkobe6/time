@@ -2681,7 +2681,7 @@ function renderGanttRows(minD, totalW) {
           tRow.appendChild(diamond);
         }
       } else if (task.startDate && task.endDate) {
-        if (!taskMatchesFilter(task)) { container.appendChild(tRow); rowOffset++; continue; }
+        if (taskMatchesFilter(task)) {
         const x = Math.round(dateToX(new Date(task.startDate), minD));
         const x2 = Math.round(dateToX(new Date(task.endDate), minD));
         const w = Math.max(4, x2 - x);
@@ -2713,6 +2713,7 @@ function renderGanttRows(minD, totalW) {
         makeDraggableBar(barWrap, task, minD);
         makeResizableBar(barWrap, task, minD);
         tRow.appendChild(barWrap);
+        } // end taskMatchesFilter
       }
 
       container.appendChild(tRow);
