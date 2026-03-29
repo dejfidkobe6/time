@@ -16,17 +16,11 @@ jobs:
 
       - name: Generate api/secrets.php
         env:
-          DB_HOST:   ${{ secrets.DB_HOST }}
-          DB_NAME:   ${{ secrets.DB_NAME }}
-          DB_USER:   ${{ secrets.DB_USER }}
-          DB_PASS:   ${{ secrets.DB_PASS }}
+          DB_PASS: ${{ secrets.DB_PASS }}
         run: |
           php -r "
           file_put_contents('api/secrets.php',
             '<?php' . PHP_EOL .
-            'define(\'DB_HOST\', ' . var_export(getenv('DB_HOST'), true) . ');' . PHP_EOL .
-            'define(\'DB_NAME\', ' . var_export(getenv('DB_NAME'), true) . ');' . PHP_EOL .
-            'define(\'DB_USER\', ' . var_export(getenv('DB_USER'), true) . ');' . PHP_EOL .
             'define(\'DB_PASS\', ' . var_export(getenv('DB_PASS'), true) . ');' . PHP_EOL
           );"
 

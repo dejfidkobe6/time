@@ -2,6 +2,10 @@
 require_once __DIR__ . '/secrets.php';
 
 // Sdílené nastavení DB — stejná databáze jako plans.besix.cz
+define('DB_HOST', 'mysql2.cesky-hosting.cz');
+define('DB_NAME', 'besixcz');
+define('DB_USER', 'besixcz');
+
 $pdo = new PDO(
     'mysql:host=' . DB_HOST . ';dbname=' . DB_NAME . ';charset=utf8mb4',
     DB_USER,
