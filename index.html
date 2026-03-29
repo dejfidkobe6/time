@@ -3106,23 +3106,22 @@ function renderDependencies(minD) {
         const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
         let d;
         const jog = x1 + ELBOW;
+        // Row-gap channel: midpoint between rows, outside both bars
+        const yDir = y2 >= y1 ? 1 : -1;
+        const yChannel = y1 + yDir * rowH / 2;
 
         if (Math.abs(y1 - y2) < 2) {
-          // Same row — straight line
+          // Same row — straight horizontal
           d = `M ${x1},${y1} H ${x2}`;
         } else if (x2 >= jog) {
-          // Simple elbow: right jog → down → arrive at x2
-          d = `M ${x1},${y1} H ${jog} V ${y2} H ${x2}`;
+          // Simple elbow: right jog → vertical → arrive at x2 from left
+          // Use channel routing to avoid crossing bars in intermediate rows
+          d = `M ${x1},${y1} H ${jog} V ${yChannel} H ${x2 - ELBOW} V ${y2} H ${x2}`;
         } else {
-          // U-route: jog right → go down half-way → go to x2-ELBOW → go to y2 → arrive at x2
-          const midY = (y1 + y2) / 2;
-          const backJog = x2 - ELBOW;
-          if (backJog >= jog) {
-            d = `M ${x1},${y1} H ${jog} V ${midY} H ${backJog} V ${y2} H ${x2}`;
-          } else {
-            // Very tight: just jog and arrive
-            d = `M ${x1},${y1} H ${jog} V ${y2} H ${x2}`;
-          }
+          // Tight/overlapping: drop into row-gap channel first, then approach from left
+          // Never goes through destination bar
+          const approachX = x2 - ELBOW;
+          d = `M ${x1},${y1} V ${yChannel} H ${approachX} V ${y2} H ${x2}`;
         }
 
         path.setAttribute('d', d);
