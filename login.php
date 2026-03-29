@@ -1,8 +1,7 @@
 <?php
 require_once __DIR__ . '/api/config.php';
-session_start();
+if (session_status() === PHP_SESSION_NONE) session_start();
 
-// Už přihlášen → zpět na app
 if (!empty($_SESSION['user_id'])) {
     header('Location: /');
     exit;
@@ -44,143 +43,145 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Přihlášení — BeSix Time</title>
-<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&family=Lora:wght@500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-  font-family: 'Montserrat', sans-serif;
-  background: #1C1E1A;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: #F2F2F7;
   min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 20px;
+  padding: 24px;
 }
 
 .wrap {
   width: 100%;
-  max-width: 400px;
+  max-width: 380px;
 }
 
 .logo-area {
   text-align: center;
-  margin-bottom: 36px;
+  margin-bottom: 32px;
 }
 
 .logo-img {
-  height: 64px;
+  height: 52px;
   width: auto;
-  margin-bottom: 14px;
-  filter: invert(1);
+  margin-bottom: 16px;
+  filter: brightness(0);
 }
 
 .logo-name {
-  font-family: 'Lora', serif;
-  font-size: 26px;
-  font-weight: 600;
-  color: #F5F4F0;
-  letter-spacing: -0.3px;
+  font-size: 28px;
+  font-weight: 700;
+  color: #1C1C1E;
+  letter-spacing: -0.5px;
 }
 
 .logo-sub {
-  font-size: 11px;
-  font-weight: 600;
-  color: #6B6B60;
-  text-transform: uppercase;
-  letter-spacing: 1.2px;
+  font-size: 13px;
+  font-weight: 400;
+  color: #8E8E93;
   margin-top: 4px;
 }
 
 .card {
   background: #FFFFFF;
-  border-radius: 14px;
-  padding: 36px 32px;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+  border-radius: 20px;
+  padding: 32px 28px;
+  box-shadow: 0 2px 20px rgba(0,0,0,0.08);
 }
 
 .card-title {
-  font-size: 15px;
-  font-weight: 800;
-  color: #1C1E1A;
-  margin-bottom: 6px;
+  font-size: 22px;
+  font-weight: 700;
+  color: #1C1C1E;
+  margin-bottom: 4px;
 }
 
 .card-sub {
-  font-size: 12px;
-  color: #9A9A8E;
-  font-weight: 500;
+  font-size: 14px;
+  color: #8E8E93;
+  font-weight: 400;
   margin-bottom: 28px;
 }
 
 .field {
-  margin-bottom: 16px;
+  margin-bottom: 14px;
 }
 
 label {
   display: block;
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
-  color: #4A4A42;
-  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #3A3A3C;
+  margin-bottom: 7px;
 }
 
 input[type="email"],
 input[type="password"] {
   width: 100%;
-  padding: 11px 14px;
-  border: 1.5px solid #DDD9D0;
-  border-radius: 6px;
-  font-family: 'Montserrat', sans-serif;
-  font-size: 13px;
-  color: #1C1E1A;
-  background: #FAFAF8;
+  padding: 13px 16px;
+  border: 1px solid #E5E5EA;
+  border-radius: 12px;
+  font-family: inherit;
+  font-size: 15px;
+  color: #1C1C1E;
+  background: #F9F9FB;
   outline: none;
-  transition: border-color 0.15s;
+  transition: border-color 0.15s, background 0.15s;
+  -webkit-appearance: none;
 }
 
 input:focus {
   border-color: #4A5340;
   background: #fff;
+  box-shadow: 0 0 0 3px rgba(74,83,64,0.1);
 }
 
 .error-msg {
-  background: #F5C6C2;
+  background: #FFF2F2;
   color: #C0392B;
-  font-size: 12px;
-  font-weight: 600;
-  padding: 10px 14px;
-  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 11px 14px;
+  border-radius: 10px;
   margin-bottom: 18px;
-  border: 1px solid #F0A8A2;
+  border: 1px solid #FFCDD0;
 }
 
 .btn-submit {
   width: 100%;
-  padding: 12px;
+  padding: 14px;
   background: #4A5340;
   color: white;
   border: none;
-  border-radius: 6px;
-  font-family: 'Montserrat', sans-serif;
-  font-size: 12px;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.8px;
+  border-radius: 12px;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
   cursor: pointer;
-  transition: background 0.15s;
-  margin-top: 8px;
+  transition: background 0.15s, transform 0.1s;
+  margin-top: 10px;
+  -webkit-appearance: none;
 }
 
 .btn-submit:hover { background: #3D4536; }
+.btn-submit:active { transform: scale(0.98); }
+
+.divider {
+  border: none;
+  border-top: 1px solid #F2F2F7;
+  margin: 24px 0;
+}
 
 .footer-links {
-  margin-top: 20px;
   text-align: center;
-  font-size: 11px;
-  color: #9A9A8E;
+  font-size: 13px;
+  color: #8E8E93;
 }
 
 .footer-links a {
@@ -189,24 +190,15 @@ input:focus {
   font-weight: 600;
 }
 
-.footer-links a:hover { text-decoration: underline; }
-
-.divider {
-  border: none;
-  border-top: 1px solid #EEECEA;
-  margin: 22px 0;
-}
-
 .portal-link {
   text-align: center;
-  font-size: 11px;
-  color: #9A9A8E;
-  margin-top: 24px;
-  font-weight: 500;
+  font-size: 13px;
+  color: #8E8E93;
+  margin-top: 20px;
 }
 
 .portal-link a {
-  color: #8B9E7A;
+  color: #4A5340;
   text-decoration: none;
   font-weight: 600;
 }
