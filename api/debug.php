@@ -15,7 +15,7 @@ if ($result['secrets_exists']) {
   try {
     $pdo = new PDO(
       'mysql:host=127.0.0.1;dbname=besixcz;charset=utf8mb4',
-      'besixcz',
+      'besixcz001',
       defined('DB_PASS') ? DB_PASS : '',
       [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
     );
