@@ -68,8 +68,9 @@ body {
 }
 
 .logo-img {
-  height: 52px;
-  width: auto;
+  width: 100%;
+  max-width: 260px;
+  height: auto;
   margin-bottom: 16px;
   filter: brightness(0);
 }
