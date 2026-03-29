@@ -2353,38 +2353,89 @@ function renderTodayLine(minD, totalW) {
 function renderDependencies(minD) {
   const svg = document.getElementById('gantt-dep-svg');
   svg.innerHTML = '';
-  // Dependencies
+  if (!ganttOpts.deps) return;
+
+  const rowH = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--row-h')) || 40;
+  const pxPerDay = timescale === 'days' ? cellW : timescale === 'weeks' ? cellW / 7 : cellW / 30.44;
+  const ELBOW = 14; // px elbow offset
+
+  const TYPE_COLORS = { FS: '#6e8c5a', FF: '#b46464', SS: '#5a8cba', SF: '#b49632' };
+
+  const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+  ['FS','FF','SS','SF'].forEach(t => {
+    const c = TYPE_COLORS[t];
+    defs.innerHTML += `<marker id="arr-${t}" markerWidth="7" markerHeight="7" refX="5" refY="3.5" orient="auto"><path d="M0,0 L0,7 L7,3.5 z" fill="${c}" opacity="0.75"/></marker>`;
+  });
+  svg.appendChild(defs);
+
   project.phases.forEach(ph => {
     ph.tasks.forEach(task => {
-      if (task.dependsOn) {
-        const pred = findTask(task.dependsOn);
-        if (pred && pred.endDate && task.startDate) {
-          const x1 = dateToX(new Date(pred.endDate), minD);
-          const x2 = dateToX(new Date(task.startDate), minD);
-          const y1 = getTaskRowY(pred.id) + 20;
-          const y2 = getTaskRowY(task.id) + 20;
-          if (y1 >= 0 && y2 >= 0) {
-            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-            const mid = (x1 + x2) / 2;
-            path.setAttribute('d', `M ${x1} ${y1} C ${mid} ${y1}, ${mid} ${y2}, ${x2} ${y2}`);
-            path.setAttribute('stroke', 'rgba(74,83,64,0.4)');
-            path.setAttribute('stroke-width', '1.5');
-            path.setAttribute('fill', 'none');
-            path.setAttribute('marker-end', 'url(#arrow)');
-            svg.appendChild(path);
+      const preds = task.predecessors || (task.dependsOn ? [{ taskId: task.dependsOn, type: 'FS', lag: 0 }] : []);
+      preds.forEach(pred => {
+        const predTask = findTask(pred.taskId);
+        if (!predTask) return;
+        const type = pred.type || 'FS';
+        const lag = pred.lag || 0;
+
+        const ry1 = getTaskRowY(predTask.id);
+        const ry2 = getTaskRowY(task.id);
+        if (ry1 < 0 || ry2 < 0) return;
+        const y1 = ry1 + rowH / 2;
+        const y2 = ry2 + rowH / 2;
+
+        let x1, x2;
+        if (type === 'FS') {
+          if (!predTask.endDate || !task.startDate) return;
+          x1 = dateToX(new Date(predTask.endDate), minD);
+          x2 = dateToX(new Date(task.startDate), minD) + lag * pxPerDay;
+        } else if (type === 'FF') {
+          if (!predTask.endDate || !task.endDate) return;
+          x1 = dateToX(new Date(predTask.endDate), minD);
+          x2 = dateToX(new Date(task.endDate), minD) + lag * pxPerDay;
+        } else if (type === 'SS') {
+          if (!predTask.startDate || !task.startDate) return;
+          x1 = dateToX(new Date(predTask.startDate), minD);
+          x2 = dateToX(new Date(task.startDate), minD) + lag * pxPerDay;
+        } else if (type === 'SF') {
+          if (!predTask.startDate || !task.endDate) return;
+          x1 = dateToX(new Date(predTask.startDate), minD);
+          x2 = dateToX(new Date(task.endDate), minD) + lag * pxPerDay;
+        } else return;
+
+        const color = TYPE_COLORS[type];
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+
+        let d;
+        if (Math.abs(y1 - y2) < 1) {
+          d = `M ${x1},${y1} H ${x2}`;
+        } else if (x2 >= x1 + ELBOW * 2) {
+          const midX = (x1 + x2) / 2;
+          d = `M ${x1},${y1} H ${midX} V ${y2} H ${x2}`;
+        } else {
+          const ex1 = x1 + ELBOW;
+          const ex2 = x2 - ELBOW;
+          const midY = (y1 + y2) / 2;
+          if (ex2 >= ex1) {
+            d = `M ${x1},${y1} H ${ex1} V ${midY} H ${ex2} V ${y2} H ${x2}`;
+          } else {
+            d = `M ${x1},${y1} H ${ex1} V ${y2} H ${x2}`;
           }
         }
-      }
+
+        path.setAttribute('d', d);
+        path.setAttribute('stroke', color);
+        path.setAttribute('stroke-width', '1.5');
+        path.setAttribute('fill', 'none');
+        path.setAttribute('opacity', '0.65');
+        path.setAttribute('marker-end', `url(#arr-${type})`);
+        svg.appendChild(path);
+      });
     });
   });
-  // Arrow marker
-  const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
-  defs.innerHTML = `<marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="rgba(74,83,64,0.5)"/></marker>`;
-  svg.insertBefore(defs, svg.firstChild);
 }
 
 function getTaskRowY(taskId) {
-  const row = document.querySelector(`[data-task-id="${taskId}"]`);
+  const row = document.querySelector(`#gantt-rows [data-task-id="${taskId}"]`);
   if (!row) return -1;
   return row.offsetTop;
 }
