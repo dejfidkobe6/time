@@ -68,15 +68,11 @@ body {
   margin-bottom: 36px;
 }
 
-.logo-mark {
-  width: 52px; height: 52px;
-  background: #4A5340;
-  border-radius: 12px;
-  display: inline-flex;
-  align-items: center; justify-content: center;
-  font-size: 18px; font-weight: 900; color: white;
-  letter-spacing: -0.5px;
+.logo-img {
+  height: 64px;
+  width: auto;
   margin-bottom: 14px;
+  filter: invert(1);
 }
 
 .logo-name {
@@ -220,7 +216,7 @@ input:focus {
 
 <div class="wrap">
   <div class="logo-area">
-    <div class="logo-mark">B6</div>
+    <img src="/besix_logo_highres_transparent.png" alt="BeSix" class="logo-img">
     <div class="logo-name">BeSix Time</div>
     <div class="logo-sub">Harmonogram stavby</div>
   </div>
