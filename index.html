@@ -1652,6 +1652,14 @@ html, body {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         Přidat úkol
       </button>
+      <div id="header-user-chip" style="display:flex;align-items:center;gap:6px;margin-left:4px;padding:0 4px;border-left:1px solid var(--border);">
+        <div id="header-user-avatar" style="width:28px;height:28px;border-radius:50%;background:var(--olive);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;flex-shrink:0;"></div>
+        <span id="header-user-name" style="font-size:12px;color:var(--text-muted);max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
+        <button class="btn btn-secondary" style="padding:3px 8px;font-size:11px;height:26px;" onclick="logoutUser()" title="Odhlásit se">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+          Odhlásit
+        </button>
+      </div>
     </div>
   </header>
 
@@ -1965,6 +1973,13 @@ async function init() {
     window.location.href = '/login.php';
     return;
   }
+
+  // Fill header user chip
+  const _initials = (currentUser.name || '?').split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
+  const _avatarEl = document.getElementById('header-user-avatar');
+  const _nameEl = document.getElementById('header-user-name');
+  if (_avatarEl) { _avatarEl.textContent = _initials; _avatarEl.style.background = currentUser.avatar_color || '#4A5340'; }
+  if (_nameEl) _nameEl.textContent = currentUser.name || '';
 
   await showProjectSelector();
 }
@@ -3017,15 +3032,20 @@ function renderDependencies(minD) {
   if (!ganttOpts.deps) return;
 
   const rowH = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--row-h')) || 40;
+  const barH = 22; // .gantt-bar-wrap height
   const pxPerDay = timescale === 'days' ? cellW : timescale === 'weeks' ? cellW / 7 : cellW / 30.44;
-  const ELBOW = 14; // px elbow offset
+  const ELBOW = 12; // horizontal jog in px
 
-  const TYPE_COLORS = { FS: '#6e8c5a', FF: '#b46464', SS: '#5a8cba', SF: '#b49632' };
+  // FS=green, FF=red, SS=blue, SF=amber
+  const TYPE_COLORS = { FS: '#5a8040', FF: '#b44040', SS: '#3a7ab4', SF: '#b48020' };
 
   const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
   ['FS','FF','SS','SF'].forEach(t => {
     const c = TYPE_COLORS[t];
-    defs.innerHTML += `<marker id="arr-${t}" markerWidth="7" markerHeight="7" refX="5" refY="3.5" orient="auto"><path d="M0,0 L0,7 L7,3.5 z" fill="${c}" opacity="0.75"/></marker>`;
+    // Arrowhead pointing RIGHT (for horizontal arrival)
+    defs.innerHTML += `<marker id="arr-${t}" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto">
+      <path d="M0,0 L0,9 L9,4.5 z" fill="${c}"/>
+    </marker>`;
   });
   svg.appendChild(defs);
 
@@ -3041,45 +3061,67 @@ function renderDependencies(minD) {
         const ry1 = getTaskRowY(predTask.id);
         const ry2 = getTaskRowY(task.id);
         if (ry1 < 0 || ry2 < 0) return;
+        // Arrow at vertical center of bar
         const y1 = ry1 + rowH / 2;
         const y2 = ry2 + rowH / 2;
 
         let x1, x2;
         if (type === 'FS') {
+          // Right edge of pred bar → left edge of successor bar
           if (!predTask.endDate || !task.startDate) return;
           x1 = dateToX(new Date(predTask.endDate), minD);
           x2 = dateToX(new Date(task.startDate), minD) + lag * pxPerDay;
         } else if (type === 'FF') {
+          // Right edge of pred → right edge of successor
           if (!predTask.endDate || !task.endDate) return;
           x1 = dateToX(new Date(predTask.endDate), minD);
           x2 = dateToX(new Date(task.endDate), minD) + lag * pxPerDay;
         } else if (type === 'SS') {
+          // Left edge of pred → left edge of successor
           if (!predTask.startDate || !task.startDate) return;
           x1 = dateToX(new Date(predTask.startDate), minD);
           x2 = dateToX(new Date(task.startDate), minD) + lag * pxPerDay;
         } else if (type === 'SF') {
+          // Left edge of pred → right edge of successor
           if (!predTask.startDate || !task.endDate) return;
           x1 = dateToX(new Date(predTask.startDate), minD);
           x2 = dateToX(new Date(task.endDate), minD) + lag * pxPerDay;
         } else return;
 
         const color = TYPE_COLORS[type];
-        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
 
+        // Source dot (small circle at start point)
+        const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        dot.setAttribute('cx', x1); dot.setAttribute('cy', y1);
+        dot.setAttribute('r', '3');
+        dot.setAttribute('fill', color);
+        g.appendChild(dot);
+
+        // Path routing (MS-Project style elbow):
+        // 1. Jog right ELBOW px from x1
+        // 2. Go vertically to y2
+        // 3. Go horizontally to x2 (arrowhead at end)
+        // If x2 < x1+ELBOW (successor left of jog point): do U-routing
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
         let d;
-        if (Math.abs(y1 - y2) < 1) {
+        const jog = x1 + ELBOW;
+
+        if (Math.abs(y1 - y2) < 2) {
+          // Same row — straight line
           d = `M ${x1},${y1} H ${x2}`;
-        } else if (x2 >= x1 + ELBOW * 2) {
-          const midX = (x1 + x2) / 2;
-          d = `M ${x1},${y1} H ${midX} V ${y2} H ${x2}`;
+        } else if (x2 >= jog) {
+          // Simple elbow: right jog → down → arrive at x2
+          d = `M ${x1},${y1} H ${jog} V ${y2} H ${x2}`;
         } else {
-          const ex1 = x1 + ELBOW;
-          const ex2 = x2 - ELBOW;
+          // U-route: jog right → go down half-way → go to x2-ELBOW → go to y2 → arrive at x2
           const midY = (y1 + y2) / 2;
-          if (ex2 >= ex1) {
-            d = `M ${x1},${y1} H ${ex1} V ${midY} H ${ex2} V ${y2} H ${x2}`;
+          const backJog = x2 - ELBOW;
+          if (backJog >= jog) {
+            d = `M ${x1},${y1} H ${jog} V ${midY} H ${backJog} V ${y2} H ${x2}`;
           } else {
-            d = `M ${x1},${y1} H ${ex1} V ${y2} H ${x2}`;
+            // Very tight: just jog and arrive
+            d = `M ${x1},${y1} H ${jog} V ${y2} H ${x2}`;
           }
         }
 
@@ -3087,9 +3129,9 @@ function renderDependencies(minD) {
         path.setAttribute('stroke', color);
         path.setAttribute('stroke-width', '1.5');
         path.setAttribute('fill', 'none');
-        path.setAttribute('opacity', '0.65');
         path.setAttribute('marker-end', `url(#arr-${type})`);
-        svg.appendChild(path);
+        g.appendChild(path);
+        svg.appendChild(g);
       });
     });
   });
