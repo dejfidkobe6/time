@@ -45,10 +45,11 @@ if ($action === 'create' && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
     try {
         $pdo->beginTransaction();
+        $inviteCode = bin2hex(random_bytes(6));
         $stmt = $pdo->prepare(
-            "INSERT INTO projects (app_id, name, description, created_by) VALUES (?, ?, ?, ?)"
+            "INSERT INTO projects (app_id, name, description, invite_code, created_by) VALUES (?, ?, ?, ?, ?)"
         );
-        $stmt->execute([$app['id'], $name, trim($body['description'] ?? ''), $userId]);
+        $stmt->execute([$app['id'], $name, trim($body['description'] ?? ''), $inviteCode, $userId]);
         $projectId = (int)$pdo->lastInsertId();
 
         $stmt = $pdo->prepare(
