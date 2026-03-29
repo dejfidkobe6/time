@@ -16,12 +16,18 @@ jobs:
 
       - name: Generate api/secrets.php
         env:
-          DB_PASS: ${{ secrets.DB_PASS }}
+          DB_PASS:              ${{ secrets.DB_PASS }}
+          BREVO_API_KEY:        ${{ secrets.BREVO_API_KEY }}
+          GOOGLE_CLIENT_ID:     ${{ secrets.google_client_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.google_client_secret }}
         run: |
           php -r "
           file_put_contents('api/secrets.php',
             '<?php' . PHP_EOL .
-            'define(\'DB_PASS\', ' . var_export(getenv('DB_PASS'), true) . ');' . PHP_EOL
+            'define(\'DB_PASS\',              ' . var_export(getenv('DB_PASS'),              true) . ');' . PHP_EOL .
+            'define(\'BREVO_API_KEY\',        ' . var_export(getenv('BREVO_API_KEY'),        true) . ');' . PHP_EOL .
+            'define(\'GOOGLE_CLIENT_ID\',     ' . var_export(getenv('GOOGLE_CLIENT_ID'),     true) . ');' . PHP_EOL .
+            'define(\'GOOGLE_CLIENT_SECRET\', ' . var_export(getenv('GOOGLE_CLIENT_SECRET'), true) . ');' . PHP_EOL
           );"
 
       - name: Deploy via FTP
