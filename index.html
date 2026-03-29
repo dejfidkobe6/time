@@ -3016,12 +3016,16 @@ function renderDependencies(minD) {
   svg.innerHTML = '';
   if (!ganttOpts.deps) return;
 
-  const TYPE_COLORS = { FS: 'rgba(74,83,64,0.5)', FF: 'rgba(180,100,100,0.5)', SS: 'rgba(100,140,180,0.5)', SF: 'rgba(180,150,50,0.5)' };
+  const rowH = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--row-h')) || 40;
+  const pxPerDay = timescale === 'days' ? cellW : timescale === 'weeks' ? cellW / 7 : cellW / 30.44;
+  const ELBOW = 14; // px elbow offset
+
+  const TYPE_COLORS = { FS: '#6e8c5a', FF: '#b46464', SS: '#5a8cba', SF: '#b49632' };
 
   const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
   ['FS','FF','SS','SF'].forEach(t => {
     const c = TYPE_COLORS[t];
-    defs.innerHTML += `<marker id="arr-${t}" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="${c}"/></marker>`;
+    defs.innerHTML += `<marker id="arr-${t}" markerWidth="7" markerHeight="7" refX="5" refY="3.5" orient="auto"><path d="M0,0 L0,7 L7,3.5 z" fill="${c}" opacity="0.75"/></marker>`;
   });
   svg.appendChild(defs);
 
@@ -3033,40 +3037,57 @@ function renderDependencies(minD) {
         if (!predTask) return;
         const type = pred.type || 'FS';
         const lag = pred.lag || 0;
-        const lagD = new Date(0); lagD.setDate(lagD.getDate() + lag);
 
-        let x1, x2, y1, y2;
+        const ry1 = getTaskRowY(predTask.id);
+        const ry2 = getTaskRowY(task.id);
+        if (ry1 < 0 || ry2 < 0) return;
+        const y1 = ry1 + rowH / 2;
+        const y2 = ry2 + rowH / 2;
+
+        let x1, x2;
         if (type === 'FS') {
           if (!predTask.endDate || !task.startDate) return;
           x1 = dateToX(new Date(predTask.endDate), minD);
-          x2 = dateToX(new Date(task.startDate), minD) + lag * (cellW / (timescale==='days'?1:timescale==='weeks'?7:30.44));
-          y1 = getTaskRowY(predTask.id) + 20; y2 = getTaskRowY(task.id) + 20;
+          x2 = dateToX(new Date(task.startDate), minD) + lag * pxPerDay;
         } else if (type === 'FF') {
           if (!predTask.endDate || !task.endDate) return;
           x1 = dateToX(new Date(predTask.endDate), minD);
-          x2 = dateToX(new Date(task.endDate), minD);
-          y1 = getTaskRowY(predTask.id) + 20; y2 = getTaskRowY(task.id) + 20;
+          x2 = dateToX(new Date(task.endDate), minD) + lag * pxPerDay;
         } else if (type === 'SS') {
           if (!predTask.startDate || !task.startDate) return;
           x1 = dateToX(new Date(predTask.startDate), minD);
-          x2 = dateToX(new Date(task.startDate), minD);
-          y1 = getTaskRowY(predTask.id) + 20; y2 = getTaskRowY(task.id) + 20;
+          x2 = dateToX(new Date(task.startDate), minD) + lag * pxPerDay;
         } else if (type === 'SF') {
           if (!predTask.startDate || !task.endDate) return;
           x1 = dateToX(new Date(predTask.startDate), minD);
-          x2 = dateToX(new Date(task.endDate), minD);
-          y1 = getTaskRowY(predTask.id) + 20; y2 = getTaskRowY(task.id) + 20;
-        }
-        if (y1 < 0 || y2 < 0) return;
+          x2 = dateToX(new Date(task.endDate), minD) + lag * pxPerDay;
+        } else return;
 
-        const color = TYPE_COLORS[type] || TYPE_COLORS.FS;
-        // Draw L-shaped path
+        const color = TYPE_COLORS[type];
         const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-        const midX = x1 + 12;
-        path.setAttribute('d', `M ${x1} ${y1} H ${midX} V ${y2} H ${x2}`);
+
+        let d;
+        if (Math.abs(y1 - y2) < 1) {
+          d = `M ${x1},${y1} H ${x2}`;
+        } else if (x2 >= x1 + ELBOW * 2) {
+          const midX = (x1 + x2) / 2;
+          d = `M ${x1},${y1} H ${midX} V ${y2} H ${x2}`;
+        } else {
+          const ex1 = x1 + ELBOW;
+          const ex2 = x2 - ELBOW;
+          const midY = (y1 + y2) / 2;
+          if (ex2 >= ex1) {
+            d = `M ${x1},${y1} H ${ex1} V ${midY} H ${ex2} V ${y2} H ${x2}`;
+          } else {
+            d = `M ${x1},${y1} H ${ex1} V ${y2} H ${x2}`;
+          }
+        }
+
+        path.setAttribute('d', d);
         path.setAttribute('stroke', color);
         path.setAttribute('stroke-width', '1.5');
         path.setAttribute('fill', 'none');
+        path.setAttribute('opacity', '0.65');
         path.setAttribute('marker-end', `url(#arr-${type})`);
         svg.appendChild(path);
       });
@@ -3075,7 +3096,7 @@ function renderDependencies(minD) {
 }
 
 function getTaskRowY(taskId) {
-  const row = document.querySelector(`[data-task-id="${taskId}"]`);
+  const row = document.querySelector(`#gantt-rows [data-task-id="${taskId}"]`);
   if (!row) return -1;
   return row.offsetTop;
 }
