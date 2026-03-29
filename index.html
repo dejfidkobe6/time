@@ -1878,7 +1878,7 @@ async function confirmCreateProject() {
       alert('Chyba: ' + (data.error || 'Nepodařilo se vytvořit projekt'));
     }
   } catch (e) {
-    alert('Nepodařilo se vytvořit projekt\n' + e.message);
+    alert('Chyba: ' + e.message);
   }
 }
 
