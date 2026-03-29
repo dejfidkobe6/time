@@ -1940,13 +1940,13 @@ const COLUMN_DEFS = [
   { id: 'progress',     label: 'Postup',      w: '62px'  },
   { id: 'budget',       label: 'Rozpočet',    w: '74px'  },
 ];
-let visibleColumns = JSON.parse(localStorage.getItem('bt_cols') || '["name","predecessors","start","end","duration","progress","budget"]');
+let visibleColumns = (() => { try { return JSON.parse(localStorage.getItem('bt_cols') || 'null') || ['name','predecessors','start','end','duration','progress','budget']; } catch(e) { return ['name','predecessors','start','end','duration','progress','budget']; } })();
 // always ensure 'name' is first
 if (!visibleColumns.includes('name')) visibleColumns.unshift('name');
 
 let ganttColorMode = localStorage.getItem('bt_colormode') || 'phase';
 let ganttFilter    = localStorage.getItem('bt_filter')    || 'all';
-let ganttOpts = JSON.parse(localStorage.getItem('bt_opts') || '{"deps":true,"labels":true,"wknd":true,"progress":true}');
+let ganttOpts = (() => { try { return JSON.parse(localStorage.getItem('bt_opts') || 'null') || {deps:true,labels:true,wknd:true,progress:true}; } catch(e) { return {deps:true,labels:true,wknd:true,progress:true}; } })();
 
 /* ═══════════════════════════════════════════════════
    INIT
@@ -1994,13 +1994,17 @@ async function showProjectSelector() {
 
   // Načti projekty
   try {
-    const res = await fetch('/api/projects.php?action=list');
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 10000);
+    const res = await fetch('/api/projects.php?action=list', { signal: ctrl.signal });
+    clearTimeout(timer);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'Chyba API');
     renderProjectList(data.projects || []);
   } catch (e) {
     document.getElementById('proj-sel-list').innerHTML =
-      '<div class="proj-sel-empty">Nepodařilo se načíst projekty.<br><small>' + e.message + '</small></div>';
+      '<div class="proj-sel-empty">Nepodařilo se načíst projekty.<br><small style="color:var(--danger);">' + e.message + '</small></div>';
   }
 }
 
