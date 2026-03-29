@@ -401,7 +401,6 @@ html, body {
 
 .wbs-header-cols {
   display: grid;
-  grid-template-columns: 1fr 80px 80px 50px 54px;
   gap: 4px;
   padding: 6px 14px;
   border-bottom: 1px solid var(--border);
@@ -461,7 +460,6 @@ html, body {
 
 .wbs-row-content {
   display: grid;
-  grid-template-columns: 1fr 80px 80px 50px 54px;
   gap: 4px;
   width: 100%;
   align-items: center;
@@ -1042,7 +1040,7 @@ html, body {
   position: fixed;
   inset: 0;
   background: rgba(28,30,26,0.6);
-  z-index: 200;
+  z-index: 400;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1418,6 +1416,141 @@ html, body {
   text-align: center; padding: 28px 0;
   font-size: 12px; color: var(--text-muted); font-weight: 600;
 }
+
+/* ═══════════════════════════════════════
+   SPLITTER
+═══════════════════════════════════════ */
+#wbs-splitter {
+  width: 5px; flex-shrink: 0;
+  background: var(--border); cursor: col-resize;
+  z-index: 10; transition: background 0.15s; position: relative;
+}
+#wbs-splitter:hover, #wbs-splitter.dragging { background: var(--olive); }
+#wbs-splitter::after {
+  content: ''; position: absolute; top:50%; left:50%;
+  transform: translate(-50%,-50%);
+  width: 1px; height: 32px; background: rgba(255,255,255,0.6); border-radius:1px;
+}
+
+/* ═══════════════════════════════════════
+   COLUMN PICKER
+═══════════════════════════════════════ */
+.col-picker-wrap { position: relative; }
+.col-picker-panel {
+  position: absolute; top: calc(100% + 6px); right: 0;
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); box-shadow: var(--shadow-md);
+  padding: 12px; z-index: 500; min-width: 190px; display: none;
+}
+.col-picker-panel.open { display: block; }
+.col-picker-title {
+  font-size: 9px; font-weight: 800; text-transform: uppercase;
+  letter-spacing: 0.7px; color: var(--text-muted); margin-bottom: 8px;
+}
+.col-picker-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 4px; cursor: pointer; border-radius: 4px; transition: background 0.1s;
+}
+.col-picker-item:hover { background: var(--bg-hover); }
+.col-picker-item input[type=checkbox] { accent-color: var(--olive); cursor: pointer; }
+.col-picker-item label { font-size: 11px; font-weight: 600; cursor: pointer; flex:1; }
+
+/* ═══════════════════════════════════════
+   PREDECESSOR CHIPS
+═══════════════════════════════════════ */
+.pred-chips { display: flex; gap: 2px; flex-wrap: wrap; align-items: center; overflow: hidden; }
+.pred-chip {
+  font-size: 8px; font-weight: 700;
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: 3px; padding: 1px 4px; color: var(--olive);
+  white-space: nowrap; cursor: pointer; transition: border-color 0.1s;
+}
+.pred-chip:hover { border-color: var(--olive); }
+
+/* ═══════════════════════════════════════
+   BAR RESIZE & CONNECT HANDLES
+═══════════════════════════════════════ */
+.bar-resize-l, .bar-resize-r {
+  position: absolute; top: 0; bottom: 0; width: 8px;
+  cursor: ew-resize; z-index: 5; opacity: 0; transition: opacity 0.15s;
+  background: rgba(255,255,255,0.35);
+}
+.bar-resize-l { left: 0; border-radius: 4px 0 0 4px; }
+.bar-resize-r { right: 0; border-radius: 0 4px 4px 0; }
+.gantt-bar-wrap:hover .bar-resize-l,
+.gantt-bar-wrap:hover .bar-resize-r { opacity: 1; }
+
+.bar-connect-dot {
+  position: absolute; right: -7px; top: 50%; transform: translateY(-50%);
+  width: 14px; height: 14px; border-radius: 50%;
+  background: white; border: 2px solid var(--olive);
+  cursor: crosshair; z-index: 8; display: none;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.25);
+}
+.gantt-bar-wrap:hover .bar-connect-dot { display: block; }
+
+/* Dep-draw overlay */
+#dep-draw-svg {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  pointer-events: none; z-index: 990; display: none;
+}
+
+/* ═══════════════════════════════════════
+   GANTT OPTIONS PANEL
+═══════════════════════════════════════ */
+.gantt-opts-wrap { position: relative; }
+.gantt-opts-panel {
+  position: absolute; top: calc(100% + 6px); right: 0;
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); box-shadow: var(--shadow-md);
+  padding: 14px; z-index: 500; width: 270px; display: none;
+}
+.gantt-opts-panel.open { display: block; }
+.gantt-opts-section { margin-bottom: 12px; }
+.gantt-opts-section:last-child { margin-bottom: 0; }
+.gantt-opts-heading {
+  font-size: 9px; font-weight: 800; text-transform: uppercase;
+  letter-spacing: 0.7px; color: var(--text-muted); margin-bottom: 7px;
+}
+.gantt-opts-row {
+  display: flex; align-items: center; gap: 8px; padding: 3px 0; cursor: pointer;
+}
+.gantt-opts-row input[type=checkbox] { accent-color: var(--olive); cursor: pointer; }
+.gantt-opts-row label { font-size: 11px; font-weight: 600; cursor: pointer; flex: 1; }
+.gantt-opts-row input[type=range] { flex:1; accent-color: var(--olive); }
+.mode-btns { display: flex; gap: 3px; flex-wrap: wrap; }
+.mode-btn {
+  padding: 3px 9px; border: 1px solid var(--border); border-radius: 20px;
+  font-size: 10px; font-weight: 700; cursor: pointer;
+  background: none; font-family: var(--font-main); transition: all 0.12s; color: var(--text-muted);
+}
+.mode-btn.active { background: var(--olive); color: white; border-color: var(--olive); }
+
+/* ═══════════════════════════════════════
+   INLINE CELL EDITING
+═══════════════════════════════════════ */
+.cell-editable {
+  display: block; width: 100%; height: 100%;
+  cursor: text; padding: 2px 4px;
+  border-radius: 3px; transition: background 0.1s;
+  font-size: 10px; color: var(--text-mid); font-weight: 500;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.cell-editable:hover { background: rgba(0,0,0,0.04); }
+.cell-edit-input {
+  width: 100%; border: 1px solid var(--olive); border-radius: 3px;
+  padding: 2px 4px; font-size: 10px; font-family: var(--font-main);
+  font-weight: 500; background: white; color: var(--text); outline: none;
+  box-shadow: 0 0 0 2px rgba(74,83,64,0.15);
+}
+.wbs-row-content { align-items: center; }
+
+/* Row height control */
+:root { --row-h: 40px; }
+#wbs-body .wbs-row { min-height: var(--row-h); }
+#gantt-rows .gantt-row { height: var(--row-h); }
+#gantt-rows .gantt-row.is-phase { height: calc(var(--row-h) + 4px); }
+#wbs-body .wbs-row.is-phase { min-height: calc(var(--row-h) + 4px); height: calc(var(--row-h) + 4px); }
 </style>
 </head>
 <body>
@@ -1425,7 +1558,7 @@ html, body {
 <!-- SIDEBAR -->
 <nav id="sidebar">
   <div class="sidebar-logo">
-    <div class="logo-mark">B6</div>
+    <img src="/besix_logo_highres_transparent.png" alt="BeSix" style="height:32px;width:auto;">
   </div>
   <div class="sidebar-nav">
     <button class="nav-btn active" onclick="switchMainView('gantt')" title="">
@@ -1442,13 +1575,17 @@ html, body {
     </button>
   </div>
   <div class="sidebar-bottom">
+    <button class="nav-btn" onclick="openProjectOverview()" title="">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      <span class="nav-tooltip">Přehled projektu</span>
+    </button>
+    <button class="nav-btn" onclick="openMembersModal()" title="">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      <span class="nav-tooltip">Správa uživatelů</span>
+    </button>
     <button class="nav-btn" onclick="saveProject()" title="">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
       <span class="nav-tooltip">Uložit projekt</span>
-    </button>
-    <button class="nav-btn" onclick="loadProject()" title="">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-      <span class="nav-tooltip">Načíst projekt</span>
     </button>
   </div>
 </nav>
@@ -1551,16 +1688,15 @@ html, body {
             </button>
             <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-muted);">Přidat fázi</span>
             <div class="ml-auto" style="display:flex;gap:6px;align-items:center;">
-              <span style="font-size:9px;color:var(--text-muted);font-weight:600;">WBS / Položky</span>
+              <div class="col-picker-wrap">
+                <button class="btn btn-ghost btn-icon" onclick="toggleColumnPicker(event)" title="Sloupce">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                </button>
+                <div class="col-picker-panel" id="col-picker-panel"></div>
+              </div>
             </div>
           </div>
-          <div class="wbs-header-cols">
-            <span class="wbs-col-head">Název</span>
-            <span class="wbs-col-head">Zahájení</span>
-            <span class="wbs-col-head">Dokončení</span>
-            <span class="wbs-col-head">Postup</span>
-            <span class="wbs-col-head" style="text-align:right;">Rozpočet</span>
-          </div>
+          <div class="wbs-header-cols" id="wbs-header-cols"></div>
           <div id="wbs-body"></div>
           <div class="wbs-add-bar">
             <button class="btn btn-secondary" style="flex:1;font-size:10px;" onclick="openAddTaskModal()">
@@ -1573,6 +1709,9 @@ html, body {
           </div>
         </div>
 
+        <!-- SPLITTER -->
+        <div id="wbs-splitter"></div>
+
         <!-- GANTT -->
         <div id="gantt-panel">
           <div id="gantt-toolbar">
@@ -1582,6 +1721,45 @@ html, body {
               <button class="timescale-btn" id="ts-months" onclick="setTimescale('months')">Měsíce</button>
             </div>
             <div class="ml-auto" style="display:flex;gap:6px;align-items:center;">
+              <div class="gantt-opts-wrap">
+                <button class="btn btn-ghost btn-icon" onclick="toggleGanttOpts(event)" title="Zobrazení">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07M8.46 8.46a5 5 0 0 0 0 7.07"/></svg>
+                </button>
+                <div class="gantt-opts-panel" id="gantt-opts-panel">
+                  <div class="gantt-opts-section">
+                    <div class="gantt-opts-heading">Barvení</div>
+                    <div class="mode-btns" id="color-mode-btns">
+                      <button class="mode-btn active" onclick="setColorMode('phase')">Fáze</button>
+                      <button class="mode-btn" onclick="setColorMode('status')">Stav</button>
+                      <button class="mode-btn" onclick="setColorMode('assignee')">Přiřazení</button>
+                      <button class="mode-btn" onclick="setColorMode('progress')">Postup</button>
+                    </div>
+                  </div>
+                  <div class="gantt-opts-section">
+                    <div class="gantt-opts-heading">Filtr</div>
+                    <div class="mode-btns" id="gantt-filter-btns">
+                      <button class="mode-btn active" onclick="setGanttFilter('all')">Vše</button>
+                      <button class="mode-btn" onclick="setGanttFilter('active')">Aktivní</button>
+                      <button class="mode-btn" onclick="setGanttFilter('overdue')">Po termínu</button>
+                      <button class="mode-btn" onclick="setGanttFilter('done')">Hotovo</button>
+                    </div>
+                  </div>
+                  <div class="gantt-opts-section">
+                    <div class="gantt-opts-heading">Zobrazit</div>
+                    <label class="gantt-opts-row"><input type="checkbox" id="opt-deps" onchange="toggleGanttOpt('deps')" checked> <label for="opt-deps">Závislosti</label></label>
+                    <label class="gantt-opts-row"><input type="checkbox" id="opt-labels" onchange="toggleGanttOpt('labels')" checked> <label for="opt-labels">Popisky na lištách</label></label>
+                    <label class="gantt-opts-row"><input type="checkbox" id="opt-wknd" onchange="toggleGanttOpt('wknd')" checked> <label for="opt-wknd">Zvýraznit víkendy</label></label>
+                    <label class="gantt-opts-row"><input type="checkbox" id="opt-progress" onchange="toggleGanttOpt('progress')" checked> <label for="opt-progress">Postup na lišté</label></label>
+                  </div>
+                  <div class="gantt-opts-section">
+                    <div class="gantt-opts-heading">Výška řádků</div>
+                    <div class="gantt-opts-row">
+                      <input type="range" min="28" max="72" value="40" id="row-h-slider" oninput="setRowHeight(this.value)">
+                      <span id="row-h-val" style="font-size:10px;font-weight:700;color:var(--olive);min-width:28px;">40px</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
               <button class="btn btn-ghost btn-icon" onclick="zoomGantt(-1)" title="Oddalit">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
               </button>
@@ -1693,7 +1871,7 @@ html, body {
 <div id="project-overlay">
   <div class="proj-sel-card">
     <div class="proj-sel-top">
-      <div class="logo-mark" style="width:44px;height:44px;font-size:16px;flex-shrink:0;">B6</div>
+      <img src="/besix_logo_highres_transparent.png" alt="BeSix" style="height:38px;width:auto;flex-shrink:0;filter:brightness(0);">
       <div>
         <div class="proj-sel-title">BeSix Time</div>
         <div class="proj-sel-subtitle">Harmonogram stavby — vyberte projekt</div>
@@ -1715,6 +1893,7 @@ html, body {
 <!-- MODALS injected by JS -->
 <div id="modal-container"></div>
 <input type="file" id="json-file-input" accept=".json" style="display:none" onchange="handleJSONImport(event)">
+<svg id="dep-draw-svg"><line id="dep-draw-line" stroke="var(--olive)" stroke-width="2" stroke-dasharray="6,3"/></svg>
 
 <script>
 /* ═══════════════════════════════════════════════════
@@ -1748,6 +1927,28 @@ let currentUser = null;
 let currentProjectId = null;
 
 /* ═══════════════════════════════════════════════════
+   COLUMNS CONFIG
+═══════════════════════════════════════════════════ */
+const COLUMN_DEFS = [
+  { id: 'name',         label: 'Název',       w: null,    fixed: true },
+  { id: 'wbs',          label: 'WBS',         w: '42px'  },
+  { id: 'predecessors', label: 'Předchůdci',  w: '90px'  },
+  { id: 'start',        label: 'Zahájení',    w: '80px'  },
+  { id: 'end',          label: 'Dokončení',   w: '80px'  },
+  { id: 'duration',     label: 'Trvání',      w: '54px'  },
+  { id: 'assignee',     label: 'Přiřazení',   w: '78px'  },
+  { id: 'progress',     label: 'Postup',      w: '62px'  },
+  { id: 'budget',       label: 'Rozpočet',    w: '74px'  },
+];
+let visibleColumns = (() => { try { return JSON.parse(localStorage.getItem('bt_cols') || 'null') || ['name','predecessors','start','end','duration','progress','budget']; } catch(e) { return ['name','predecessors','start','end','duration','progress','budget']; } })();
+// always ensure 'name' is first
+if (!visibleColumns.includes('name')) visibleColumns.unshift('name');
+
+let ganttColorMode = localStorage.getItem('bt_colormode') || 'phase';
+let ganttFilter    = localStorage.getItem('bt_filter')    || 'all';
+let ganttOpts = (() => { try { return JSON.parse(localStorage.getItem('bt_opts') || 'null') || {deps:true,labels:true,wknd:true,progress:true}; } catch(e) { return {deps:true,labels:true,wknd:true,progress:true}; } })();
+
+/* ═══════════════════════════════════════════════════
    INIT
 ═══════════════════════════════════════════════════ */
 async function init() {
@@ -1756,13 +1957,13 @@ async function init() {
     const res = await fetch('/api/auth.php?action=me');
     const data = await res.json();
     if (!data.user) {
-      window.location.href = 'https://plans.besix.cz/login.php?redirect=' + encodeURIComponent(window.location.href);
+      window.location.href = '/login.php';
       return;
     }
     currentUser = data.user;
   } catch (e) {
-    // Fallback: offline mode
-    currentUser = { name: 'Offline', email: '', avatar_color: '#4A5340' };
+    window.location.href = '/login.php';
+    return;
   }
 
   await showProjectSelector();
@@ -1771,27 +1972,39 @@ async function init() {
 /* ═══════════════════════════════════════════════════
    PROJECT SELECTOR
 ═══════════════════════════════════════════════════ */
+function _esc(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
 async function showProjectSelector() {
   const overlay = document.getElementById('project-overlay');
   overlay.classList.remove('hidden');
 
   // Zobraz uživatele
-  const userEl = document.getElementById('proj-sel-user');
-  const initials = (currentUser.name || '?').split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
-  userEl.innerHTML = `
-    <div class="proj-sel-avatar" style="background:${currentUser.avatar_color || '#4A5340'}">${initials}</div>
-    Přihlášen jako <strong>${escHtml(currentUser.name)}</strong>
-    <span style="margin-left:auto;cursor:pointer;color:var(--text-muted);font-size:10px;" onclick="logoutUser()">Odhlásit</span>
-  `;
+  try {
+    const userEl = document.getElementById('proj-sel-user');
+    const name = (currentUser && currentUser.name) ? currentUser.name : '';
+    const initials = name.split(' ').filter(Boolean).map(w => w[0]).join('').slice(0,2).toUpperCase() || '?';
+    const color = (currentUser && currentUser.avatar_color) ? currentUser.avatar_color : '#4A5340';
+    userEl.innerHTML =
+      '<div class="proj-sel-avatar" style="background:' + color + '">' + initials + '</div>' +
+      'Přihlášen jako <strong>' + _esc(name) + '</strong>' +
+      '<span style="margin-left:auto;cursor:pointer;color:var(--text-muted);font-size:10px;" onclick="logoutUser()">Odhlásit</span>';
+  } catch(e) {}
 
   // Načti projekty
   try {
-    const res = await fetch('/api/projects.php?action=list');
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 10000);
+    const res = await fetch('/api/projects.php?action=list', { signal: ctrl.signal });
+    clearTimeout(timer);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'Chyba API');
     renderProjectList(data.projects || []);
   } catch (e) {
     document.getElementById('proj-sel-list').innerHTML =
-      '<div class="proj-sel-empty">Nepodařilo se načíst projekty.</div>';
+      '<div class="proj-sel-empty">Nepodařilo se načíst projekty.<br><small style="color:var(--danger);">' + e.message + '</small></div>';
   }
 }
 
@@ -1802,12 +2015,15 @@ function renderProjectList(projects) {
     return;
   }
   el.innerHTML = projects.map(p => `
-    <div class="proj-sel-item" onclick="selectProject(${p.id}, ${JSON.stringify(escHtml(p.name))})">
+    <div class="proj-sel-item" data-pid="${p.id}" data-name="${_esc(p.name)}">
       <div class="proj-sel-dot" style="background:${p.bg_color || 'var(--olive)'}"></div>
-      <span class="proj-sel-name">${escHtml(p.name)}</span>
-      <span class="proj-sel-role">${escHtml(p.role)}</span>
+      <span class="proj-sel-name">${_esc(p.name)}</span>
+      <span class="proj-sel-role">${_esc(p.role)}</span>
     </div>
   `).join('');
+  el.querySelectorAll('.proj-sel-item').forEach(div => {
+    div.addEventListener('click', () => selectProject(+div.dataset.pid, div.dataset.name));
+  });
 }
 
 async function selectProject(projectId, projectName) {
@@ -1870,13 +2086,244 @@ async function confirmCreateProject() {
       alert('Chyba: ' + (data.error || 'Nepodařilo se vytvořit projekt'));
     }
   } catch (e) {
-    alert('Nepodařilo se vytvořit projekt');
+    alert('Chyba: ' + e.message);
   }
 }
 
 async function logoutUser() {
   await fetch('/api/auth.php?action=logout');
-  window.location.href = 'https://plans.besix.cz/login.php';
+  window.location.href = '/login.php';
+}
+
+/* ═══════════════════════════════════════════════════
+   PŘEHLED PROJEKTU
+═══════════════════════════════════════════════════ */
+function openProjectOverview() {
+  let totalBudget = 0, taskCount = 0, doneCount = 0;
+  let allDates = [];
+  project.phases.forEach(ph => ph.tasks.forEach(t => {
+    totalBudget += (t.budget || 0);
+    taskCount++;
+    if ((t.progress || 0) >= 100) doneCount++;
+    if (t.startDate) allDates.push(new Date(t.startDate));
+    if (t.endDate)   allDates.push(new Date(t.endDate));
+  }));
+  const fmt = d => d.toLocaleDateString('cs-CZ', {day:'numeric', month:'long', year:'numeric'});
+  const start = allDates.length ? fmt(new Date(Math.min(...allDates))) : '—';
+  const end   = allDates.length ? fmt(new Date(Math.max(...allDates))) : '—';
+  const budgetFmt = totalBudget >= 1000000
+    ? (totalBudget/1000000).toFixed(1) + ' mil. Kč'
+    : totalBudget.toLocaleString('cs-CZ') + ' Kč';
+
+  openModal(`
+    <div class="modal">
+      <div class="modal-header">
+        <span class="modal-title">Přehled projektu</span>
+        <button class="modal-close" onclick="closeModal()">×</button>
+      </div>
+      <div class="modal-body">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
+          <div style="background:var(--bg);border-radius:var(--radius);padding:14px;">
+            <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-muted);margin-bottom:4px;">Název</div>
+            <div style="font-size:13px;font-weight:700;">${_esc(project.name)}</div>
+          </div>
+          <div style="background:var(--bg);border-radius:var(--radius);padding:14px;">
+            <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-muted);margin-bottom:4px;">Kód</div>
+            <div style="font-size:13px;font-weight:700;">${_esc(project.code)}</div>
+          </div>
+          <div style="background:var(--bg);border-radius:var(--radius);padding:14px;">
+            <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-muted);margin-bottom:4px;">Zahájení</div>
+            <div style="font-size:12px;font-weight:600;">${start}</div>
+          </div>
+          <div style="background:var(--bg);border-radius:var(--radius);padding:14px;">
+            <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-muted);margin-bottom:4px;">Dokončení</div>
+            <div style="font-size:12px;font-weight:600;">${end}</div>
+          </div>
+          <div style="background:var(--bg);border-radius:var(--radius);padding:14px;">
+            <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-muted);margin-bottom:4px;">Rozpočet</div>
+            <div style="font-size:13px;font-weight:700;color:var(--olive);">${budgetFmt}</div>
+          </div>
+          <div style="background:var(--bg);border-radius:var(--radius);padding:14px;">
+            <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-muted);margin-bottom:4px;">Úkoly</div>
+            <div style="font-size:13px;font-weight:700;">${doneCount} / ${taskCount} hotovo</div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal();document.getElementById('project-overlay').classList.remove('hidden');showProjectSelector()">Změnit projekt</button>
+        <button class="btn btn-primary" onclick="closeModal()">Zavřít</button>
+      </div>
+    </div>
+  `);
+}
+
+/* ═══════════════════════════════════════════════════
+   SPRÁVA UŽIVATELŮ
+═══════════════════════════════════════════════════ */
+async function openMembersModal() {
+  if (!currentProjectId) return;
+  openModal(`
+    <div class="modal" style="max-width:500px;">
+      <div class="modal-header">
+        <span class="modal-title">Správa uživatelů</span>
+        <button class="modal-close" onclick="closeModal()">×</button>
+      </div>
+      <div class="modal-body" id="members-modal-body" style="padding:0;">
+        <div style="text-align:center;padding:24px;color:var(--text-muted);font-size:12px;">Načítám…</div>
+      </div>
+    </div>
+  `);
+  await reloadMembersModal();
+}
+
+async function reloadMembersModal() {
+  const body = document.getElementById('members-modal-body');
+  if (!body) return;
+  try {
+    const [mRes, lRes] = await Promise.all([
+      fetch('/api/projects.php?action=members&project_id=' + currentProjectId),
+      fetch('/api/projects.php?action=invite_link&project_id=' + currentProjectId),
+    ]);
+    const mData = await mRes.json();
+    const lData = lRes.ok ? await lRes.json() : {};
+    const members = mData.members || [];
+    const inviteCode = lData.invite_code || '';
+    const inviteUrl = inviteCode ? location.origin + '/invite.php?code=' + inviteCode : '';
+
+    const roleLabel = { owner: 'Vlastník', admin: 'Admin', member: 'Člen', viewer: 'Prohlížeč' };
+    const roleColor = { owner: 'var(--olive)', admin: 'var(--warning)', member: 'var(--text-muted)', viewer: 'var(--text-muted)' };
+
+    // Check current user role
+    const myMember = members.find(m => currentUser && +m.id === +currentUser.id);
+    const canManage = myMember && (myMember.role === 'owner' || myMember.role === 'admin');
+
+    body.innerHTML = `
+      <div style="padding:16px 20px;border-bottom:1px solid var(--border);">
+        <div style="font-size:11px;font-weight:700;color:var(--text-muted);margin-bottom:12px;">${members.length} člen${members.length === 1 ? '' : members.length < 5 ? 'i' : 'ů'}</div>
+        ${members.map(m => `
+          <div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border-light);">
+            <div style="width:34px;height:34px;border-radius:50%;background:${m.avatar_color||'var(--olive)'};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:white;flex-shrink:0;">
+              ${_esc((m.name||'?').split(' ').filter(Boolean).map(w=>w[0]).join('').slice(0,2).toUpperCase())}
+            </div>
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${_esc(m.name)}</div>
+              <div style="font-size:11px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${_esc(m.email)}</div>
+            </div>
+            ${canManage && m.role !== 'owner' ? `
+              <select style="font-size:10px;font-weight:700;border:1px solid var(--border);border-radius:4px;padding:3px 6px;background:var(--bg);color:var(--text);font-family:var(--font-main);cursor:pointer;"
+                onchange="changeMemberRole(${m.id},this.value)">
+                <option value="admin" ${m.role==='admin'?'selected':''}>Admin</option>
+                <option value="member" ${m.role==='member'?'selected':''}>Člen</option>
+                <option value="viewer" ${m.role==='viewer'?'selected':''}>Prohlížeč</option>
+              </select>
+              <button onclick="removeMember(${m.id},'${_esc(m.name)}')"
+                style="width:26px;height:26px;display:flex;align-items:center;justify-content:center;border:none;background:none;color:var(--text-muted);cursor:pointer;border-radius:4px;font-size:16px;flex-shrink:0;transition:all 0.1s;"
+                onmouseover="this.style.background='var(--danger-light)';this.style.color='var(--danger)'"
+                onmouseout="this.style.background='none';this.style.color='var(--text-muted)'"
+                title="Odebrat člena">×</button>
+            ` : `
+              <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:${roleColor[m.role]||'var(--text-muted)'};background:var(--bg);padding:3px 9px;border-radius:20px;border:1px solid var(--border);white-space:nowrap;">${roleLabel[m.role]||m.role}</span>
+            `}
+          </div>
+        `).join('')}
+      </div>
+
+      ${canManage ? `
+        <div style="padding:16px 20px;border-bottom:1px solid var(--border);">
+          <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:0.7px;color:var(--text-muted);margin-bottom:10px;">Pozvat uživatele</div>
+          <div style="display:flex;gap:8px;align-items:flex-start;">
+            <input class="form-input" id="invite-email" type="email" placeholder="E-mail uživatele" style="flex:1;font-size:12px;">
+            <select class="form-select" id="invite-role" style="width:108px;font-size:12px;">
+              <option value="member">Člen</option>
+              <option value="admin">Admin</option>
+              <option value="viewer">Prohlížeč</option>
+            </select>
+            <button class="btn btn-primary" style="white-space:nowrap;font-size:11px;" onclick="inviteMember()">Pozvat</button>
+          </div>
+          <div id="invite-msg" style="font-size:11px;margin-top:6px;min-height:16px;"></div>
+        </div>
+
+        ${inviteUrl ? `
+          <div style="padding:14px 20px;">
+            <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:0.7px;color:var(--text-muted);margin-bottom:8px;">Odkaz pro přidání</div>
+            <div style="display:flex;gap:6px;">
+              <input class="form-input" value="${_esc(inviteUrl)}" readonly style="flex:1;font-size:11px;color:var(--text-muted);background:var(--bg);" onclick="this.select()">
+              <button class="btn btn-secondary" style="font-size:11px;white-space:nowrap;" onclick="copyInviteLink('${_esc(inviteUrl)}',this)">Kopírovat</button>
+            </div>
+            <div style="font-size:10px;color:var(--text-muted);margin-top:5px;">Každý, kdo otevře tento odkaz a je přihlášen, se stane členem projektu.</div>
+          </div>
+        ` : ''}
+      ` : ''}
+    `;
+  } catch(e) {
+    if (document.getElementById('members-modal-body')) {
+      document.getElementById('members-modal-body').innerHTML =
+        '<div style="padding:20px;color:var(--danger);font-size:12px;">Nepodařilo se načíst členy: ' + e.message + '</div>';
+    }
+  }
+}
+
+async function inviteMember() {
+  const email = document.getElementById('invite-email')?.value.trim();
+  const role  = document.getElementById('invite-role')?.value;
+  const msg   = document.getElementById('invite-msg');
+  if (!email) return;
+  msg.style.color = 'var(--text-muted)';
+  msg.textContent = 'Odesílám…';
+  try {
+    const res = await fetch('/api/projects.php?action=invite', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project_id: currentProjectId, email, role }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      msg.style.color = 'var(--success)';
+      msg.textContent = '✓ ' + (data.message || 'Uživatel přidán');
+      document.getElementById('invite-email').value = '';
+      setTimeout(() => reloadMembersModal(), 800);
+    } else {
+      msg.style.color = 'var(--danger)';
+      msg.textContent = data.error || 'Chyba';
+    }
+  } catch(e) {
+    msg.style.color = 'var(--danger)';
+    msg.textContent = 'Chyba: ' + e.message;
+  }
+}
+
+async function removeMember(memberId, memberName) {
+  if (!confirm('Odebrat ' + memberName + ' z projektu?')) return;
+  try {
+    const res = await fetch('/api/projects.php?action=remove_member', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project_id: currentProjectId, user_id: memberId }),
+    });
+    const data = await res.json();
+    if (data.ok) { showToast(memberName + ' odebrán'); reloadMembersModal(); }
+    else alert(data.error || 'Nepodařilo se odebrat člena');
+  } catch(e) { alert('Chyba: ' + e.message); }
+}
+
+async function changeMemberRole(memberId, newRole) {
+  try {
+    const res = await fetch('/api/projects.php?action=change_role', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project_id: currentProjectId, user_id: memberId, role: newRole }),
+    });
+    const data = await res.json();
+    if (data.ok) showToast('Role změněna');
+    else { alert(data.error || 'Nepodařilo se změnit roli'); reloadMembersModal(); }
+  } catch(e) { alert('Chyba: ' + e.message); }
+}
+
+function copyInviteLink(url, btn) {
+  navigator.clipboard.writeText(url).then(() => {
+    btn.textContent = '✓ Zkopírováno';
+    setTimeout(() => btn.textContent = 'Kopírovat', 2000);
+  });
 }
 
 /* ═══════════════════════════════════════════════════
@@ -1940,7 +2387,24 @@ function renderHeader() {
 /* ═══════════════════════════════════════════════════
    WBS RENDER
 ═══════════════════════════════════════════════════ */
+function getPhaseDurationDays(phase) {
+  const pd = getPhaseDatesRaw(phase);
+  if (!pd.start || !pd.end) return 0;
+  return daysBetween(pd.start, pd.end);
+}
+
+function renderWBSHeader() {
+  const hdr = document.getElementById('wbs-header-cols');
+  if (!hdr) return;
+  hdr.style.gridTemplateColumns = getColTemplate();
+  hdr.innerHTML = visibleColumns.map(id => {
+    const d = COLUMN_DEFS.find(c => c.id === id);
+    return `<span class="wbs-col-head">${d ? d.label : ''}</span>`;
+  }).join('');
+}
+
 function renderWBS() {
+  renderWBSHeader();
   const body = document.getElementById('wbs-body');
   body.innerHTML = '';
   
@@ -1958,41 +2422,111 @@ function renderWBS() {
   });
 }
 
+function getColTemplate() {
+  return visibleColumns.map(id => {
+    const d = COLUMN_DEFS.find(c => c.id === id);
+    return d ? (d.w || '1fr') : null;
+  }).filter(Boolean).join(' ');
+}
+
+function getWBSNum(phaseIdx, taskIdx) {
+  if (taskIdx === undefined) return String(phaseIdx + 1);
+  return (phaseIdx + 1) + '.' + (taskIdx + 1);
+}
+
+function formatPreds(preds) {
+  if (!preds || !preds.length) return '';
+  return preds.map(p => {
+    let lbl = '';
+    // Find task WBS number
+    project.phases.forEach((ph, pi) => ph.tasks.forEach((t, ti) => {
+      if (t.id === p.taskId) lbl = getWBSNum(pi, ti);
+    }));
+    const type = p.type || 'FS';
+    const lag = p.lag ? (p.lag > 0 ? '+' + p.lag : String(p.lag)) : '';
+    return lbl ? lbl + type + lag : '';
+  }).filter(Boolean).join(', ');
+}
+
+function getTaskColor(task, phase, pi) {
+  const baseColor = PHASE_COLORS[pi % PHASE_COLORS.length];
+  if (ganttColorMode === 'phase') return baseColor;
+  if (ganttColorMode === 'status') {
+    if ((task.progress || 0) >= 100) return '#5B8A5E';
+    if (isOverdue(task)) return '#C0392B';
+    if ((task.progress || 0) > 0) return '#D4862A';
+    return '#9A9A8E';
+  }
+  if (ganttColorMode === 'progress') {
+    const p = (task.progress || 0) / 100;
+    const r = Math.round(192 + (91 - 192) * p);
+    const g = Math.round(57 + (138 - 57) * p);
+    const b = Math.round(43 + (94 - 43) * p);
+    return `rgb(${r},${g},${b})`;
+  }
+  if (ganttColorMode === 'assignee') {
+    if (!task.assignee) return '#9A9A8E';
+    let hash = 0;
+    for (let i = 0; i < task.assignee.length; i++) hash = task.assignee.charCodeAt(i) + ((hash << 5) - hash);
+    return PHASE_COLORS[Math.abs(hash) % PHASE_COLORS.length];
+  }
+  return baseColor;
+}
+
+function taskMatchesFilter(task) {
+  if (ganttFilter === 'all') return true;
+  if (ganttFilter === 'done') return (task.progress || 0) >= 100;
+  if (ganttFilter === 'active') return (task.progress || 0) < 100;
+  if (ganttFilter === 'overdue') return isOverdue(task);
+  return true;
+}
+
 function createPhaseRow(phase, pi) {
   const row = document.createElement('div');
   row.className = 'wbs-row is-phase';
   row.dataset.phaseId = phase.id;
-
   const color = PHASE_COLORS[pi % PHASE_COLORS.length];
-  
+  const pd = getPhaseDates(phase);
+
+  const cells = visibleColumns.map(colId => {
+    switch (colId) {
+      case 'name': return `
+        <div class="wbs-name-cell">
+          <div class="phase-toggle ${phase.collapsed?'collapsed':''}" onclick="togglePhase('${phase.id}');event.stopPropagation()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+          </div>
+          <div class="phase-dot" style="background:${color};"></div>
+          <input type="text" class="wbs-name-input" value="${escHtml(phase.name)}"
+            onchange="updatePhaseName('${phase.id}',this.value)" onclick="event.stopPropagation()">
+        </div>`;
+      case 'wbs': return `<span class="wbs-date-cell" style="font-weight:800;color:var(--text-muted);">${getWBSNum(pi)}</span>`;
+      case 'predecessors': return `<div class="pred-chips"></div>`;
+      case 'start': return `<span class="wbs-date-cell">${pd.start}</span>`;
+      case 'end': return `<span class="wbs-date-cell">${pd.end}</span>`;
+      case 'duration': return `<span class="wbs-date-cell">${getPhaseDurationDays(phase)}d</span>`;
+      case 'assignee': return `<span class="wbs-date-cell"></span>`;
+      case 'progress': return `
+        <div class="wbs-pct-cell">
+          <div class="mini-progress"><div class="mini-progress-fill" style="width:${getPhaseProgress(phase)}%;background:${color};"></div></div>
+          <span class="wbs-pct-num">${getPhaseProgress(phase)}%</span>
+        </div>`;
+      case 'budget': return `<span class="wbs-budget-cell">${formatCZK(getPhaseBudget(phase))}</span>`;
+      default: return '<span></span>';
+    }
+  }).join('');
+
   row.innerHTML = `
-    <div class="wbs-row-content">
-      <div class="wbs-name-cell">
-        <div class="phase-toggle ${phase.collapsed?'collapsed':''}" onclick="togglePhase('${phase.id}')">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
-        </div>
-        <div class="phase-dot" style="background:${color};"></div>
-        <input type="text" class="wbs-name-input" value="${escHtml(phase.name)}" 
-          onchange="updatePhaseName('${phase.id}',this.value)"
-          onclick="event.stopPropagation()">
-      </div>
-      <span class="wbs-date-cell">${getPhaseDates(phase).start}</span>
-      <span class="wbs-date-cell">${getPhaseDates(phase).end}</span>
-      <div class="wbs-pct-cell">
-        <div class="mini-progress"><div class="mini-progress-fill" style="width:${getPhaseProgress(phase)}%;background:${color};"></div></div>
-        <span class="wbs-pct-num">${getPhaseProgress(phase)}%</span>
-      </div>
-      <span class="wbs-budget-cell">${formatCZK(getPhaseBudget(phase))}</span>
+    <div class="wbs-row-content" style="grid-template-columns:${getColTemplate()};">
+      ${cells}
     </div>
     <div class="row-actions">
-      <button class="row-action-btn" onclick="openAddTaskModal('${phase.id}')" title="Přidat úkol">
+      <button class="row-action-btn" onclick="openAddTaskModal('${phase.id}');event.stopPropagation();" title="Přidat úkol">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
       </button>
-      <button class="row-action-btn danger" onclick="deletePhase('${phase.id}')" title="Smazat fázi">
+      <button class="row-action-btn danger" onclick="deletePhase('${phase.id}');event.stopPropagation();" title="Smazat fázi">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
       </button>
-    </div>
-  `;
+    </div>`;
   return row;
 }
 
@@ -2001,39 +2535,66 @@ function createTaskRow(task, phase, pi, ti) {
   row.className = 'wbs-row' + (selectedTaskId === task.id ? ' selected' : '');
   row.dataset.taskId = task.id;
   row.onclick = () => selectTask(task.id);
-  
   const color = PHASE_COLORS[pi % PHASE_COLORS.length];
   const isMilestone = task.type === 'milestone';
+  const dur = (task.startDate && task.endDate) ? daysBetween(task.startDate, task.endDate) : 0;
+
+  const cells = visibleColumns.map(colId => {
+    switch (colId) {
+      case 'name': return `
+        <div class="wbs-name-cell">
+          <div class="wbs-indent" style="width:28px;"></div>
+          ${isMilestone
+            ? `<svg viewBox="0 0 24 24" fill="${color}" stroke="none" style="width:10px;height:10px;flex-shrink:0;transform:rotate(45deg);"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>`
+            : `<div style="width:6px;height:6px;border-radius:50%;background:${color};opacity:0.5;flex-shrink:0;"></div>`}
+          <input type="text" class="wbs-name-input" value="${escHtml(task.name)}"
+            onchange="updateTaskField('${task.id}','name',this.value)"
+            ondblclick="openEditTaskModal('${task.id}')"
+            onclick="event.stopPropagation()">
+        </div>`;
+      case 'wbs': return `<span class="wbs-date-cell" style="color:var(--text-muted);">${getWBSNum(pi,ti)}</span>`;
+      case 'predecessors': return `<div class="pred-chips" style="padding:2px 4px;">${
+        (task.predecessors||[]).map(p => {
+          const lbl = formatOnePred(p);
+          return lbl ? `<span class="pred-chip" onclick="openEditTaskModal('${task.id}');event.stopPropagation();" title="Předchůdce">${escHtml(lbl)}</span>` : '';
+        }).join('')
+      }</div>`;
+      case 'start': return `<span class="cell-editable wbs-date-cell" onclick="inlineEdit(this,'${task.id}','startDate','date');event.stopPropagation();">${formatDateShort(task.startDate)}</span>`;
+      case 'end': return `<span class="cell-editable wbs-date-cell" onclick="inlineEdit(this,'${task.id}','endDate','date');event.stopPropagation();">${formatDateShort(task.endDate)}</span>`;
+      case 'duration': return `<span class="cell-editable wbs-date-cell" onclick="inlineEditDuration(this,'${task.id}');event.stopPropagation();">${dur > 0 ? dur + 'd' : '—'}</span>`;
+      case 'assignee': return `<span class="cell-editable wbs-date-cell" onclick="inlineEdit(this,'${task.id}','assignee','text');event.stopPropagation();" title="${escHtml(task.assignee||'')}">${escHtml((task.assignee||'').substring(0,10) + ((task.assignee||'').length>10?'…':''))}</span>`;
+      case 'progress': return isMilestone
+        ? `<span style="font-size:9px;color:var(--warning);font-weight:700;padding:2px 4px;">MILNÍK</span>`
+        : `<span class="cell-editable wbs-pct-num" style="display:flex;align-items:center;gap:3px;" onclick="inlineEdit(this,'${task.id}','progress','number');event.stopPropagation();">
+            <div class="mini-progress" style="flex:1;"><div class="mini-progress-fill" style="width:${task.progress||0}%;background:${color};"></div></div>
+            <span>${task.progress||0}%</span></span>`;
+      case 'budget': return `<span class="cell-editable wbs-budget-cell" onclick="inlineEdit(this,'${task.id}','budget','number');event.stopPropagation();">${isMilestone?'—':formatCZK(task.budget||0)}</span>`;
+      default: return '<span></span>';
+    }
+  }).join('');
 
   row.innerHTML = `
-    <div class="wbs-row-content">
-      <div class="wbs-name-cell">
-        <div class="wbs-indent" style="width:28px;"></div>
-        ${isMilestone ? `<svg viewBox="0 0 24 24" fill="${PHASE_COLORS[pi%PHASE_COLORS.length]}" stroke="none" style="width:10px;height:10px;flex-shrink:0;transform:rotate(45deg);"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>` : `<div style="width:6px;height:6px;border-radius:50%;background:${color};opacity:0.5;flex-shrink:0;"></div>`}
-        <input type="text" class="wbs-name-input" value="${escHtml(task.name)}"
-          onchange="updateTaskField('${task.id}','name',this.value)"
-          ondblclick="openEditTaskModal('${task.id}')"
-          onclick="event.stopPropagation()">
-      </div>
-      <span class="wbs-date-cell">${formatDateShort(task.startDate)}</span>
-      <span class="wbs-date-cell">${formatDateShort(task.endDate)}</span>
-      <div class="wbs-pct-cell">
-        ${isMilestone ? '<span style="font-size:9px;color:var(--warning);font-weight:700;">MILNÍK</span>' : `
-        <div class="mini-progress"><div class="mini-progress-fill" style="width:${task.progress||0}%;background:${color};"></div></div>
-        <span class="wbs-pct-num">${task.progress||0}%</span>`}
-      </div>
-      <span class="wbs-budget-cell">${isMilestone ? '—' : formatCZK(task.budget||0)}</span>
+    <div class="wbs-row-content" style="grid-template-columns:${getColTemplate()};">
+      ${cells}
     </div>
     <div class="row-actions">
-      <button class="row-action-btn" onclick="openEditTaskModal('${task.id}')" title="Upravit">
+      <button class="row-action-btn" onclick="openEditTaskModal('${task.id}');event.stopPropagation();" title="Upravit">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
       </button>
-      <button class="row-action-btn danger" onclick="deleteTask('${task.id}')" title="Smazat">
+      <button class="row-action-btn danger" onclick="deleteTask('${task.id}');event.stopPropagation();" title="Smazat">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
       </button>
-    </div>
-  `;
+    </div>`;
   return row;
+}
+
+function formatOnePred(p) {
+  let wbs = '';
+  project.phases.forEach((ph, pi) => ph.tasks.forEach((t, ti) => { if (t.id === p.taskId) wbs = getWBSNum(pi, ti); }));
+  if (!wbs) return '';
+  const type = p.type || 'FS';
+  const lag = p.lag ? (p.lag > 0 ? '+' + p.lag : '' + p.lag) : '';
+  return wbs + ' ' + type + lag;
 }
 
 /* ═══════════════════════════════════════════════════
@@ -2108,7 +2669,7 @@ function renderGanttHeader(minD, maxD, totalW) {
       cell.style.width = cellW + 'px';
       cell.style.minWidth = cellW + 'px';
       const dow = d.getDay();
-      if (dow === 0 || dow === 6) cell.style.background = 'rgba(255,255,255,0.05)';
+      if (ganttOpts.wknd && (dow === 0 || dow === 6)) cell.style.background = 'rgba(255,255,255,0.05)';
       cell.textContent = d.getDate();
       unitsRow.appendChild(cell);
       d.setDate(d.getDate() + 1);
@@ -2251,35 +2812,39 @@ function renderGanttRows(minD, totalW) {
           tRow.appendChild(diamond);
         }
       } else if (task.startDate && task.endDate) {
+        if (taskMatchesFilter(task)) {
         const x = Math.round(dateToX(new Date(task.startDate), minD));
         const x2 = Math.round(dateToX(new Date(task.endDate), minD));
         const w = Math.max(4, x2 - x);
         const pct = task.progress || 0;
+        const barColor = getTaskColor(task, phase, pi);
 
         const barWrap = document.createElement('div');
         barWrap.className = 'gantt-bar-wrap';
         barWrap.dataset.taskId = task.id;
         barWrap.style.cssText = `left:${x}px;width:${w}px;`;
-        
-        // Status color modifier
-        let barColor = color;
-        if (pct === 100) barColor = '#5B8A5E';
-        else if (isOverdue(task)) barColor = '#9E5B5B';
 
         barWrap.innerHTML = `
           <div class="gantt-bar" style="background:${barColor};">
-            <div class="gantt-bar-progress" style="width:${pct}%;"></div>
-            ${w > 40 ? `<div class="gantt-bar-label">${escHtml(task.name)}</div>` : ''}
+            ${ganttOpts.progress ? `<div class="gantt-bar-progress" style="width:${pct}%;"></div>` : ''}
+            ${ganttOpts.labels && w > 40 ? `<div class="gantt-bar-label">${escHtml(task.name)}</div>` : ''}
           </div>
+          <div class="bar-resize-l" data-taskid="${task.id}" data-edge="left"></div>
+          <div class="bar-resize-r" data-taskid="${task.id}" data-edge="right"></div>
+          <div class="bar-connect-dot" data-taskid="${task.id}"></div>
         `;
 
-        barWrap.addEventListener('mouseenter', (e) => showTooltip(e, task, color));
+        barWrap.addEventListener('mouseenter', (e) => showTooltip(e, task, barColor));
         barWrap.addEventListener('mouseleave', hideTooltip);
-        barWrap.addEventListener('click', () => { selectTask(task.id); openEditTaskModal(task.id); });
+        barWrap.addEventListener('click', (e) => {
+          if (e.target.classList.contains('bar-resize-l') || e.target.classList.contains('bar-resize-r') || e.target.classList.contains('bar-connect-dot')) return;
+          selectTask(task.id); openEditTaskModal(task.id);
+        });
 
-        // Drag to move
         makeDraggableBar(barWrap, task, minD);
+        makeResizableBar(barWrap, task, minD);
         tRow.appendChild(barWrap);
+        } // end taskMatchesFilter
       }
 
       container.appendChild(tRow);
@@ -2288,13 +2853,25 @@ function renderGanttRows(minD, totalW) {
   });
 }
 
+function xToDays(x) {
+  if (timescale === 'days') return x / cellW;
+  if (timescale === 'weeks') return x / cellW * 7;
+  return x / cellW * 30.44;
+}
+
+function addDays(dateStr, n) {
+  const d = new Date(dateStr);
+  d.setDate(d.getDate() + Math.round(n));
+  return d.toISOString().split('T')[0];
+}
+
 function makeDraggableBar(barWrap, task, minD) {
-  let isDragging = false;
-  let startX = 0;
-  let origLeft = 0;
+  let isDragging = false, startX = 0, origLeft = 0;
 
   barWrap.addEventListener('mousedown', (e) => {
     if (e.button !== 0) return;
+    if (e.target.classList.contains('bar-resize-l') || e.target.classList.contains('bar-resize-r')) return;
+    if (e.target.classList.contains('bar-connect-dot')) return;
     isDragging = true;
     startX = e.clientX;
     origLeft = parseInt(barWrap.style.left) || 0;
@@ -2305,8 +2882,7 @@ function makeDraggableBar(barWrap, task, minD) {
 
   document.addEventListener('mousemove', (e) => {
     if (!isDragging) return;
-    const dx = e.clientX - startX;
-    barWrap.style.left = (origLeft + dx) + 'px';
+    barWrap.style.left = (origLeft + e.clientX - startX) + 'px';
   });
 
   document.addEventListener('mouseup', (e) => {
@@ -2314,24 +2890,109 @@ function makeDraggableBar(barWrap, task, minD) {
     isDragging = false;
     barWrap.style.cursor = 'grab';
     barWrap.style.zIndex = '';
-    
     const newX = parseInt(barWrap.style.left);
-    const daysOffset = timescale === 'days' ? (newX / cellW) :
-                       timescale === 'weeks' ? (newX / cellW * 7) :
-                       (newX / cellW * 30.44);
-    const newStart = new Date(minD);
-    newStart.setDate(newStart.getDate() + Math.round(daysOffset));
-    
-    const origStart = new Date(task.startDate);
-    const origEnd = new Date(task.endDate);
+    const offset = xToDays(newX);
+    const origStart = new Date(task.startDate), origEnd = new Date(task.endDate);
     const dur = origEnd - origStart;
-    const newEnd = new Date(newStart.getTime() + dur);
-    
+    const newStart = new Date(minD); newStart.setDate(newStart.getDate() + Math.round(offset));
     task.startDate = newStart.toISOString().split('T')[0];
-    task.endDate = newEnd.toISOString().split('T')[0];
-    
-    saveProject(true);
-    render();
+    task.endDate = new Date(newStart.getTime() + dur).toISOString().split('T')[0];
+    saveProject(true); render();
+  });
+}
+
+function makeResizableBar(barWrap, task, minD) {
+  const handleL = barWrap.querySelector('.bar-resize-l');
+  const handleR = barWrap.querySelector('.bar-resize-r');
+  if (!handleL || !handleR) return;
+
+  function startResize(e, edge) {
+    if (e.button !== 0) return;
+    e.preventDefault(); e.stopPropagation();
+    const startX = e.clientX;
+    const origLeft = parseInt(barWrap.style.left) || 0;
+    const origWidth = parseInt(barWrap.style.width) || 0;
+
+    function onMove(ev) {
+      const dx = ev.clientX - startX;
+      if (edge === 'right') {
+        const newW = Math.max(cellW, origWidth + dx);
+        barWrap.style.width = newW + 'px';
+      } else {
+        const newLeft = origLeft + dx;
+        const newW = Math.max(cellW, origWidth - dx);
+        barWrap.style.left = newLeft + 'px';
+        barWrap.style.width = newW + 'px';
+      }
+    }
+    function onUp() {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      if (edge === 'right') {
+        const newW = parseInt(barWrap.style.width);
+        task.endDate = addDays(task.startDate, xToDays(newW));
+      } else {
+        const newLeft = parseInt(barWrap.style.left);
+        const newW = parseInt(barWrap.style.width);
+        const newOffset = xToDays(newLeft);
+        const newStart = new Date(minD); newStart.setDate(newStart.getDate() + Math.round(newOffset));
+        task.startDate = newStart.toISOString().split('T')[0];
+        task.endDate = addDays(task.startDate, xToDays(newW));
+      }
+      saveProject(true); render();
+    }
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }
+
+  handleL.addEventListener('mousedown', (e) => startResize(e, 'left'));
+  handleR.addEventListener('mousedown', (e) => startResize(e, 'right'));
+}
+
+/* ═══════════════════════════════════════════════════
+   DRAG-TO-CONNECT DEPENDENCIES
+═══════════════════════════════════════════════════ */
+function initDepDraw() {
+  const svg = document.getElementById('dep-draw-svg');
+  const line = document.getElementById('dep-draw-line');
+  let drawingFrom = null;
+
+  document.addEventListener('mousedown', (e) => {
+    const dot = e.target.closest('.bar-connect-dot');
+    if (!dot) return;
+    e.preventDefault(); e.stopPropagation();
+    drawingFrom = dot.dataset.taskid;
+    const rect = dot.getBoundingClientRect();
+    svg.style.display = 'block';
+    line.setAttribute('x1', rect.left + rect.width/2);
+    line.setAttribute('y1', rect.top + rect.height/2);
+    line.setAttribute('x2', rect.left + rect.width/2);
+    line.setAttribute('y2', rect.top + rect.height/2);
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!drawingFrom) return;
+    line.setAttribute('x2', e.clientX);
+    line.setAttribute('y2', e.clientY);
+  });
+
+  document.addEventListener('mouseup', (e) => {
+    if (!drawingFrom) return;
+    svg.style.display = 'none';
+    const target = e.target.closest('.gantt-bar-wrap');
+    if (target && target.dataset.taskId && target.dataset.taskId !== drawingFrom) {
+      const toTaskId = target.dataset.taskId;
+      const fromTask = findTask(drawingFrom);
+      if (fromTask) {
+        if (!fromTask.predecessors) fromTask.predecessors = [];
+        if (!fromTask.predecessors.some(p => p.taskId === toTaskId)) {
+          fromTask.predecessors.push({ taskId: toTaskId, type: 'FS', lag: 0 });
+          saveProject(true); render();
+          showToast('Závislost vytvořena');
+        }
+      }
+    }
+    drawingFrom = null;
   });
 }
 
@@ -3073,6 +3734,10 @@ function openEditTaskModal(taskId) {
           <label class="form-label">Poznámka</label>
           <input class="form-input" id="e-task-notes" placeholder="Volitelná poznámka..." value="${escHtml(task.notes||'')}">
         </div></div>
+        <div class="form-field" style="margin-top:6px;">
+          <label class="form-label">Předchůdci</label>
+          <div id="pred-section">${buildPredsList(taskId)}</div>
+        </div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" onclick="closeModal()">Zrušit</button>
@@ -3085,7 +3750,7 @@ function openEditTaskModal(taskId) {
 function confirmEditTask(taskId) {
   const task = findTask(taskId);
   if (!task) return;
-  
+  collectPreds(taskId);
   task.name = document.getElementById('e-task-name').value.trim();
   task.assignee = document.getElementById('e-task-assignee').value.trim();
   task.startDate = document.getElementById('e-task-start').value;
@@ -3754,8 +4419,231 @@ ganttScroll.addEventListener('scroll', () => {
 });
 
 /* ═══════════════════════════════════════════════════
+   COLUMN PICKER
+═══════════════════════════════════════════════════ */
+function toggleColumnPicker(e) {
+  e.stopPropagation();
+  const panel = document.getElementById('col-picker-panel');
+  if (panel.classList.contains('open')) { panel.classList.remove('open'); return; }
+  panel.innerHTML = `<div class="col-picker-title">Viditelné sloupce</div>` +
+    COLUMN_DEFS.filter(d => !d.fixed).map(d => `
+      <div class="col-picker-item">
+        <input type="checkbox" id="col-chk-${d.id}" ${visibleColumns.includes(d.id)?'checked':''} onchange="toggleColumn('${d.id}',this.checked)">
+        <label for="col-chk-${d.id}">${d.label}</label>
+      </div>`).join('');
+  panel.classList.add('open');
+}
+function toggleColumn(id, on) {
+  if (on) { if (!visibleColumns.includes(id)) visibleColumns.push(id); }
+  else visibleColumns = visibleColumns.filter(c => c !== id);
+  // keep 'name' always first
+  visibleColumns = ['name', ...visibleColumns.filter(c => c !== 'name')];
+  localStorage.setItem('bt_cols', JSON.stringify(visibleColumns));
+  renderWBS();
+}
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.col-picker-wrap')) document.getElementById('col-picker-panel')?.classList.remove('open');
+  if (!e.target.closest('.gantt-opts-wrap')) document.getElementById('gantt-opts-panel')?.classList.remove('open');
+});
+
+/* ═══════════════════════════════════════════════════
+   GANTT OPTIONS
+═══════════════════════════════════════════════════ */
+function toggleGanttOpts(e) {
+  e.stopPropagation();
+  document.getElementById('gantt-opts-panel').classList.toggle('open');
+  // Sync checkbox states
+  Object.keys(ganttOpts).forEach(k => {
+    const el = document.getElementById('opt-' + k);
+    if (el) el.checked = ganttOpts[k];
+  });
+  document.getElementById('gantt-filter-btns')?.querySelectorAll('.mode-btn').forEach(b => {
+    b.classList.toggle('active', b.textContent.toLowerCase().includes(
+      {all:'vše',active:'aktivní',overdue:'po termínu',done:'hotovo'}[ganttFilter]?.substring(0,4) || ganttFilter
+    ));
+  });
+}
+function setColorMode(mode) {
+  ganttColorMode = mode;
+  localStorage.setItem('bt_colormode', mode);
+  document.querySelectorAll('#color-mode-btns .mode-btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  renderGantt();
+}
+function setGanttFilter(filter) {
+  ganttFilter = filter;
+  localStorage.setItem('bt_filter', filter);
+  document.querySelectorAll('#gantt-filter-btns .mode-btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  renderGantt();
+}
+function toggleGanttOpt(key) {
+  ganttOpts[key] = !ganttOpts[key];
+  localStorage.setItem('bt_opts', JSON.stringify(ganttOpts));
+  renderGantt();
+}
+function setRowHeight(val) {
+  document.documentElement.style.setProperty('--row-h', val + 'px');
+  document.getElementById('row-h-val').textContent = val + 'px';
+  renderWBS(); renderGantt();
+}
+
+/* ═══════════════════════════════════════════════════
+   INLINE EDITING
+═══════════════════════════════════════════════════ */
+function inlineEdit(span, taskId, field, type) {
+  const task = findTask(taskId);
+  if (!task) return;
+  const origVal = task[field] ?? '';
+  const input = document.createElement('input');
+  input.type = type === 'date' ? 'date' : type === 'number' ? 'number' : 'text';
+  input.className = 'cell-edit-input';
+  input.value = origVal;
+  if (type === 'number') { input.min = '0'; input.style.width = '60px'; }
+  span.replaceWith(input);
+  input.focus();
+  if (type === 'date') input.showPicker?.();
+
+  function commit() {
+    let val = input.value;
+    if (type === 'number') val = parseFloat(val) || 0;
+    task[field] = val;
+    saveProject(true); render();
+  }
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); commit(); }
+    if (e.key === 'Escape') { input.value = origVal; input.blur(); }
+    if (e.key === 'Tab') { e.preventDefault(); commit(); }
+  });
+}
+
+function inlineEditDuration(span, taskId) {
+  const task = findTask(taskId);
+  if (!task || !task.startDate) return;
+  const dur = task.endDate ? daysBetween(task.startDate, task.endDate) : 0;
+  const input = document.createElement('input');
+  input.type = 'number'; input.className = 'cell-edit-input';
+  input.min = '1'; input.style.width = '54px';
+  input.value = dur;
+  span.replaceWith(input); input.focus(); input.select();
+
+  function commit() {
+    const d = Math.max(1, parseInt(input.value) || 1);
+    task.endDate = addDays(task.startDate, d);
+    saveProject(true); render();
+  }
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); commit(); }
+    if (e.key === 'Escape') { render(); }
+  });
+}
+
+/* ═══════════════════════════════════════════════════
+   SPLITTER (WBS ↔ Gantt resize)
+═══════════════════════════════════════════════════ */
+function initSplitter() {
+  const splitter = document.getElementById('wbs-splitter');
+  const wbsPanel = document.getElementById('wbs-panel');
+  if (!splitter || !wbsPanel) return;
+  let dragging = false, startX = 0, startW = 0;
+
+  splitter.addEventListener('mousedown', (e) => {
+    dragging = true; startX = e.clientX; startW = wbsPanel.offsetWidth;
+    splitter.classList.add('dragging');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    const newW = Math.max(200, Math.min(900, startW + e.clientX - startX));
+    wbsPanel.style.width = newW + 'px';
+    document.documentElement.style.setProperty('--wbs-w', newW + 'px');
+  });
+  document.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    splitter.classList.remove('dragging');
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    renderGantt();
+  });
+  splitter.addEventListener('dblclick', () => {
+    wbsPanel.style.width = '520px';
+    document.documentElement.style.setProperty('--wbs-w', '520px');
+    renderGantt();
+  });
+}
+
+/* ═══════════════════════════════════════════════════
+   PREDECESSOR EDITOR (in modals)
+═══════════════════════════════════════════════════ */
+function buildPredsList(taskId) {
+  const task = findTask(taskId);
+  if (!task) return '';
+  const allTasks = [];
+  project.phases.forEach((ph, pi) => ph.tasks.forEach((t, ti) => {
+    if (t.id !== taskId) allTasks.push({ id: t.id, label: getWBSNum(pi, ti) + ' ' + t.name });
+  }));
+  const preds = task.predecessors || [];
+  return `
+    <div id="pred-edit-list" style="display:flex;flex-direction:column;gap:4px;margin-bottom:8px;">
+      ${preds.map((p, i) => `
+        <div class="pred-edit-row" style="display:flex;gap:4px;align-items:center;">
+          <select class="form-select" style="flex:1;font-size:11px;" data-pred-idx="${i}" data-field="taskId">
+            ${allTasks.map(t => `<option value="${t.id}" ${t.id===p.taskId?'selected':''}>${escHtml(t.label)}</option>`).join('')}
+          </select>
+          <select class="form-select" style="width:56px;font-size:11px;" data-pred-idx="${i}" data-field="type">
+            ${['FS','FF','SS','SF'].map(tp => `<option ${tp===p.type?'selected':''}>${tp}</option>`).join('')}
+          </select>
+          <input class="form-input" type="number" style="width:52px;font-size:11px;" placeholder="Lag" value="${p.lag||0}" data-pred-idx="${i}" data-field="lag">
+          <button class="row-action-btn danger" style="width:22px;height:22px;flex-shrink:0;" onclick="removePredRow(${i},'${taskId}')">×</button>
+        </div>`).join('')}
+    </div>
+    <button class="btn btn-ghost" style="font-size:10px;" onclick="addPredRow('${taskId}')">+ Přidat předchůdce</button>`;
+}
+
+function addPredRow(taskId) {
+  const task = findTask(taskId);
+  if (!task) return;
+  if (!task.predecessors) task.predecessors = [];
+  const allTasks = [];
+  project.phases.forEach((ph, pi) => ph.tasks.forEach((t, ti) => { if (t.id !== taskId) allTasks.push(t.id); }));
+  if (allTasks.length) task.predecessors.push({ taskId: allTasks[0], type: 'FS', lag: 0 });
+  // re-render pred section
+  const section = document.getElementById('pred-section');
+  if (section) section.innerHTML = buildPredsList(taskId);
+}
+
+function removePredRow(idx, taskId) {
+  const task = findTask(taskId);
+  if (!task || !task.predecessors) return;
+  task.predecessors.splice(idx, 1);
+  const section = document.getElementById('pred-section');
+  if (section) section.innerHTML = buildPredsList(taskId);
+}
+
+function collectPreds(taskId) {
+  const task = findTask(taskId);
+  if (!task) return;
+  const rows = document.querySelectorAll('#pred-edit-list .pred-edit-row');
+  const preds = [];
+  rows.forEach((row, i) => {
+    const taskIdSel = row.querySelector('[data-field="taskId"]')?.value;
+    const type = row.querySelector('[data-field="type"]')?.value || 'FS';
+    const lag = parseInt(row.querySelector('[data-field="lag"]')?.value) || 0;
+    if (taskIdSel) preds.push({ taskId: taskIdSel, type, lag });
+  });
+  task.predecessors = preds;
+}
+
+/* ═══════════════════════════════════════════════════
    START
 ═══════════════════════════════════════════════════ */
+initDepDraw();
+initSplitter();
 init();
 </script>
 </body>

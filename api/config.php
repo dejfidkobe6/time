@@ -2,6 +2,10 @@
 require_once __DIR__ . '/secrets.php';
 
 // Sdílené nastavení DB — stejná databáze jako plans.besix.cz
+define('DB_HOST', '127.0.0.1');
+define('DB_NAME', 'besixcz');
+define('DB_USER', 'besixcz001');
+
 $pdo = new PDO(
     'mysql:host=' . DB_HOST . ';dbname=' . DB_NAME . ';charset=utf8mb4',
     DB_USER,
@@ -21,7 +25,7 @@ ini_set('session.cookie_httponly', '1');
 ini_set('session.cookie_samesite', 'Lax');
 
 function requireAuth(): int {
-    session_start();
+    if (session_status() === PHP_SESSION_NONE) session_start();
     if (empty($_SESSION['user_id'])) {
         http_response_code(401);
         echo json_encode(['ok' => false, 'error' => 'Nepřihlášen']);
