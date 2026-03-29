@@ -1,0 +1,3477 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BeSix Time — Harmonogram stavby</title>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&family=Lora:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+<style>
+:root {
+  --olive: #4A5340;
+  --olive-light: #8B9E7A;
+  --olive-pale: #C8D4B8;
+  --charcoal: #1C1E1A;
+  --charcoal-mid: #2E3029;
+  --charcoal-soft: #3D4138;
+  --bg: #F5F4F0;
+  --bg-card: #FFFFFF;
+  --bg-hover: #EEECEA;
+  --text: #1C1E1A;
+  --text-mid: #4A4A42;
+  --text-muted: #9A9A8E;
+  --border: #DDD9D0;
+  --border-light: #EEECEA;
+  --danger: #C0392B;
+  --danger-light: #F5C6C2;
+  --warning: #D4862A;
+  --warning-light: #F5E0C2;
+  --success: #4A5340;
+  --success-light: #C8D4B8;
+  --cash-in: #5B8A5E;
+  --cash-out: #C0392B;
+  --sidebar-w: 68px;
+  --header-h: 64px;
+  --wbs-w: 520px;
+  --font-main: 'Montserrat', sans-serif;
+  --font-display: 'Lora', serif;
+  --shadow-sm: 0 1px 3px rgba(28,30,26,0.08);
+  --shadow-md: 0 4px 16px rgba(28,30,26,0.12);
+  --shadow-lg: 0 12px 40px rgba(28,30,26,0.18);
+  --radius: 6px;
+  --radius-lg: 12px;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  font-family: var(--font-main);
+  background: var(--bg);
+  color: var(--text);
+  overflow: hidden;
+  font-size: 13px;
+}
+
+/* ═══════════════════════════════════════
+   SIDEBAR
+═══════════════════════════════════════ */
+#sidebar {
+  position: fixed;
+  left: 0; top: 0; bottom: 0;
+  width: var(--sidebar-w);
+  background: var(--charcoal);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0 0 16px;
+  z-index: 100;
+  border-right: 1px solid var(--charcoal-soft);
+}
+
+.sidebar-logo {
+  width: 100%;
+  height: var(--header-h);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-bottom: 1px solid var(--charcoal-soft);
+  margin-bottom: 8px;
+}
+
+.logo-mark {
+  width: 36px; height: 36px;
+  background: var(--olive);
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; font-weight: 900; color: white;
+  letter-spacing: -0.5px;
+}
+
+.sidebar-nav {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  padding: 8px;
+}
+
+.nav-btn {
+  width: 44px; height: 44px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s;
+  margin: 0 auto;
+  border: none; background: none;
+  position: relative;
+}
+.nav-btn:hover { background: var(--charcoal-soft); color: #fff; }
+.nav-btn.active { background: var(--olive); color: #fff; }
+
+.nav-btn svg { width: 18px; height: 18px; }
+
+.nav-tooltip {
+  position: absolute;
+  left: calc(100% + 12px);
+  top: 50%; transform: translateY(-50%);
+  background: var(--charcoal);
+  color: white;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 5px 10px;
+  border-radius: 4px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+  border: 1px solid var(--charcoal-soft);
+}
+.nav-btn:hover .nav-tooltip { opacity: 1; }
+
+.sidebar-bottom {
+  width: 100%;
+  padding: 8px;
+  display: flex; flex-direction: column; gap: 4px; align-items: center;
+  border-top: 1px solid var(--charcoal-soft);
+  padding-top: 12px;
+}
+
+/* ═══════════════════════════════════════
+   MAIN LAYOUT
+═══════════════════════════════════════ */
+#app {
+  margin-left: var(--sidebar-w);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ═══════════════════════════════════════
+   HEADER
+═══════════════════════════════════════ */
+#header {
+  height: var(--header-h);
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  gap: 20px;
+  flex-shrink: 0;
+  box-shadow: var(--shadow-sm);
+}
+
+.project-info {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex: 1;
+}
+
+.project-name-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+#project-name {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--text);
+  background: none;
+  border: none;
+  outline: none;
+  font-family: var(--font-main);
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 3px;
+  transition: background 0.15s;
+  min-width: 200px;
+}
+#project-name:hover { background: var(--bg-hover); }
+#project-name:focus { background: var(--bg-hover); }
+
+.project-meta {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.meta-chip {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 20px;
+  background: var(--bg);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.meta-chip:hover { border-color: var(--olive); color: var(--olive); }
+.meta-chip.status-priprava { background: var(--warning-light); color: var(--warning); border-color: var(--warning); }
+.meta-chip.status-realizace { background: var(--success-light); color: var(--success); border-color: var(--success); }
+.meta-chip.status-dokonceno { background: var(--bg); color: var(--text-muted); }
+
+.header-stats {
+  display: flex;
+  gap: 24px;
+  align-items: center;
+}
+
+.stat-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+}
+
+.stat-label {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-muted);
+}
+
+.stat-value {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.stat-value.accent { color: var(--olive); }
+
+.header-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.progress-bar-wrap {
+  width: 120px;
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: var(--olive);
+  border-radius: 3px;
+  transition: width 0.4s ease;
+}
+
+.header-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: var(--radius);
+  font-family: var(--font-main);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  cursor: pointer;
+  border: none;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.btn-primary {
+  background: var(--olive);
+  color: white;
+}
+.btn-primary:hover { background: #3a4230; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(74,83,64,0.3); }
+
+.btn-secondary {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+.btn-secondary:hover { border-color: var(--olive); color: var(--olive); background: var(--bg-hover); }
+
+.btn-ghost {
+  background: transparent;
+  color: var(--text-muted);
+  padding: 7px 10px;
+}
+.btn-ghost:hover { background: var(--bg-hover); color: var(--text); }
+
+.btn svg { width: 14px; height: 14px; flex-shrink: 0; }
+.btn-icon { padding: 7px; }
+
+/* ═══════════════════════════════════════
+   VIEW TABS
+═══════════════════════════════════════ */
+#view-tabs {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+  padding: 0 20px;
+  flex-shrink: 0;
+}
+
+.view-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.15s;
+  border-top: none; border-left: none; border-right: none;
+  background: none;
+  font-family: var(--font-main);
+}
+.view-tab svg { width: 13px; height: 13px; }
+.view-tab:hover { color: var(--text); }
+.view-tab.active { color: var(--olive); border-bottom-color: var(--olive); }
+
+/* ═══════════════════════════════════════
+   MAIN CONTENT
+═══════════════════════════════════════ */
+#content {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ═══════════════════════════════════════
+   GANTT VIEW (main)
+═══════════════════════════════════════ */
+#gantt-view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+#gantt-main {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+/* ═══════════════════════════════════════
+   WBS PANEL
+═══════════════════════════════════════ */
+#wbs-panel {
+  width: var(--wbs-w);
+  flex-shrink: 0;
+  background: var(--bg-card);
+  border-right: 2px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+#wbs-toolbar {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg);
+}
+
+.wbs-header-cols {
+  display: grid;
+  grid-template-columns: 1fr 80px 80px 50px 54px;
+  gap: 4px;
+  padding: 6px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--charcoal);
+}
+
+.wbs-col-head {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+  color: rgba(255,255,255,0.5);
+}
+
+#wbs-body {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+#wbs-body::-webkit-scrollbar { width: 4px; }
+#wbs-body::-webkit-scrollbar-track { background: transparent; }
+#wbs-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+.wbs-add-bar {
+  padding: 10px 14px;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+  display: flex;
+  gap: 6px;
+}
+
+/* ═══════════════════════════════════════
+   WBS ROWS
+═══════════════════════════════════════ */
+.wbs-row {
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  height: 40px;
+  border-bottom: 1px solid var(--border-light);
+  transition: background 0.1s;
+  cursor: pointer;
+  position: relative;
+  animation: rowIn 0.2s ease both;
+}
+
+@keyframes rowIn {
+  from { opacity: 0; transform: translateX(-8px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.wbs-row:hover { background: var(--bg-hover); }
+.wbs-row.selected { background: rgba(74,83,64,0.08); border-left: 2px solid var(--olive); padding-left: 12px; }
+.wbs-row.is-phase { background: var(--bg); height: 44px; }
+.wbs-row.is-phase:hover { background: var(--bg-hover); }
+
+.wbs-row-content {
+  display: grid;
+  grid-template-columns: 1fr 80px 80px 50px 54px;
+  gap: 4px;
+  width: 100%;
+  align-items: center;
+}
+
+.wbs-name-cell {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.wbs-indent { flex-shrink: 0; }
+
+.phase-toggle {
+  width: 16px; height: 16px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: transform 0.2s;
+}
+.phase-toggle.collapsed { transform: rotate(-90deg); }
+.phase-toggle svg { width: 10px; height: 10px; }
+
+.phase-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.wbs-name-input {
+  background: none;
+  border: none;
+  outline: none;
+  font-family: var(--font-main);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  width: 100%;
+  min-width: 0;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 3px;
+  transition: background 0.1s;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wbs-row.is-phase .wbs-name-input {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+}
+
+.wbs-name-input:hover { background: rgba(0,0,0,0.04); cursor: text; }
+.wbs-name-input:focus { background: rgba(0,0,0,0.04); cursor: text; }
+
+.wbs-date-cell {
+  font-size: 10px;
+  color: var(--text-mid);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wbs-pct-cell {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.mini-progress {
+  flex: 1;
+  height: 3px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.mini-progress-fill {
+  height: 100%;
+  background: var(--olive);
+  border-radius: 2px;
+  transition: width 0.3s;
+}
+
+.wbs-pct-num {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  min-width: 24px;
+  text-align: right;
+}
+
+.wbs-budget-cell {
+  font-size: 10px;
+  color: var(--text-mid);
+  font-weight: 600;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.row-actions {
+  position: absolute;
+  right: 8px;
+  top: 50%; transform: translateY(-50%);
+  display: none;
+  gap: 2px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px;
+  box-shadow: var(--shadow-sm);
+}
+.wbs-row:hover .row-actions { display: flex; }
+
+.row-action-btn {
+  width: 22px; height: 22px;
+  display: flex; align-items: center; justify-content: center;
+  border: none; background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 3px;
+  transition: all 0.1s;
+}
+.row-action-btn:hover { background: var(--bg-hover); color: var(--text); }
+.row-action-btn.danger:hover { background: var(--danger-light); color: var(--danger); }
+.row-action-btn svg { width: 12px; height: 12px; }
+
+/* ═══════════════════════════════════════
+   GANTT CHART PANEL
+═══════════════════════════════════════ */
+#gantt-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg-card);
+}
+
+#gantt-toolbar {
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg);
+  flex-shrink: 0;
+}
+
+.timescale-btns {
+  display: flex;
+  gap: 2px;
+  background: var(--border);
+  border-radius: 5px;
+  padding: 2px;
+}
+
+.timescale-btn {
+  padding: 4px 10px;
+  border: none;
+  background: none;
+  border-radius: 3px;
+  font-family: var(--font-main);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.timescale-btn.active { background: var(--bg-card); color: var(--olive); box-shadow: var(--shadow-sm); }
+
+#gantt-scroll-wrap {
+  flex: 1;
+  overflow: auto;
+  position: relative;
+}
+
+#gantt-scroll-wrap::-webkit-scrollbar { height: 6px; width: 6px; }
+#gantt-scroll-wrap::-webkit-scrollbar-track { background: transparent; }
+#gantt-scroll-wrap::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+#gantt-canvas-wrap {
+  position: relative;
+  min-height: 100%;
+}
+
+/* Time header */
+#gantt-time-header {
+  position: sticky;
+  top: 0;
+  background: var(--charcoal);
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+}
+
+.time-months-row {
+  display: flex;
+  height: 24px;
+  border-bottom: 1px solid var(--charcoal-soft);
+}
+
+.time-month-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: rgba(255,255,255,0.6);
+  border-right: 1px solid var(--charcoal-soft);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.time-units-row {
+  display: flex;
+  height: 20px;
+}
+
+.time-unit-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 8px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.35);
+  border-right: 1px solid rgba(255,255,255,0.06);
+  overflow: hidden;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Gantt rows */
+#gantt-rows {
+  position: relative;
+}
+
+.gantt-row {
+  height: 40px;
+  position: relative;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.gantt-row.is-phase { height: 44px; background: rgba(74,83,64,0.03); }
+
+/* Grid lines */
+.gantt-grid-line {
+  position: absolute;
+  top: 0; bottom: 0;
+  width: 1px;
+  background: var(--border-light);
+  pointer-events: none;
+}
+.gantt-grid-line.month { background: var(--border); }
+
+/* Today line */
+#today-line {
+  position: absolute;
+  top: 0; bottom: 0;
+  width: 2px;
+  background: var(--danger);
+  z-index: 5;
+  pointer-events: none;
+}
+
+#today-line::before {
+  content: 'DNES';
+  position: absolute;
+  top: -24px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 8px;
+  font-weight: 800;
+  color: var(--danger);
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+/* Gantt bars */
+.gantt-bar-wrap {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 22px;
+  cursor: grab;
+}
+.gantt-bar-wrap:active { cursor: grabbing; }
+
+.gantt-row.is-phase .gantt-bar-wrap {
+  height: 12px;
+}
+
+.gantt-bar {
+  width: 100%;
+  height: 100%;
+  border-radius: 4px;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+  transition: filter 0.15s;
+}
+.gantt-bar:hover { filter: brightness(1.08); }
+
+.gantt-bar-progress {
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  background: rgba(0,0,0,0.2);
+  border-radius: 4px 0 0 4px;
+  pointer-events: none;
+}
+
+.gantt-bar-label {
+  position: absolute;
+  left: 8px; top: 50%;
+  transform: translateY(-50%);
+  font-size: 10px;
+  font-weight: 700;
+  color: white;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: calc(100% - 16px);
+  pointer-events: none;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+}
+
+/* Milestone */
+.gantt-milestone {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%) rotate(45deg);
+  width: 16px; height: 16px;
+  background: var(--warning);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+  cursor: pointer;
+  z-index: 3;
+  transition: transform 0.15s;
+}
+.gantt-milestone:hover { transform: translate(-50%, -50%) rotate(45deg) scale(1.2); }
+
+/* Dependency arrow */
+.gantt-dep-svg {
+  position: absolute;
+  top: 0; left: 0;
+  pointer-events: none;
+  overflow: visible;
+}
+
+/* Tooltip */
+#gantt-tooltip {
+  position: fixed;
+  background: var(--charcoal);
+  color: white;
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  font-size: 11px;
+  pointer-events: none;
+  z-index: 1000;
+  opacity: 0;
+  transition: opacity 0.15s;
+  box-shadow: var(--shadow-lg);
+  min-width: 180px;
+  border: 1px solid var(--charcoal-soft);
+}
+
+#gantt-tooltip.visible { opacity: 1; }
+
+.tooltip-title {
+  font-weight: 800;
+  font-size: 12px;
+  margin-bottom: 6px;
+  color: white;
+}
+
+.tooltip-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 3px;
+  color: rgba(255,255,255,0.7);
+}
+
+.tooltip-val { color: white; font-weight: 600; }
+
+/* ═══════════════════════════════════════
+   CASHFLOW PANEL
+═══════════════════════════════════════ */
+#cashflow-view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 20px;
+  gap: 16px;
+  overflow-y: auto;
+}
+
+#cashflow-view::-webkit-scrollbar { width: 4px; }
+#cashflow-view::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+.cashflow-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.cashflow-stats {
+  display: flex;
+  gap: 16px;
+  flex: 1;
+}
+
+.cashflow-stat {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 14px 18px;
+  flex: 1;
+}
+
+.cashflow-stat-label {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.cashflow-stat-value {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.cashflow-stat-value.green { color: var(--cash-in); }
+.cashflow-stat-value.red { color: var(--cash-out); }
+
+.cashflow-chart-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  position: relative;
+}
+
+.cashflow-chart-title {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+  color: var(--text-muted);
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+#cashflow-canvas-wrap {
+  height: 280px;
+  position: relative;
+}
+
+/* Cashflow table */
+.cf-table-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.cf-table-header {
+  padding: 12px 16px;
+  background: var(--charcoal);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cf-table-title {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+  color: rgba(255,255,255,0.7);
+}
+
+.cf-table-scroll {
+  overflow-x: auto;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.cf-table-scroll::-webkit-scrollbar { height: 4px; width: 4px; }
+.cf-table-scroll::-webkit-scrollbar-thumb { background: var(--border); }
+
+.cf-table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.cf-table th {
+  padding: 6px 12px;
+  background: var(--bg);
+  font-weight: 700;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+  text-align: right;
+}
+
+.cf-table th:first-child { text-align: left; position: sticky; left: 0; background: var(--bg); }
+
+.cf-table td {
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--border-light);
+  color: var(--text-mid);
+  white-space: nowrap;
+  text-align: right;
+  font-weight: 500;
+}
+
+.cf-table td:first-child { text-align: left; font-weight: 600; color: var(--text); position: sticky; left: 0; background: var(--bg-card); }
+.cf-table tr:hover td { background: var(--bg-hover); }
+.cf-table tr:hover td:first-child { background: var(--bg-hover); }
+.cf-table tr.phase-row td { background: var(--bg); font-weight: 700; color: var(--text); font-size: 10px; text-transform: uppercase; letter-spacing: 0.3px; }
+.cf-table tr.phase-row td:first-child { background: var(--bg); }
+
+.cf-total-row td { font-weight: 800; background: var(--charcoal) !important; color: white !important; border-top: 2px solid var(--olive); }
+.cf-total-row td:first-child { background: var(--charcoal) !important; color: white !important; }
+
+.cf-cell-value { font-variant-numeric: tabular-nums; }
+.cf-cell-nonzero { color: var(--olive) !important; font-weight: 700 !important; }
+
+/* ═══════════════════════════════════════
+   SPLIT VIEW (Gantt + Cashflow)
+═══════════════════════════════════════ */
+#split-view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+#split-gantt { flex: 0 0 55%; overflow: hidden; display: flex; }
+#split-divider {
+  height: 4px;
+  background: var(--border);
+  cursor: ns-resize;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+#split-divider:hover { background: var(--olive); }
+#split-cashflow { flex: 1; overflow: hidden; }
+
+/* ═══════════════════════════════════════
+   MODAL
+═══════════════════════════════════════ */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(28,30,26,0.6);
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(3px);
+  animation: fadeIn 0.15s ease;
+}
+
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+.modal {
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  width: 560px;
+  max-width: 95vw;
+  max-height: 90vh;
+  overflow-y: auto;
+  animation: slideUp 0.2s ease;
+}
+
+@keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+.modal-header {
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.modal-title {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.modal-close {
+  width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center;
+  border: none; background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.15s;
+}
+.modal-close:hover { background: var(--bg-hover); color: var(--text); }
+.modal-close svg { width: 16px; height: 16px; }
+
+.modal-body { padding: 20px 24px; }
+.modal-footer { padding: 16px 24px; border-top: 1px solid var(--border); display: flex; gap: 8px; justify-content: flex-end; }
+
+/* Form elements */
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.form-row.single { grid-template-columns: 1fr; }
+.form-row.triple { grid-template-columns: 1fr 1fr 1fr; }
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.form-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-muted);
+}
+
+.form-input, .form-select {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-family: var(--font-main);
+  font-size: 12px;
+  color: var(--text);
+  background: var(--bg);
+  transition: border-color 0.15s;
+  outline: none;
+  width: 100%;
+}
+.form-input:focus, .form-select:focus { border-color: var(--olive); background: white; }
+
+.form-range-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.form-range { flex: 1; accent-color: var(--olive); }
+
+.color-swatches {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.color-swatch {
+  width: 24px; height: 24px;
+  border-radius: 4px;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: all 0.15s;
+}
+.color-swatch.selected { border-color: white; box-shadow: 0 0 0 2px var(--olive); }
+
+/* ═══════════════════════════════════════
+   TEMPLATE MODAL
+═══════════════════════════════════════ */
+.template-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.template-card {
+  padding: 14px;
+  border: 2px solid var(--border);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: all 0.15s;
+  position: relative;
+  overflow: hidden;
+}
+.template-card:hover { border-color: var(--olive); background: var(--bg); }
+.template-card.selected { border-color: var(--olive); background: rgba(74,83,64,0.06); }
+
+.template-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+}
+
+.template-icon {
+  font-size: 22px;
+  margin-bottom: 8px;
+}
+
+.template-name {
+  font-size: 12px;
+  font-weight: 800;
+  margin-bottom: 4px;
+  color: var(--text);
+}
+
+.template-desc {
+  font-size: 10px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+/* ═══════════════════════════════════════
+   UNIT TOGGLE
+═══════════════════════════════════════ */
+.unit-toggle {
+  display: flex;
+  gap: 2px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 2px;
+}
+.unit-btn {
+  padding: 3px 8px;
+  border: none;
+  background: none;
+  border-radius: 3px;
+  font-family: var(--font-main);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.unit-btn.active { background: var(--olive); color: white; }
+
+/* ═══════════════════════════════════════
+   HIDDEN
+═══════════════════════════════════════ */
+.hidden { display: none !important; }
+
+/* ═══════════════════════════════════════
+   ANIMATIONS
+═══════════════════════════════════════ */
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.loading { animation: pulse 1s ease infinite; }
+
+/* ═══════════════════════════════════════
+   SCROLLBAR SYNC
+═══════════════════════════════════════ */
+#wbs-body, #gantt-scroll-wrap {
+  scroll-behavior: auto;
+}
+
+/* ═══════════════════════════════════════
+   RESPONSIVE HELPERS
+═══════════════════════════════════════ */
+.flex-center { display: flex; align-items: center; justify-content: center; }
+.gap-8 { gap: 8px; }
+.ml-auto { margin-left: auto; }
+
+/* ═══════════════════════════════════════
+   PHASE COLORS
+═══════════════════════════════════════ */
+.phase-c0 { color: #5B8A9E; }
+.phase-c1 { color: #8A5B9E; }
+.phase-c2 { color: #9E8A5B; }
+.phase-c3 { color: #5B9E6B; }
+.phase-c4 { color: #9E5B5B; }
+.phase-c5 { color: #5B7A9E; }
+
+/* ═══════════════════════════════════════
+   BOTTOM STRIP - cashflow below gantt
+═══════════════════════════════════════ */
+#bottom-cashflow {
+  height: 220px;
+  flex-shrink: 0;
+  border-top: 2px solid var(--border);
+  background: var(--bg-card);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.bottom-cf-header {
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--bg);
+  flex-shrink: 0;
+}
+
+.bottom-cf-title {
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+  color: var(--text-muted);
+}
+
+#bottom-cf-canvas-wrap {
+  flex: 1;
+  padding: 8px 14px;
+  min-height: 0;
+}
+
+/* ═══════════════════════════════════════
+   DRAG GHOST
+═══════════════════════════════════════ */
+.drag-ghost {
+  opacity: 0.4;
+}
+
+.drag-over {
+  border-top: 2px solid var(--olive) !important;
+}
+
+/* Export drop */
+.export-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+  z-index: 50;
+  min-width: 170px;
+  animation: slideUp 0.15s ease;
+}
+
+.export-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 14px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.export-item:hover { background: var(--bg-hover); }
+.export-item svg { width: 14px; height: 14px; color: var(--text-muted); }
+.export-item-wrap { position: relative; }
+</style>
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<nav id="sidebar">
+  <div class="sidebar-logo">
+    <div class="logo-mark">B6</div>
+  </div>
+  <div class="sidebar-nav">
+    <button class="nav-btn active" onclick="switchMainView('gantt')" title="">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="3" rx="1"/><rect x="3" y="10.5" width="12" height="3" rx="1"/><rect x="3" y="17" width="15" height="3" rx="1"/></svg>
+      <span class="nav-tooltip">Harmonogram</span>
+    </button>
+    <button class="nav-btn" onclick="switchMainView('cashflow')" title="">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      <span class="nav-tooltip">Cashflow</span>
+    </button>
+    <button class="nav-btn" onclick="openTemplateModal()" title="">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+      <span class="nav-tooltip">Šablony</span>
+    </button>
+  </div>
+  <div class="sidebar-bottom">
+    <button class="nav-btn" onclick="saveProject()" title="">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+      <span class="nav-tooltip">Uložit projekt</span>
+    </button>
+    <button class="nav-btn" onclick="loadProject()" title="">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      <span class="nav-tooltip">Načíst projekt</span>
+    </button>
+  </div>
+</nav>
+
+<!-- MAIN APP -->
+<div id="app">
+
+  <!-- HEADER -->
+  <header id="header">
+    <div class="project-info">
+      <div class="project-name-wrap">
+        <input type="text" id="project-name" value="Nový projekt" spellcheck="false">
+        <div class="project-meta">
+          <span class="meta-chip" id="project-code-chip" onclick="editProjectMeta()">PRJ-001</span>
+          <span class="meta-chip status-realizace" id="status-chip" onclick="cycleStatus()">Realizace</span>
+        </div>
+      </div>
+    </div>
+    <div class="header-stats">
+      <div class="stat-block">
+        <span class="stat-label">Celkový rozpočet</span>
+        <span class="stat-value accent" id="stat-budget">0 Kč</span>
+      </div>
+      <div class="stat-block">
+        <span class="stat-label">Celkem dní</span>
+        <span class="stat-value" id="stat-duration">0 dní</span>
+      </div>
+      <div class="stat-block">
+        <span class="stat-label">Postup</span>
+        <div class="header-progress">
+          <div class="progress-bar-wrap">
+            <div class="progress-bar-fill" id="header-progress-fill" style="width:0%"></div>
+          </div>
+          <span class="stat-value" id="stat-progress">0%</span>
+        </div>
+      </div>
+    </div>
+    <div class="header-actions">
+      <button class="btn btn-secondary" onclick="openTemplateModal()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        Ze šablony
+      </button>
+      <div class="export-item-wrap">
+        <button class="btn btn-secondary" onclick="toggleExportMenu(event)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Export
+        </button>
+        <div class="export-menu hidden" id="export-menu">
+          <div class="export-item" onclick="exportCashflowXLSX()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9l6 6M15 9l-6 6"/></svg>
+            Cashflow → Excel
+          </div>
+          <div class="export-item" onclick="exportProjectJSON()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            Projekt → JSON
+          </div>
+          <div class="export-item" onclick="importProjectJSON()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            Importovat JSON
+          </div>
+        </div>
+      </div>
+      <button class="btn btn-primary" onclick="openAddTaskModal()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Přidat úkol
+      </button>
+    </div>
+  </header>
+
+  <!-- VIEW TABS -->
+  <div id="view-tabs">
+    <button class="view-tab active" onclick="switchMainView('gantt')" id="tab-gantt">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="3" rx="1"/><rect x="3" y="10.5" width="12" height="3" rx="1"/><rect x="3" y="17" width="15" height="3" rx="1"/></svg>
+      Ganttův diagram
+    </button>
+    <button class="view-tab" onclick="switchMainView('cashflow')" id="tab-cashflow">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      Cashflow
+    </button>
+    <div class="ml-auto" style="display:flex;align-items:center;gap:8px;padding:0 4px;">
+      <span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-muted);">Cashflow pod diagramem</span>
+      <label style="cursor:pointer;display:flex;align-items:center;gap:6px;">
+        <input type="checkbox" id="show-bottom-cf" onchange="toggleBottomCashflow()" style="accent-color:var(--olive);width:14px;height:14px;">
+      </label>
+    </div>
+  </div>
+
+  <!-- CONTENT -->
+  <div id="content">
+
+    <!-- GANTT VIEW -->
+    <div id="gantt-view">
+      <div id="gantt-main">
+
+        <!-- WBS -->
+        <div id="wbs-panel">
+          <div id="wbs-toolbar">
+            <button class="btn btn-primary btn-icon" onclick="openAddPhaseModal()" title="Přidat fázi">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            </button>
+            <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-muted);">Přidat fázi</span>
+            <div class="ml-auto" style="display:flex;gap:6px;align-items:center;">
+              <span style="font-size:9px;color:var(--text-muted);font-weight:600;">WBS / Položky</span>
+            </div>
+          </div>
+          <div class="wbs-header-cols">
+            <span class="wbs-col-head">Název</span>
+            <span class="wbs-col-head">Zahájení</span>
+            <span class="wbs-col-head">Dokončení</span>
+            <span class="wbs-col-head">Postup</span>
+            <span class="wbs-col-head" style="text-align:right;">Rozpočet</span>
+          </div>
+          <div id="wbs-body"></div>
+          <div class="wbs-add-bar">
+            <button class="btn btn-secondary" style="flex:1;font-size:10px;" onclick="openAddTaskModal()">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Přidat úkol
+            </button>
+            <button class="btn btn-ghost" onclick="openAddMilestoneModal()" title="Milník">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- GANTT -->
+        <div id="gantt-panel">
+          <div id="gantt-toolbar">
+            <div class="timescale-btns">
+              <button class="timescale-btn" id="ts-days" onclick="setTimescale('days')">Dny</button>
+              <button class="timescale-btn active" id="ts-weeks" onclick="setTimescale('weeks')">Týdny</button>
+              <button class="timescale-btn" id="ts-months" onclick="setTimescale('months')">Měsíce</button>
+            </div>
+            <div class="ml-auto" style="display:flex;gap:6px;align-items:center;">
+              <button class="btn btn-ghost btn-icon" onclick="zoomGantt(-1)" title="Oddalit">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+              </button>
+              <button class="btn btn-ghost btn-icon" onclick="zoomGantt(1)" title="Přiblížit">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+              </button>
+              <button class="btn btn-ghost btn-icon" onclick="scrollToToday()" title="Dnes">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+              </button>
+            </div>
+          </div>
+          <div id="gantt-scroll-wrap">
+            <div id="gantt-canvas-wrap">
+              <div id="gantt-time-header">
+                <div class="time-months-row" id="gantt-months-row"></div>
+                <div class="time-units-row" id="gantt-units-row"></div>
+              </div>
+              <div id="gantt-rows"></div>
+              <div id="today-line" style="display:none;"></div>
+              <svg id="gantt-dep-svg" class="gantt-dep-svg" style="position:absolute;top:44px;left:0;width:100%;height:100%;pointer-events:none;"></svg>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- BOTTOM CASHFLOW STRIP -->
+      <div id="bottom-cashflow" class="hidden">
+        <div class="bottom-cf-header">
+          <span class="bottom-cf-title">💰 Cashflow — měsíční přehled</span>
+          <div class="unit-toggle" id="bottom-unit-toggle">
+            <button class="unit-btn active" onclick="setUnit('czk','bottom')">Kč</button>
+            <button class="unit-btn" onclick="setUnit('tczk','bottom')">tis. Kč</button>
+            <button class="unit-btn" onclick="setUnit('mczk','bottom')">mil. Kč</button>
+          </div>
+        </div>
+        <div id="bottom-cf-canvas-wrap">
+          <canvas id="bottom-cf-canvas"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- CASHFLOW VIEW -->
+    <div id="cashflow-view" class="hidden">
+      <div class="cashflow-header">
+        <div class="cashflow-stats">
+          <div class="cashflow-stat">
+            <div class="cashflow-stat-label">Celkové náklady</div>
+            <div class="cashflow-stat-value" id="cf-total-budget">0 Kč</div>
+          </div>
+          <div class="cashflow-stat">
+            <div class="cashflow-stat-label">Průměrné měs. náklady</div>
+            <div class="cashflow-stat-value" id="cf-avg-monthly">0 Kč</div>
+          </div>
+          <div class="cashflow-stat">
+            <div class="cashflow-stat-label">Nejvyšší měsíc</div>
+            <div class="cashflow-stat-value red" id="cf-peak-month">0 Kč</div>
+          </div>
+          <div class="cashflow-stat">
+            <div class="cashflow-stat-label">Délka projektu</div>
+            <div class="cashflow-stat-value" id="cf-duration-months">0 měs.</div>
+          </div>
+        </div>
+        <div class="unit-toggle" id="cf-unit-toggle">
+          <button class="unit-btn active" onclick="setUnit('czk','cf')">Kč</button>
+          <button class="unit-btn" onclick="setUnit('tczk','cf')">tis. Kč</button>
+          <button class="unit-btn" onclick="setUnit('mczk','cf')">mil. Kč</button>
+        </div>
+      </div>
+
+      <div class="cashflow-chart-card">
+        <div class="cashflow-chart-title">
+          S-křivka kumulativních nákladů
+          <div style="display:flex;gap:14px;align-items:center;">
+            <span style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--text-muted);font-weight:600;">
+              <span style="width:20px;height:2px;background:var(--olive);display:inline-block;"></span> Plánované
+            </span>
+            <span style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--text-muted);font-weight:600;">
+              <span style="width:20px;height:2px;background:var(--warning);display:inline-block;border-style:dashed;border-width:1px 0 0 0;"></span> Skutečné
+            </span>
+          </div>
+        </div>
+        <div id="cashflow-canvas-wrap">
+          <canvas id="cashflow-main-canvas"></canvas>
+        </div>
+      </div>
+
+      <div class="cf-table-card">
+        <div class="cf-table-header">
+          <span class="cf-table-title">📊 Měsíční cashflow po fázích</span>
+          <button class="btn btn-secondary" style="color:white;border-color:rgba(255,255,255,0.2);font-size:10px;" onclick="exportCashflowXLSX()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Export Excel
+          </button>
+        </div>
+        <div class="cf-table-scroll">
+          <table class="cf-table" id="cf-table"></table>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- TOOLTIP -->
+<div id="gantt-tooltip"></div>
+
+<!-- MODALS injected by JS -->
+<div id="modal-container"></div>
+<input type="file" id="json-file-input" accept=".json" style="display:none" onchange="handleJSONImport(event)">
+
+<script>
+/* ═══════════════════════════════════════════════════
+   DATA MODEL
+═══════════════════════════════════════════════════ */
+const PHASE_COLORS = [
+  '#5B8A9E','#8A5B9E','#9E8A5B','#5B9E6B','#9E5B5B','#5B7A9E',
+  '#9E6B5B','#6B9E5B','#5B9E9E','#9E5B8A'
+];
+
+let project = {
+  name: 'Nový projekt',
+  code: 'PRJ-001',
+  client: '',
+  status: 'realizace',
+  phases: [],
+  nextId: 1
+};
+
+let timescale = 'weeks';
+let cellW = 28; // px per unit
+let selectedTaskId = null;
+let currentMainView = 'gantt';
+let cfUnit = 'czk';
+let bottomUnit = 'czk';
+let showBottomCF = false;
+let cashflowChartInstance = null;
+let bottomCfChartInstance = null;
+
+/* ═══════════════════════════════════════════════════
+   INIT
+═══════════════════════════════════════════════════ */
+function init() {
+  const saved = localStorage.getItem('besixtime_project');
+  if (saved) {
+    try { project = JSON.parse(saved); } catch(e) {}
+  } else {
+    loadTemplate('rodinnydm');
+  }
+  render();
+}
+
+/* ═══════════════════════════════════════════════════
+   RENDER DISPATCHER
+═══════════════════════════════════════════════════ */
+function render() {
+  renderHeader();
+  renderWBS();
+  renderGantt();
+  if (currentMainView === 'cashflow') renderCashflow();
+  if (showBottomCF) renderBottomCashflow();
+}
+
+/* ═══════════════════════════════════════════════════
+   HEADER STATS
+═══════════════════════════════════════════════════ */
+function renderHeader() {
+  document.getElementById('project-name').value = project.name;
+  document.getElementById('project-code-chip').textContent = project.code;
+  
+  const statuses = {
+    priprava: {label:'Příprava', cls:'status-priprava'},
+    realizace: {label:'Realizace', cls:'status-realizace'},
+    dokonceno: {label:'Dokončeno', cls:'status-dokonceno'}
+  };
+  const s = statuses[project.status] || statuses.realizace;
+  const chip = document.getElementById('status-chip');
+  chip.textContent = s.label;
+  chip.className = 'meta-chip ' + s.cls;
+
+  // Calculate stats
+  let totalBudget = 0, totalDays = 0, totalProgress = 0, taskCount = 0;
+  let allDates = [];
+  
+  project.phases.forEach(ph => {
+    ph.tasks.forEach(t => {
+      totalBudget += (t.budget || 0);
+      totalProgress += (t.progress || 0);
+      taskCount++;
+      if (t.startDate && t.endDate) {
+        const d = daysBetween(t.startDate, t.endDate);
+        allDates.push(new Date(t.startDate), new Date(t.endDate));
+      }
+    });
+  });
+
+  if (allDates.length >= 2) {
+    const minD = new Date(Math.min(...allDates.map(d=>d.getTime())));
+    const maxD = new Date(Math.max(...allDates.map(d=>d.getTime())));
+    totalDays = Math.round((maxD - minD) / 86400000);
+  }
+
+  const avgProgress = taskCount > 0 ? Math.round(totalProgress / taskCount) : 0;
+
+  document.getElementById('stat-budget').textContent = formatCZK(totalBudget);
+  document.getElementById('stat-duration').textContent = totalDays + ' dní';
+  document.getElementById('stat-progress').textContent = avgProgress + '%';
+  document.getElementById('header-progress-fill').style.width = avgProgress + '%';
+}
+
+/* ═══════════════════════════════════════════════════
+   WBS RENDER
+═══════════════════════════════════════════════════ */
+function renderWBS() {
+  const body = document.getElementById('wbs-body');
+  body.innerHTML = '';
+  
+  project.phases.forEach((phase, pi) => {
+    // Phase row
+    const phRow = createPhaseRow(phase, pi);
+    body.appendChild(phRow);
+    
+    if (!phase.collapsed) {
+      phase.tasks.forEach((task, ti) => {
+        const tRow = createTaskRow(task, phase, pi, ti);
+        body.appendChild(tRow);
+      });
+    }
+  });
+}
+
+function createPhaseRow(phase, pi) {
+  const row = document.createElement('div');
+  row.className = 'wbs-row is-phase';
+  row.dataset.phaseId = phase.id;
+
+  const color = PHASE_COLORS[pi % PHASE_COLORS.length];
+  
+  row.innerHTML = `
+    <div class="wbs-row-content">
+      <div class="wbs-name-cell">
+        <div class="phase-toggle ${phase.collapsed?'collapsed':''}" onclick="togglePhase('${phase.id}')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+        </div>
+        <div class="phase-dot" style="background:${color};"></div>
+        <input type="text" class="wbs-name-input" value="${escHtml(phase.name)}" 
+          onchange="updatePhaseName('${phase.id}',this.value)"
+          onclick="event.stopPropagation()">
+      </div>
+      <span class="wbs-date-cell">${getPhaseDates(phase).start}</span>
+      <span class="wbs-date-cell">${getPhaseDates(phase).end}</span>
+      <div class="wbs-pct-cell">
+        <div class="mini-progress"><div class="mini-progress-fill" style="width:${getPhaseProgress(phase)}%;background:${color};"></div></div>
+        <span class="wbs-pct-num">${getPhaseProgress(phase)}%</span>
+      </div>
+      <span class="wbs-budget-cell">${formatCZK(getPhaseBudget(phase))}</span>
+    </div>
+    <div class="row-actions">
+      <button class="row-action-btn" onclick="openAddTaskModal('${phase.id}')" title="Přidat úkol">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      </button>
+      <button class="row-action-btn danger" onclick="deletePhase('${phase.id}')" title="Smazat fázi">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+      </button>
+    </div>
+  `;
+  return row;
+}
+
+function createTaskRow(task, phase, pi, ti) {
+  const row = document.createElement('div');
+  row.className = 'wbs-row' + (selectedTaskId === task.id ? ' selected' : '');
+  row.dataset.taskId = task.id;
+  row.onclick = () => selectTask(task.id);
+  
+  const color = PHASE_COLORS[pi % PHASE_COLORS.length];
+  const isMilestone = task.type === 'milestone';
+
+  row.innerHTML = `
+    <div class="wbs-row-content">
+      <div class="wbs-name-cell">
+        <div class="wbs-indent" style="width:28px;"></div>
+        ${isMilestone ? `<svg viewBox="0 0 24 24" fill="${PHASE_COLORS[pi%PHASE_COLORS.length]}" stroke="none" style="width:10px;height:10px;flex-shrink:0;transform:rotate(45deg);"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>` : `<div style="width:6px;height:6px;border-radius:50%;background:${color};opacity:0.5;flex-shrink:0;"></div>`}
+        <input type="text" class="wbs-name-input" value="${escHtml(task.name)}"
+          onchange="updateTaskField('${task.id}','name',this.value)"
+          ondblclick="openEditTaskModal('${task.id}')"
+          onclick="event.stopPropagation()">
+      </div>
+      <span class="wbs-date-cell">${formatDateShort(task.startDate)}</span>
+      <span class="wbs-date-cell">${formatDateShort(task.endDate)}</span>
+      <div class="wbs-pct-cell">
+        ${isMilestone ? '<span style="font-size:9px;color:var(--warning);font-weight:700;">MILNÍK</span>' : `
+        <div class="mini-progress"><div class="mini-progress-fill" style="width:${task.progress||0}%;background:${color};"></div></div>
+        <span class="wbs-pct-num">${task.progress||0}%</span>`}
+      </div>
+      <span class="wbs-budget-cell">${isMilestone ? '—' : formatCZK(task.budget||0)}</span>
+    </div>
+    <div class="row-actions">
+      <button class="row-action-btn" onclick="openEditTaskModal('${task.id}')" title="Upravit">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+      </button>
+      <button class="row-action-btn danger" onclick="deleteTask('${task.id}')" title="Smazat">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+      </button>
+    </div>
+  `;
+  return row;
+}
+
+/* ═══════════════════════════════════════════════════
+   GANTT RENDER
+═══════════════════════════════════════════════════ */
+function getGanttBounds() {
+  let minD = null, maxD = null;
+  project.phases.forEach(ph => {
+    ph.tasks.forEach(t => {
+      if (t.startDate) {
+        const s = new Date(t.startDate);
+        const e = t.endDate ? new Date(t.endDate) : s;
+        if (!minD || s < minD) minD = new Date(s);
+        if (!maxD || e > maxD) maxD = new Date(e);
+      }
+    });
+  });
+  if (!minD) {
+    minD = new Date(); minD.setDate(1);
+    maxD = new Date(minD); maxD.setMonth(maxD.getMonth() + 6);
+  }
+  // Pad
+  minD = new Date(minD); minD.setDate(minD.getDate() - 7);
+  maxD = new Date(maxD); maxD.setDate(maxD.getDate() + 30);
+  return { minD, maxD };
+}
+
+function dateToX(date, minD) {
+  if (timescale === 'days') return daysBetween(minD, date) * cellW;
+  if (timescale === 'weeks') return (daysBetween(minD, date) / 7) * cellW;
+  if (timescale === 'months') return (daysBetween(minD, date) / 30.44) * cellW;
+  return 0;
+}
+
+function renderGantt() {
+  const { minD, maxD } = getGanttBounds();
+  const totalUnits = timescale === 'days' ? daysBetween(minD, maxD) :
+                     timescale === 'weeks' ? Math.ceil(daysBetween(minD, maxD)/7) + 1 :
+                     Math.ceil(daysBetween(minD, maxD)/30.44) + 1;
+  const totalW = totalUnits * cellW;
+
+  renderGanttHeader(minD, maxD, totalW);
+  renderGanttRows(minD, totalW);
+  renderTodayLine(minD, totalW);
+  renderDependencies(minD);
+}
+
+function renderGanttHeader(minD, maxD, totalW) {
+  const monthsRow = document.getElementById('gantt-months-row');
+  const unitsRow = document.getElementById('gantt-units-row');
+  monthsRow.innerHTML = '';
+  unitsRow.innerHTML = '';
+  monthsRow.style.width = totalW + 'px';
+  unitsRow.style.width = totalW + 'px';
+
+  if (timescale === 'days') {
+    // Group by months
+    const months = groupDaysByMonth(minD, maxD);
+    months.forEach(m => {
+      const cell = document.createElement('div');
+      cell.className = 'time-month-cell';
+      cell.style.width = (m.days * cellW) + 'px';
+      cell.style.minWidth = (m.days * cellW) + 'px';
+      cell.textContent = m.label;
+      monthsRow.appendChild(cell);
+    });
+    // Days
+    let d = new Date(minD);
+    while (d <= maxD) {
+      const cell = document.createElement('div');
+      cell.className = 'time-unit-cell';
+      cell.style.width = cellW + 'px';
+      cell.style.minWidth = cellW + 'px';
+      const dow = d.getDay();
+      if (dow === 0 || dow === 6) cell.style.background = 'rgba(255,255,255,0.05)';
+      cell.textContent = d.getDate();
+      unitsRow.appendChild(cell);
+      d.setDate(d.getDate() + 1);
+    }
+  } else if (timescale === 'weeks') {
+    // Group weeks by month
+    const months = groupWeeksByMonth(minD, maxD);
+    months.forEach(m => {
+      const cell = document.createElement('div');
+      cell.className = 'time-month-cell';
+      cell.style.width = (m.weeks * cellW) + 'px';
+      cell.style.minWidth = (m.weeks * cellW) + 'px';
+      cell.textContent = m.label;
+      monthsRow.appendChild(cell);
+    });
+    // Week numbers
+    let d = new Date(minD);
+    d.setDate(d.getDate() - d.getDay() + 1); // Monday
+    while (d <= maxD) {
+      const cell = document.createElement('div');
+      cell.className = 'time-unit-cell';
+      cell.style.width = cellW + 'px';
+      cell.style.minWidth = cellW + 'px';
+      cell.textContent = 'T' + getWeekNumber(d);
+      unitsRow.appendChild(cell);
+      d.setDate(d.getDate() + 7);
+    }
+  } else {
+    // Months
+    let d = new Date(minD); d.setDate(1);
+    const yearGroups = {};
+    while (d <= maxD) {
+      const year = d.getFullYear();
+      if (!yearGroups[year]) yearGroups[year] = 0;
+      yearGroups[year]++;
+      const cell = document.createElement('div');
+      cell.className = 'time-unit-cell';
+      cell.style.width = cellW + 'px';
+      cell.style.minWidth = cellW + 'px';
+      const mn = ['Led','Úno','Bře','Dub','Kvě','Čvn','Čvc','Srp','Zář','Říj','Lis','Pro'];
+      cell.textContent = mn[d.getMonth()];
+      unitsRow.appendChild(cell);
+      d.setMonth(d.getMonth() + 1);
+    }
+    // Years in top row
+    Object.entries(yearGroups).forEach(([year, count]) => {
+      const cell = document.createElement('div');
+      cell.className = 'time-month-cell';
+      cell.style.width = (count * cellW) + 'px';
+      cell.style.minWidth = (count * cellW) + 'px';
+      cell.textContent = year;
+      monthsRow.appendChild(cell);
+    });
+  }
+}
+
+function renderGanttRows(minD, totalW) {
+  const container = document.getElementById('gantt-rows');
+  container.innerHTML = '';
+  container.style.width = totalW + 'px';
+
+  // Background grid
+  const bgGrid = document.createElement('div');
+  bgGrid.style.cssText = `position:absolute;top:0;left:0;right:0;bottom:0;pointer-events:none;`;
+  container.appendChild(bgGrid);
+
+  // Draw grid lines
+  if (timescale === 'months') {
+    let d = new Date(minD); d.setDate(1);
+    while (dateToX(d, minD) < totalW) {
+      const line = document.createElement('div');
+      line.className = 'gantt-grid-line month';
+      line.style.left = dateToX(d, minD) + 'px';
+      bgGrid.appendChild(line);
+      d.setMonth(d.getMonth() + 1);
+    }
+  } else if (timescale === 'weeks') {
+    let d = new Date(minD);
+    while (dateToX(d, minD) < totalW) {
+      const line = document.createElement('div');
+      line.className = 'gantt-grid-line' + (d.getDay() === 1 ? ' month' : '');
+      line.style.left = dateToX(d, minD) + 'px';
+      bgGrid.appendChild(line);
+      d.setDate(d.getDate() + 7);
+    }
+    // Month lines
+    let dm = new Date(minD); dm.setDate(1);
+    while (dateToX(dm, minD) < totalW) {
+      const line = document.createElement('div');
+      line.className = 'gantt-grid-line';
+      line.style.left = dateToX(dm, minD) + 'px';
+      line.style.background = 'rgba(74,83,64,0.15)';
+      bgGrid.appendChild(line);
+      dm.setMonth(dm.getMonth() + 1);
+    }
+  }
+
+  let rowOffset = 0;
+  project.phases.forEach((phase, pi) => {
+    const color = PHASE_COLORS[pi % PHASE_COLORS.length];
+
+    // Phase row
+    const phRow = document.createElement('div');
+    phRow.className = 'gantt-row is-phase';
+    phRow.style.width = totalW + 'px';
+    container.appendChild(phRow);
+
+    // Phase bar (spans all tasks)
+    const pd = getPhaseDatesRaw(phase);
+    if (pd.start && pd.end) {
+      const x = dateToX(pd.start, minD);
+      const w = Math.max(4, dateToX(pd.end, minD) - x);
+      const bar = document.createElement('div');
+      bar.className = 'gantt-bar-wrap';
+      bar.style.cssText = `left:${x}px;width:${w}px;height:10px;`;
+      bar.innerHTML = `<div class="gantt-bar" style="background:${color};opacity:0.4;border-radius:2px;"></div>`;
+      phRow.appendChild(bar);
+    }
+
+    rowOffset++;
+    if (phase.collapsed) return;
+
+    phase.tasks.forEach((task, ti) => {
+      const tRow = document.createElement('div');
+      tRow.className = 'gantt-row';
+      tRow.dataset.taskId = task.id;
+      tRow.style.width = totalW + 'px';
+      if (selectedTaskId === task.id) tRow.style.background = 'rgba(74,83,64,0.05)';
+
+      if (task.type === 'milestone') {
+        // Milestone diamond
+        if (task.startDate) {
+          const x = dateToX(new Date(task.startDate), minD);
+          const diamond = document.createElement('div');
+          diamond.className = 'gantt-milestone';
+          diamond.style.left = x + 'px';
+          diamond.title = task.name;
+          diamond.addEventListener('mouseenter', (e) => showTooltip(e, task));
+          diamond.addEventListener('mouseleave', hideTooltip);
+          tRow.appendChild(diamond);
+        }
+      } else if (task.startDate && task.endDate) {
+        const x = Math.round(dateToX(new Date(task.startDate), minD));
+        const x2 = Math.round(dateToX(new Date(task.endDate), minD));
+        const w = Math.max(4, x2 - x);
+        const pct = task.progress || 0;
+
+        const barWrap = document.createElement('div');
+        barWrap.className = 'gantt-bar-wrap';
+        barWrap.dataset.taskId = task.id;
+        barWrap.style.cssText = `left:${x}px;width:${w}px;`;
+        
+        // Status color modifier
+        let barColor = color;
+        if (pct === 100) barColor = '#5B8A5E';
+        else if (isOverdue(task)) barColor = '#9E5B5B';
+
+        barWrap.innerHTML = `
+          <div class="gantt-bar" style="background:${barColor};">
+            <div class="gantt-bar-progress" style="width:${pct}%;"></div>
+            ${w > 40 ? `<div class="gantt-bar-label">${escHtml(task.name)}</div>` : ''}
+          </div>
+        `;
+
+        barWrap.addEventListener('mouseenter', (e) => showTooltip(e, task, color));
+        barWrap.addEventListener('mouseleave', hideTooltip);
+        barWrap.addEventListener('click', () => { selectTask(task.id); openEditTaskModal(task.id); });
+
+        // Drag to move
+        makeDraggableBar(barWrap, task, minD);
+        tRow.appendChild(barWrap);
+      }
+
+      container.appendChild(tRow);
+      rowOffset++;
+    });
+  });
+}
+
+function makeDraggableBar(barWrap, task, minD) {
+  let isDragging = false;
+  let startX = 0;
+  let origLeft = 0;
+
+  barWrap.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return;
+    isDragging = true;
+    startX = e.clientX;
+    origLeft = parseInt(barWrap.style.left) || 0;
+    barWrap.style.cursor = 'grabbing';
+    barWrap.style.zIndex = '10';
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+    const dx = e.clientX - startX;
+    barWrap.style.left = (origLeft + dx) + 'px';
+  });
+
+  document.addEventListener('mouseup', (e) => {
+    if (!isDragging) return;
+    isDragging = false;
+    barWrap.style.cursor = 'grab';
+    barWrap.style.zIndex = '';
+    
+    const newX = parseInt(barWrap.style.left);
+    const daysOffset = timescale === 'days' ? (newX / cellW) :
+                       timescale === 'weeks' ? (newX / cellW * 7) :
+                       (newX / cellW * 30.44);
+    const newStart = new Date(minD);
+    newStart.setDate(newStart.getDate() + Math.round(daysOffset));
+    
+    const origStart = new Date(task.startDate);
+    const origEnd = new Date(task.endDate);
+    const dur = origEnd - origStart;
+    const newEnd = new Date(newStart.getTime() + dur);
+    
+    task.startDate = newStart.toISOString().split('T')[0];
+    task.endDate = newEnd.toISOString().split('T')[0];
+    
+    saveProject(true);
+    render();
+  });
+}
+
+function renderTodayLine(minD, totalW) {
+  const todayLine = document.getElementById('today-line');
+  const today = new Date();
+  today.setHours(0,0,0,0);
+  const x = dateToX(today, minD);
+  if (x >= 0 && x <= totalW) {
+    todayLine.style.display = 'block';
+    todayLine.style.left = x + 'px';
+    const wrap = document.getElementById('gantt-canvas-wrap');
+    wrap.appendChild(todayLine);
+  } else {
+    todayLine.style.display = 'none';
+  }
+}
+
+function renderDependencies(minD) {
+  const svg = document.getElementById('gantt-dep-svg');
+  svg.innerHTML = '';
+  // Dependencies
+  project.phases.forEach(ph => {
+    ph.tasks.forEach(task => {
+      if (task.dependsOn) {
+        const pred = findTask(task.dependsOn);
+        if (pred && pred.endDate && task.startDate) {
+          const x1 = dateToX(new Date(pred.endDate), minD);
+          const x2 = dateToX(new Date(task.startDate), minD);
+          const y1 = getTaskRowY(pred.id) + 20;
+          const y2 = getTaskRowY(task.id) + 20;
+          if (y1 >= 0 && y2 >= 0) {
+            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            const mid = (x1 + x2) / 2;
+            path.setAttribute('d', `M ${x1} ${y1} C ${mid} ${y1}, ${mid} ${y2}, ${x2} ${y2}`);
+            path.setAttribute('stroke', 'rgba(74,83,64,0.4)');
+            path.setAttribute('stroke-width', '1.5');
+            path.setAttribute('fill', 'none');
+            path.setAttribute('marker-end', 'url(#arrow)');
+            svg.appendChild(path);
+          }
+        }
+      }
+    });
+  });
+  // Arrow marker
+  const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+  defs.innerHTML = `<marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="rgba(74,83,64,0.5)"/></marker>`;
+  svg.insertBefore(defs, svg.firstChild);
+}
+
+function getTaskRowY(taskId) {
+  const row = document.querySelector(`[data-task-id="${taskId}"]`);
+  if (!row) return -1;
+  return row.offsetTop;
+}
+
+/* ═══════════════════════════════════════════════════
+   TOOLTIP
+═══════════════════════════════════════════════════ */
+function showTooltip(e, task, color) {
+  const tt = document.getElementById('gantt-tooltip');
+  const dur = task.startDate && task.endDate ? daysBetween(task.startDate, task.endDate) : 0;
+  tt.innerHTML = `
+    <div class="tooltip-title">${escHtml(task.name)}</div>
+    <div class="tooltip-row"><span>Zahájení</span><span class="tooltip-val">${formatDateShort(task.startDate)}</span></div>
+    <div class="tooltip-row"><span>Dokončení</span><span class="tooltip-val">${formatDateShort(task.endDate)}</span></div>
+    <div class="tooltip-row"><span>Délka</span><span class="tooltip-val">${dur} dní</span></div>
+    <div class="tooltip-row"><span>Postup</span><span class="tooltip-val">${task.progress||0}%</span></div>
+    <div class="tooltip-row"><span>Rozpočet</span><span class="tooltip-val">${formatCZK(task.budget||0)}</span></div>
+    ${task.assignee ? `<div class="tooltip-row"><span>Zodpovídá</span><span class="tooltip-val">${escHtml(task.assignee)}</span></div>` : ''}
+  `;
+  tt.classList.add('visible');
+  positionTooltip(e);
+}
+
+function hideTooltip() {
+  document.getElementById('gantt-tooltip').classList.remove('visible');
+}
+
+function positionTooltip(e) {
+  const tt = document.getElementById('gantt-tooltip');
+  let x = e.clientX + 14, y = e.clientY - 10;
+  if (x + 200 > window.innerWidth) x = e.clientX - 210;
+  tt.style.left = x + 'px';
+  tt.style.top = y + 'px';
+}
+
+document.addEventListener('mousemove', (e) => {
+  const tt = document.getElementById('gantt-tooltip');
+  if (tt.classList.contains('visible')) positionTooltip(e);
+});
+
+/* ═══════════════════════════════════════════════════
+   CASHFLOW ENGINE
+═══════════════════════════════════════════════════ */
+function buildCashflowData() {
+  const { minD, maxD } = getGanttBounds();
+  // Build month list
+  const months = [];
+  let d = new Date(minD); d.setDate(1);
+  const end = new Date(maxD); end.setDate(1); end.setMonth(end.getMonth() + 1);
+  while (d < end) {
+    months.push(new Date(d));
+    d.setMonth(d.getMonth() + 1);
+  }
+
+  const taskData = []; // [{phaseName, taskName, monthly:[...]}]
+  const totalMonthly = new Array(months.length).fill(0);
+  const phaseData = {};
+
+  project.phases.forEach((phase, pi) => {
+    if (!phaseData[phase.id]) {
+      phaseData[phase.id] = { name: phase.name, monthly: new Array(months.length).fill(0), color: PHASE_COLORS[pi % PHASE_COLORS.length] };
+    }
+    phase.tasks.forEach(task => {
+      if (!task.startDate || !task.endDate || task.type === 'milestone') return;
+      const budget = task.budget || 0;
+      if (budget === 0) return;
+      const weight = (task.completionWeight || 0) / 100; // 0-1
+      const linearBudget = budget * (1 - weight);
+      const completionBudget = budget * weight;
+
+      const tStart = new Date(task.startDate);
+      const tEnd = new Date(task.endDate);
+      const taskDays = Math.max(1, daysBetween(tStart, tEnd));
+
+      const monthly = new Array(months.length).fill(0);
+
+      // Linear spread
+      if (linearBudget > 0) {
+        months.forEach((mStart, mi) => {
+          const mEnd = new Date(mStart); mEnd.setMonth(mEnd.getMonth() + 1);
+          const overlap = getOverlapDays(tStart, tEnd, mStart, mEnd);
+          if (overlap > 0) {
+            monthly[mi] += linearBudget * (overlap / taskDays);
+          }
+        });
+      }
+
+      // Completion weight → last month of task
+      if (completionBudget > 0) {
+        const lastMonth = new Date(tEnd); lastMonth.setDate(1);
+        const mi = months.findIndex(m => m.getFullYear() === lastMonth.getFullYear() && m.getMonth() === lastMonth.getMonth());
+        if (mi >= 0) monthly[mi] += completionBudget;
+      }
+
+      taskData.push({ phaseId: phase.id, phaseName: phase.name, taskName: task.name, monthly });
+      monthly.forEach((v, i) => {
+        totalMonthly[i] += v;
+        phaseData[phase.id].monthly[i] += v;
+      });
+    });
+  });
+
+  // Cumulative
+  const cumulative = [];
+  let cum = 0;
+  totalMonthly.forEach(v => { cum += v; cumulative.push(cum); });
+
+  return { months, totalMonthly, cumulative, taskData, phaseData };
+}
+
+function renderCashflow() {
+  const data = buildCashflowData();
+  
+  // Update stats
+  const total = data.totalMonthly.reduce((a,b) => a+b, 0);
+  const nonZero = data.totalMonthly.filter(v => v > 0);
+  const avg = nonZero.length > 0 ? total / nonZero.length : 0;
+  const peak = Math.max(...data.totalMonthly);
+  
+  document.getElementById('cf-total-budget').textContent = formatCZK(total);
+  document.getElementById('cf-avg-monthly').textContent = formatCZK(avg);
+  document.getElementById('cf-peak-month').textContent = formatCZK(peak);
+  document.getElementById('cf-duration-months').textContent = data.months.length + ' měs.';
+
+  const labels = data.months.map(m => {
+    const mn = ['led','úno','bře','dub','kvě','čvn','čvc','srp','zář','říj','lis','pro'];
+    return mn[m.getMonth()] + ' ' + m.getFullYear();
+  });
+
+  const divisor = cfUnit === 'czk' ? 1 : cfUnit === 'tczk' ? 1000 : 1000000;
+  const unitLabel = cfUnit === 'czk' ? 'Kč' : cfUnit === 'tczk' ? 'tis. Kč' : 'mil. Kč';
+
+  // Chart
+  const ctx = document.getElementById('cashflow-main-canvas').getContext('2d');
+  
+  if (cashflowChartInstance) { cashflowChartInstance.destroy(); }
+  
+  document.getElementById('cashflow-canvas-wrap').style.height = '280px';
+  
+  cashflowChartInstance = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        {
+          type: 'line',
+          label: 'Kumulativní plán',
+          data: data.cumulative.map(v => +(v/divisor).toFixed(2)),
+          borderColor: '#4A5340',
+          backgroundColor: 'rgba(74,83,64,0.08)',
+          borderWidth: 2.5,
+          pointRadius: 3,
+          pointBackgroundColor: '#4A5340',
+          fill: true,
+          tension: 0.4,
+          yAxisID: 'yCum',
+          order: 1
+        },
+        {
+          type: 'bar',
+          label: 'Měsíční náklady',
+          data: data.totalMonthly.map(v => +(v/divisor).toFixed(2)),
+          backgroundColor: data.totalMonthly.map((v,i) => {
+            const max = Math.max(...data.totalMonthly);
+            if (v === max && max > 0) return 'rgba(192,57,43,0.7)';
+            return 'rgba(139,158,122,0.6)';
+          }),
+          borderColor: data.totalMonthly.map((v,i) => {
+            const max = Math.max(...data.totalMonthly);
+            return v === max && max > 0 ? '#C0392B' : '#8B9E7A';
+          }),
+          borderWidth: 1,
+          borderRadius: 3,
+          yAxisID: 'yBar',
+          order: 2
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#1C1E1A',
+          titleFont: { family: 'Montserrat', weight: '700', size: 12 },
+          bodyFont: { family: 'Montserrat', size: 11 },
+          padding: 12,
+          callbacks: {
+            label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.y.toLocaleString('cs-CZ')} ${unitLabel}`
+          }
+        }
+      },
+      scales: {
+        x: {
+          grid: { color: 'rgba(0,0,0,0.04)' },
+          ticks: { font: { family: 'Montserrat', size: 9, weight: '600' }, color: '#9A9A8E', maxRotation: 45 }
+        },
+        yBar: {
+          type: 'linear',
+          position: 'left',
+          grid: { color: 'rgba(0,0,0,0.05)' },
+          ticks: { font: { family: 'Montserrat', size: 9, weight: '600' }, color: '#8B9E7A', callback: v => v.toLocaleString('cs-CZ') + ' ' + unitLabel }
+        },
+        yCum: {
+          type: 'linear',
+          position: 'right',
+          grid: { display: false },
+          ticks: { font: { family: 'Montserrat', size: 9, weight: '600' }, color: '#4A5340', callback: v => v.toLocaleString('cs-CZ') + ' ' + unitLabel }
+        }
+      }
+    }
+  });
+
+  renderCashflowTable(data, divisor, unitLabel);
+}
+
+function renderCashflowTable(data, divisor, unitLabel) {
+  const table = document.getElementById('cf-table');
+  if (!table) return;
+  
+  const mn = ['led','úno','bře','dub','kvě','čvn','čvc','srp','zář','říj','lis','pro'];
+  const labels = data.months.map(m => mn[m.getMonth()] + '<br>' + m.getFullYear());
+
+  let html = '<thead><tr><th>Fáze / Úkol</th>';
+  labels.forEach(l => { html += `<th class="cf-cell-value">${l}</th>`; });
+  html += '<th>Celkem</th></tr></thead><tbody>';
+
+  // Phases
+  const phaseMap = {};
+  data.taskData.forEach(t => {
+    if (!phaseMap[t.phaseName]) phaseMap[t.phaseName] = { tasks: [], monthly: new Array(data.months.length).fill(0) };
+    phaseMap[t.phaseName].tasks.push(t);
+    t.monthly.forEach((v,i) => phaseMap[t.phaseName].monthly[i] += v);
+  });
+
+  Object.entries(phaseMap).forEach(([phaseName, pd]) => {
+    const phTotal = pd.monthly.reduce((a,b) => a+b, 0);
+    html += `<tr class="phase-row"><td>${escHtml(phaseName)}</td>`;
+    pd.monthly.forEach(v => {
+      const fv = +(v/divisor).toFixed(1);
+      html += `<td class="${fv > 0 ? 'cf-cell-nonzero' : ''} cf-cell-value">${fv > 0 ? fv.toLocaleString('cs-CZ') : '—'}</td>`;
+    });
+    html += `<td class="cf-cell-nonzero cf-cell-value">${+(phTotal/divisor).toFixed(1).toLocaleString('cs-CZ')}</td></tr>`;
+
+    pd.tasks.forEach(t => {
+      const tTotal = t.monthly.reduce((a,b) => a+b, 0);
+      html += `<tr><td style="padding-left:24px;">↳ ${escHtml(t.taskName)}</td>`;
+      t.monthly.forEach(v => {
+        const fv = +(v/divisor).toFixed(1);
+        html += `<td class="${fv > 0 ? 'cf-cell-nonzero' : ''} cf-cell-value">${fv > 0 ? fv.toLocaleString('cs-CZ') : '—'}</td>`;
+      });
+      html += `<td class="cf-cell-value">${+(tTotal/divisor).toFixed(1).toLocaleString('cs-CZ')}</td></tr>`;
+    });
+  });
+
+  // Total row
+  const grandTotal = data.totalMonthly.reduce((a,b) => a+b, 0);
+  html += `<tr class="cf-total-row"><td>CELKEM</td>`;
+  data.totalMonthly.forEach(v => {
+    html += `<td class="cf-cell-value">${+(v/divisor).toFixed(1).toLocaleString('cs-CZ')}</td>`;
+  });
+  html += `<td class="cf-cell-value">${+(grandTotal/divisor).toFixed(1).toLocaleString('cs-CZ')}</td></tr>`;
+  html += '</tbody>';
+  table.innerHTML = html;
+}
+
+function renderBottomCashflow() {
+  const data = buildCashflowData();
+  const divisor = bottomUnit === 'czk' ? 1 : bottomUnit === 'tczk' ? 1000 : 1000000;
+  const unitLabel = bottomUnit === 'czk' ? 'Kč' : bottomUnit === 'tczk' ? 'tis. Kč' : 'mil. Kč';
+  const mn = ['led','úno','bře','dub','kvě','čvn','čvc','srp','zář','říj','lis','pro'];
+  const labels = data.months.map(m => mn[m.getMonth()] + ' ' + String(m.getFullYear()).slice(2));
+
+  const canvas = document.getElementById('bottom-cf-canvas');
+  const wrap = document.getElementById('bottom-cf-canvas-wrap');
+  canvas.style.width = '100%';
+  canvas.style.height = (wrap.clientHeight || 160) + 'px';
+
+  if (bottomCfChartInstance) bottomCfChartInstance.destroy();
+
+  const ctx = canvas.getContext('2d');
+  bottomCfChartInstance = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        type: 'line',
+        label: 'Kumulativně',
+        data: data.cumulative.map(v => +(v/divisor).toFixed(2)),
+        borderColor: '#4A5340',
+        backgroundColor: 'rgba(74,83,64,0.1)',
+        borderWidth: 2,
+        pointRadius: 2,
+        fill: true,
+        tension: 0.4,
+        yAxisID: 'yCum',
+        order: 1
+      }, {
+        type: 'bar',
+        label: 'Měsíčně',
+        data: data.totalMonthly.map(v => +(v/divisor).toFixed(2)),
+        backgroundColor: 'rgba(139,158,122,0.6)',
+        borderColor: '#8B9E7A',
+        borderWidth: 1,
+        borderRadius: 2,
+        yAxisID: 'yBar',
+        order: 2
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#1C1E1A',
+          titleFont: { family: 'Montserrat', size: 10 },
+          bodyFont: { family: 'Montserrat', size: 10 },
+          callbacks: { label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.y.toLocaleString('cs-CZ')} ${unitLabel}` }
+        }
+      },
+      scales: {
+        x: { ticks: { font: { family: 'Montserrat', size: 8 }, color: '#9A9A8E', maxRotation: 0 }, grid: { display: false } },
+        yBar: { position: 'left', ticks: { font: { family: 'Montserrat', size: 8 }, color: '#8B9E7A', callback: v => v.toLocaleString('cs-CZ') }, grid: { color: 'rgba(0,0,0,0.04)' } },
+        yCum: { position: 'right', ticks: { font: { family: 'Montserrat', size: 8 }, color: '#4A5340', callback: v => v.toLocaleString('cs-CZ') }, grid: { display: false } }
+      }
+    }
+  });
+}
+
+/* ═══════════════════════════════════════════════════
+   VIEW SWITCHING
+═══════════════════════════════════════════════════ */
+function switchMainView(view) {
+  currentMainView = view;
+  
+  document.getElementById('gantt-view').classList.toggle('hidden', view !== 'gantt');
+  document.getElementById('cashflow-view').classList.toggle('hidden', view !== 'cashflow');
+  
+  document.querySelectorAll('.view-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  
+  if (view === 'gantt') {
+    document.getElementById('tab-gantt').classList.add('active');
+    document.querySelector('[onclick="switchMainView(\'gantt\')"]').classList.add('active');
+  } else {
+    document.getElementById('tab-cashflow').classList.add('active');
+    document.querySelector('[onclick="switchMainView(\'cashflow\')"]').classList.add('active');
+    renderCashflow();
+  }
+}
+
+function toggleBottomCashflow() {
+  showBottomCF = document.getElementById('show-bottom-cf').checked;
+  document.getElementById('bottom-cashflow').classList.toggle('hidden', !showBottomCF);
+  if (showBottomCF) renderBottomCashflow();
+}
+
+/* ═══════════════════════════════════════════════════
+   TIMESCALE & ZOOM
+═══════════════════════════════════════════════════ */
+function setTimescale(ts) {
+  timescale = ts;
+  document.querySelectorAll('.timescale-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('ts-' + ts).classList.add('active');
+  
+  // Adjust cell width
+  if (ts === 'days') cellW = 22;
+  else if (ts === 'weeks') cellW = 28;
+  else cellW = 48;
+  
+  renderGantt();
+}
+
+function zoomGantt(dir) {
+  cellW = Math.max(8, Math.min(120, cellW + dir * 8));
+  renderGantt();
+}
+
+function scrollToToday() {
+  const { minD } = getGanttBounds();
+  const x = dateToX(new Date(), minD);
+  const scroll = document.getElementById('gantt-scroll-wrap');
+  scroll.scrollLeft = Math.max(0, x - scroll.clientWidth / 2);
+}
+
+/* ═══════════════════════════════════════════════════
+   UNIT TOGGLE
+═══════════════════════════════════════════════════ */
+function setUnit(unit, which) {
+  if (which === 'cf') {
+    cfUnit = unit;
+    document.querySelectorAll('#cf-unit-toggle .unit-btn').forEach(b => {
+      b.classList.toggle('active', b.textContent.trim().startsWith(unit === 'czk' ? 'Kč' : unit === 'tczk' ? 'tis' : 'mil'));
+    });
+    renderCashflow();
+  } else {
+    bottomUnit = unit;
+    document.querySelectorAll('#bottom-unit-toggle .unit-btn').forEach(b => {
+      b.classList.toggle('active', b.textContent.trim().startsWith(unit === 'czk' ? 'Kč' : unit === 'tczk' ? 'tis' : 'mil'));
+    });
+    renderBottomCashflow();
+  }
+}
+
+/* ═══════════════════════════════════════════════════
+   MODALS
+═══════════════════════════════════════════════════ */
+function openModal(html) {
+  closeModal();
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.id = 'active-modal';
+  overlay.innerHTML = html;
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) closeModal(); });
+  document.getElementById('modal-container').appendChild(overlay);
+}
+
+function closeModal() {
+  const m = document.getElementById('active-modal');
+  if (m) m.remove();
+}
+
+function openAddPhaseModal() {
+  openModal(`
+    <div class="modal">
+      <div class="modal-header">
+        <span class="modal-title">Přidat fázi</span>
+        <button class="modal-close" onclick="closeModal()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="form-row single">
+          <div class="form-field">
+            <label class="form-label">Název fáze</label>
+            <input class="form-input" id="m-phase-name" placeholder="např. Hrubá stavba" autofocus>
+          </div>
+        </div>
+        <div class="form-field">
+          <label class="form-label">Barva</label>
+          <div class="color-swatches" id="phase-color-swatches">
+            ${PHASE_COLORS.map((c,i) => `<div class="color-swatch${i===project.phases.length%PHASE_COLORS.length?' selected':''}" style="background:${c}" onclick="selectSwatch(this,'${c}')"></div>`).join('')}
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal()">Zrušit</button>
+        <button class="btn btn-primary" onclick="confirmAddPhase()">Přidat fázi</button>
+      </div>
+    </div>
+  `);
+  document.getElementById('m-phase-name').addEventListener('keydown', e => { if (e.key === 'Enter') confirmAddPhase(); });
+}
+
+function selectSwatch(el, color) {
+  document.querySelectorAll('#active-modal .color-swatch').forEach(s => s.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+function confirmAddPhase() {
+  const name = document.getElementById('m-phase-name').value.trim();
+  if (!name) return;
+  const phase = {
+    id: 'ph_' + (project.nextId++),
+    name,
+    collapsed: false,
+    tasks: []
+  };
+  project.phases.push(phase);
+  closeModal();
+  saveProject(true);
+  render();
+}
+
+function openAddTaskModal(phaseId) {
+  const phaseOptions = project.phases.map(p => `<option value="${p.id}" ${p.id === phaseId ? 'selected' : ''}>${escHtml(p.name)}</option>`).join('');
+  const today = new Date().toISOString().split('T')[0];
+  const in30 = new Date(Date.now() + 30*86400000).toISOString().split('T')[0];
+  
+  openModal(`
+    <div class="modal">
+      <div class="modal-header">
+        <span class="modal-title">Přidat úkol</span>
+        <button class="modal-close" onclick="closeModal()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="form-row single"><div class="form-field">
+          <label class="form-label">Název úkolu</label>
+          <input class="form-input" id="m-task-name" placeholder="Název úkolu" autofocus>
+        </div></div>
+        <div class="form-row">
+          <div class="form-field">
+            <label class="form-label">Fáze</label>
+            <select class="form-select" id="m-task-phase">${phaseOptions || '<option value="">— vytvořte nejprve fázi —</option>'}</select>
+          </div>
+          <div class="form-field">
+            <label class="form-label">Zodpovídá</label>
+            <input class="form-input" id="m-task-assignee" placeholder="Jméno">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-field">
+            <label class="form-label">Zahájení</label>
+            <input class="form-input" type="date" id="m-task-start" value="${today}">
+          </div>
+          <div class="form-field">
+            <label class="form-label">Dokončení</label>
+            <input class="form-input" type="date" id="m-task-end" value="${in30}">
+          </div>
+        </div>
+        <div class="form-row triple">
+          <div class="form-field">
+            <label class="form-label">Rozpočet (Kč)</label>
+            <input class="form-input" type="number" id="m-task-budget" placeholder="0" min="0">
+          </div>
+          <div class="form-field">
+            <label class="form-label">Postup %</label>
+            <div class="form-range-wrap">
+              <input type="range" class="form-range" id="m-task-progress" min="0" max="100" value="0" oninput="document.getElementById('m-task-progress-val').textContent=this.value+'%'">
+              <span id="m-task-progress-val" style="font-size:11px;font-weight:700;color:var(--olive);min-width:32px;">0%</span>
+            </div>
+          </div>
+          <div class="form-field">
+            <label class="form-label">Váha dokončení %</label>
+            <div class="form-range-wrap">
+              <input type="range" class="form-range" id="m-task-weight" min="0" max="100" value="0" oninput="document.getElementById('m-task-weight-val').textContent=this.value+'%'">
+              <span id="m-task-weight-val" style="font-size:11px;font-weight:700;color:var(--warning);min-width:32px;">0%</span>
+            </div>
+          </div>
+        </div>
+        <div style="font-size:10px;color:var(--text-muted);padding:6px 8px;background:var(--bg);border-radius:4px;border-left:3px solid var(--olive);">
+          <strong>Váha dokončení:</strong> % nákladů, které dopadají až při dokončení úkolu. Zbytek se rovnoměrně rozkládá přes celou dobu trvání.
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal()">Zrušit</button>
+        <button class="btn btn-primary" onclick="confirmAddTask()">Přidat úkol</button>
+      </div>
+    </div>
+  `);
+}
+
+function confirmAddTask() {
+  const name = document.getElementById('m-task-name').value.trim();
+  const phaseId = document.getElementById('m-task-phase').value;
+  if (!name || !phaseId) { alert('Vyplňte název a fázi.'); return; }
+  
+  const task = {
+    id: 'task_' + (project.nextId++),
+    name,
+    assignee: document.getElementById('m-task-assignee').value.trim(),
+    startDate: document.getElementById('m-task-start').value,
+    endDate: document.getElementById('m-task-end').value,
+    budget: parseFloat(document.getElementById('m-task-budget').value) || 0,
+    progress: parseInt(document.getElementById('m-task-progress').value) || 0,
+    completionWeight: parseInt(document.getElementById('m-task-weight').value) || 0,
+    type: 'task'
+  };
+  
+  const phase = project.phases.find(p => p.id === phaseId);
+  if (phase) phase.tasks.push(task);
+  closeModal();
+  saveProject(true);
+  render();
+}
+
+function openEditTaskModal(taskId) {
+  const task = findTask(taskId);
+  if (!task) return;
+  
+  const phaseOptions = project.phases.map(p => {
+    const has = p.tasks.some(t => t.id === taskId);
+    return `<option value="${p.id}" ${has ? 'selected' : ''}>${escHtml(p.name)}</option>`;
+  }).join('');
+
+  openModal(`
+    <div class="modal">
+      <div class="modal-header">
+        <span class="modal-title">Upravit úkol</span>
+        <button class="modal-close" onclick="closeModal()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="form-row single"><div class="form-field">
+          <label class="form-label">Název</label>
+          <input class="form-input" id="e-task-name" value="${escHtml(task.name)}" autofocus>
+        </div></div>
+        <div class="form-row">
+          <div class="form-field">
+            <label class="form-label">Fáze</label>
+            <select class="form-select" id="e-task-phase">${phaseOptions}</select>
+          </div>
+          <div class="form-field">
+            <label class="form-label">Zodpovídá</label>
+            <input class="form-input" id="e-task-assignee" value="${escHtml(task.assignee||'')}">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-field">
+            <label class="form-label">Zahájení</label>
+            <input class="form-input" type="date" id="e-task-start" value="${task.startDate||''}">
+          </div>
+          <div class="form-field">
+            <label class="form-label">Dokončení</label>
+            <input class="form-input" type="date" id="e-task-end" value="${task.endDate||''}">
+          </div>
+        </div>
+        <div class="form-row triple">
+          <div class="form-field">
+            <label class="form-label">Rozpočet (Kč)</label>
+            <input class="form-input" type="number" id="e-task-budget" value="${task.budget||0}">
+          </div>
+          <div class="form-field">
+            <label class="form-label">Postup %</label>
+            <div class="form-range-wrap">
+              <input type="range" class="form-range" id="e-task-progress" min="0" max="100" value="${task.progress||0}" oninput="document.getElementById('e-task-progress-val').textContent=this.value+'%'">
+              <span id="e-task-progress-val" style="font-size:11px;font-weight:700;color:var(--olive);min-width:32px;">${task.progress||0}%</span>
+            </div>
+          </div>
+          <div class="form-field">
+            <label class="form-label">Váha dokončení %</label>
+            <div class="form-range-wrap">
+              <input type="range" class="form-range" id="e-task-weight" min="0" max="100" value="${task.completionWeight||0}" oninput="document.getElementById('e-task-weight-val').textContent=this.value+'%'">
+              <span id="e-task-weight-val" style="font-size:11px;font-weight:700;color:var(--warning);min-width:32px;">${task.completionWeight||0}%</span>
+            </div>
+          </div>
+        </div>
+        <div class="form-row single"><div class="form-field">
+          <label class="form-label">Poznámka</label>
+          <input class="form-input" id="e-task-notes" placeholder="Volitelná poznámka..." value="${escHtml(task.notes||'')}">
+        </div></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal()">Zrušit</button>
+        <button class="btn btn-primary" onclick="confirmEditTask('${taskId}')">Uložit změny</button>
+      </div>
+    </div>
+  `);
+}
+
+function confirmEditTask(taskId) {
+  const task = findTask(taskId);
+  if (!task) return;
+  
+  task.name = document.getElementById('e-task-name').value.trim();
+  task.assignee = document.getElementById('e-task-assignee').value.trim();
+  task.startDate = document.getElementById('e-task-start').value;
+  task.endDate = document.getElementById('e-task-end').value;
+  task.budget = parseFloat(document.getElementById('e-task-budget').value) || 0;
+  task.progress = parseInt(document.getElementById('e-task-progress').value) || 0;
+  task.completionWeight = parseInt(document.getElementById('e-task-weight').value) || 0;
+  task.notes = document.getElementById('e-task-notes').value.trim();
+
+  // Move to different phase if needed
+  const newPhaseId = document.getElementById('e-task-phase').value;
+  const currentPhase = project.phases.find(p => p.tasks.some(t => t.id === taskId));
+  const newPhase = project.phases.find(p => p.id === newPhaseId);
+  if (currentPhase && newPhase && currentPhase.id !== newPhaseId) {
+    currentPhase.tasks = currentPhase.tasks.filter(t => t.id !== taskId);
+    newPhase.tasks.push(task);
+  }
+
+  closeModal();
+  saveProject(true);
+  render();
+}
+
+function openAddMilestoneModal() {
+  const phaseOptions = project.phases.map(p => `<option value="${p.id}">${escHtml(p.name)}</option>`).join('');
+  const today = new Date().toISOString().split('T')[0];
+  
+  openModal(`
+    <div class="modal">
+      <div class="modal-header">
+        <span class="modal-title">Přidat milník</span>
+        <button class="modal-close" onclick="closeModal()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="form-row single"><div class="form-field">
+          <label class="form-label">Název milníku</label>
+          <input class="form-input" id="m-ms-name" placeholder="např. Kolaudace" autofocus>
+        </div></div>
+        <div class="form-row">
+          <div class="form-field">
+            <label class="form-label">Fáze</label>
+            <select class="form-select" id="m-ms-phase">${phaseOptions}</select>
+          </div>
+          <div class="form-field">
+            <label class="form-label">Datum</label>
+            <input class="form-input" type="date" id="m-ms-date" value="${today}">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal()">Zrušit</button>
+        <button class="btn btn-primary" onclick="confirmAddMilestone()">Přidat milník</button>
+      </div>
+    </div>
+  `);
+}
+
+function confirmAddMilestone() {
+  const name = document.getElementById('m-ms-name').value.trim();
+  const phaseId = document.getElementById('m-ms-phase').value;
+  if (!name || !phaseId) return;
+  const task = {
+    id: 'ms_' + (project.nextId++),
+    name,
+    type: 'milestone',
+    startDate: document.getElementById('m-ms-date').value,
+    endDate: document.getElementById('m-ms-date').value
+  };
+  const phase = project.phases.find(p => p.id === phaseId);
+  if (phase) phase.tasks.push(task);
+  closeModal();
+  saveProject(true);
+  render();
+}
+
+/* ═══════════════════════════════════════════════════
+   TEMPLATES
+═══════════════════════════════════════════════════ */
+const TEMPLATES = {
+  rodinnydm: {
+    name: 'Rodinný dům',
+    icon: '🏠',
+    desc: 'Výstavba rodinného domu na klíč',
+    phases: [
+      { name: 'Projektová příprava', tasks: [
+        { name: 'Projekt, stavební povolení', days: 60, budget: 150000, w: 80 },
+        { name: 'Výběrové řízení dodavatelů', days: 30, budget: 10000, w: 50 }
+      ]},
+      { name: 'Hrubá spodní stavba', tasks: [
+        { name: 'Zemní práce a výkopy', days: 14, budget: 120000, w: 30 },
+        { name: 'Základy a základová deska', days: 21, budget: 280000, w: 40 },
+        { name: 'Hydroizolace spodní stavby', days: 7, budget: 80000, w: 60 }
+      ]},
+      { name: 'Hrubá vrchní stavba', tasks: [
+        { name: 'Svislé nosné konstrukce', days: 30, budget: 450000, w: 30 },
+        { name: 'Stropy a průvlaky', days: 21, budget: 380000, w: 40 },
+        { name: 'Krov a střešní konstrukce', days: 21, budget: 320000, w: 50 },
+        { name: 'Střešní krytina a klempíři', days: 14, budget: 180000, w: 60 }
+      ]},
+      { name: 'Instalace', tasks: [
+        { name: 'Hrubé rozvody elektro', days: 21, budget: 160000, w: 40 },
+        { name: 'Hrubé rozvody ZTI', days: 14, budget: 120000, w: 40 },
+        { name: 'Hrubé rozvody vytápění', days: 14, budget: 140000, w: 40 }
+      ]},
+      { name: 'Dokončovací práce', tasks: [
+        { name: 'Omítky a potěry', days: 21, budget: 220000, w: 20 },
+        { name: 'Podlahy', days: 14, budget: 280000, w: 30 },
+        { name: 'Obklady a dlažby', days: 14, budget: 180000, w: 30 },
+        { name: 'Malby a nátěry', days: 10, budget: 80000, w: 20 },
+        { name: 'Dokončení instalací', days: 14, budget: 250000, w: 70 },
+        { name: 'Venkovní terén a zpevněné plochy', days: 14, budget: 150000, w: 50 }
+      ]}
+    ]
+  },
+  bytovydm: {
+    name: 'Bytový dům',
+    icon: '🏢',
+    desc: 'Novostavba bytového domu',
+    phases: [
+      { name: 'Příprava projektu', tasks: [
+        { name: 'Projektová dokumentace', days: 90, budget: 800000, w: 80 },
+        { name: 'Územní a stavební řízení', days: 120, budget: 150000, w: 90 },
+        { name: 'Výběrové řízení GD', days: 45, budget: 30000, w: 50 }
+      ]},
+      { name: 'Spodní stavba', tasks: [
+        { name: 'Zemní práce', days: 30, budget: 800000, w: 20 },
+        { name: 'Piloty / základy', days: 45, budget: 2200000, w: 40 },
+        { name: 'Podzemní podlaží', days: 60, budget: 3500000, w: 30 }
+      ]},
+      { name: 'Hrubá stavba', tasks: [
+        { name: 'Nosná konstrukce — NP', days: 120, budget: 8500000, w: 30 },
+        { name: 'Střešní plášť', days: 30, budget: 1200000, w: 50 }
+      ]},
+      { name: 'Instalace a technologie', tasks: [
+        { name: 'Elektroinstalace', days: 60, budget: 2500000, w: 40 },
+        { name: 'ZTI a kanalizace', days: 45, budget: 1800000, w: 40 },
+        { name: 'Vzduchotechnika', days: 45, budget: 1500000, w: 50 },
+        { name: 'Výtahy', days: 30, budget: 1200000, w: 80 }
+      ]},
+      { name: 'Dokončovací práce', tasks: [
+        { name: 'Fasáda a obvodový plášť', days: 60, budget: 4500000, w: 50 },
+        { name: 'Interiéry bytů', days: 90, budget: 6000000, w: 30 },
+        { name: 'Společné prostory', days: 45, budget: 2000000, w: 40 },
+        { name: 'Venkovní úpravy', days: 30, budget: 1500000, w: 50 }
+      ]}
+    ]
+  },
+  rekonstrukce: {
+    name: 'Rekonstrukce bytu',
+    icon: '🔨',
+    desc: 'Kompletní rekonstrukce bytové jednotky',
+    phases: [
+      { name: 'Příprava', tasks: [
+        { name: 'Projekt interiéru', days: 21, budget: 40000, w: 90 },
+        { name: 'Bourací práce', days: 7, budget: 30000, w: 20 }
+      ]},
+      { name: 'Rozvody a instalace', tasks: [
+        { name: 'Elektroinstalace', days: 14, budget: 60000, w: 60 },
+        { name: 'ZTI', days: 10, budget: 45000, w: 60 },
+        { name: 'Podlahové topení', days: 7, budget: 35000, w: 50 }
+      ]},
+      { name: 'Povrchové práce', tasks: [
+        { name: 'Omítky a sádrokarton', days: 14, budget: 55000, w: 30 },
+        { name: 'Podlahy a potěry', days: 10, budget: 70000, w: 40 },
+        { name: 'Obklady a dlažby', days: 10, budget: 60000, w: 40 },
+        { name: 'Malby', days: 7, budget: 25000, w: 20 }
+      ]},
+      { name: 'Dokončení', tasks: [
+        { name: 'Kuchyně a vestavěný nábytek', days: 5, budget: 120000, w: 80 },
+        { name: 'Dokončení instalací', days: 5, budget: 30000, w: 70 },
+        { name: 'Předání', days: 2, budget: 5000, w: 100 }
+      ]}
+    ]
+  },
+  komercni: {
+    name: 'Komerční stavba',
+    icon: '🏗️',
+    desc: 'Výstavba komerčního objektu (hala, sklad, prodejna)',
+    phases: [
+      { name: 'Přípravná fáze', tasks: [
+        { name: 'Projekt a stavební povolení', days: 90, budget: 500000, w: 80 },
+        { name: 'Příprava staveniště', days: 21, budget: 200000, w: 30 }
+      ]},
+      { name: 'Konstrukční část', tasks: [
+        { name: 'Zemní práce a základy', days: 30, budget: 1200000, w: 30 },
+        { name: 'Ocelová / prefab. konstrukce', days: 45, budget: 4500000, w: 50 },
+        { name: 'Střecha a opláštění', days: 30, budget: 2500000, w: 40 }
+      ]},
+      { name: 'TZB a technologie', tasks: [
+        { name: 'Elektro a silnoproud', days: 30, budget: 800000, w: 50 },
+        { name: 'VZT a chlazení', days: 21, budget: 600000, w: 50 },
+        { name: 'Sprinkler a EPS', days: 14, budget: 400000, w: 60 }
+      ]},
+      { name: 'Finalizace', tasks: [
+        { name: 'Podlahy průmyslové', days: 14, budget: 700000, w: 40 },
+        { name: 'Venkovní zpevněné plochy', days: 21, budget: 900000, w: 30 },
+        { name: 'Přípojky a infrastruktura', days: 14, budget: 500000, w: 50 }
+      ]}
+    ]
+  },
+  inzsite: {
+    name: 'Inženýrské sítě',
+    icon: '⛏️',
+    desc: 'Výstavba inženýrských sítí a infrastruktury',
+    phases: [
+      { name: 'Příprava', tasks: [
+        { name: 'Projekt a DUR/DSP', days: 60, budget: 300000, w: 90 },
+        { name: 'Vyjádření správců sítí', days: 45, budget: 20000, w: 90 },
+        { name: 'Výběrové řízení', days: 30, budget: 15000, w: 50 }
+      ]},
+      { name: 'Výkopové práce', tasks: [
+        { name: 'Demolice a příprava trasy', days: 14, budget: 400000, w: 20 },
+        { name: 'Zemní práce — hlavní trasa', days: 30, budget: 800000, w: 20 },
+        { name: 'Přeložky stávajících sítí', days: 21, budget: 600000, w: 30 }
+      ]},
+      { name: 'Hlavní práce', tasks: [
+        { name: 'Pokládka vodovodu / kanalizace', days: 30, budget: 1500000, w: 30 },
+        { name: 'Pokládka el. kabelů / optiky', days: 21, budget: 800000, w: 30 },
+        { name: 'Pokládka plynovodu', days: 14, budget: 600000, w: 30 }
+      ]},
+      { name: 'Dokončení', tasks: [
+        { name: 'Zásypy a zhutnění', days: 14, budget: 300000, w: 20 },
+        { name: 'Obnova povrchů — vozovky', days: 14, budget: 700000, w: 30 },
+        { name: 'Tlaková / TV zkouška', days: 7, budget: 50000, w: 80 },
+        { name: 'Geodetické zaměření a kolaudace', days: 10, budget: 80000, w: 90 }
+      ]}
+    ]
+  }
+};
+
+function openTemplateModal() {
+  openModal(`
+    <div class="modal" style="width:580px;">
+      <div class="modal-header">
+        <span class="modal-title">Nový projekt ze šablony</span>
+        <button class="modal-close" onclick="closeModal()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size:11px;color:var(--text-muted);margin-bottom:16px;">Vyberte typ stavby — šablona předvyplní fáze, typické úkoly a orientační rozpočty.</p>
+        <div class="template-grid">
+          ${Object.entries(TEMPLATES).map(([key, t]) => `
+            <div class="template-card" onclick="selectTemplate('${key}')" id="tpl-${key}">
+              <div class="template-icon">${t.icon}</div>
+              <div class="template-name">${t.name}</div>
+              <div class="template-desc">${t.desc}</div>
+            </div>
+          `).join('')}
+        </div>
+        <div style="margin-top:16px;">
+          <div class="form-row">
+            <div class="form-field">
+              <label class="form-label">Název projektu</label>
+              <input class="form-input" id="tpl-project-name" placeholder="Např. Rodinný dům Novák">
+            </div>
+            <div class="form-field">
+              <label class="form-label">Datum zahájení</label>
+              <input class="form-input" type="date" id="tpl-start-date" value="${new Date().toISOString().split('T')[0]}">
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal()">Zrušit</button>
+        <button class="btn btn-primary" onclick="confirmLoadTemplate()">Vytvořit projekt</button>
+      </div>
+    </div>
+  `);
+}
+
+let selectedTemplateKey = null;
+
+function selectTemplate(key) {
+  selectedTemplateKey = key;
+  document.querySelectorAll('.template-card').forEach(c => c.classList.remove('selected'));
+  const el = document.getElementById('tpl-' + key);
+  if (el) el.classList.add('selected');
+  // Pre-fill project name if empty
+  const inp = document.getElementById('tpl-project-name');
+  if (inp && !inp.value) inp.value = TEMPLATES[key].name;
+}
+
+function confirmLoadTemplate() {
+  const key = selectedTemplateKey;
+  if (!key) { alert('Vyberte šablonu.'); return; }
+  const pname = document.getElementById('tpl-project-name').value.trim() || TEMPLATES[key].name;
+  const startDate = document.getElementById('tpl-start-date').value;
+  closeModal();
+  loadTemplate(key, pname, startDate);
+}
+
+function loadTemplate(key, projectName, startDateStr) {
+  const tpl = TEMPLATES[key];
+  if (!tpl) return;
+  
+  project.phases = [];
+  project.nextId = 1;
+  project.name = projectName || tpl.name;
+  
+  let currentDate = startDateStr ? new Date(startDateStr) : new Date();
+  currentDate.setDate(1);
+
+  tpl.phases.forEach(ph => {
+    const phase = {
+      id: 'ph_' + (project.nextId++),
+      name: ph.name,
+      collapsed: false,
+      tasks: []
+    };
+    ph.tasks.forEach(t => {
+      const start = new Date(currentDate);
+      const end = new Date(currentDate);
+      end.setDate(end.getDate() + t.days);
+      phase.tasks.push({
+        id: 'task_' + (project.nextId++),
+        name: t.name,
+        type: 'task',
+        startDate: start.toISOString().split('T')[0],
+        endDate: end.toISOString().split('T')[0],
+        budget: t.budget,
+        progress: 0,
+        completionWeight: t.w || 0
+      });
+      currentDate = new Date(end);
+      currentDate.setDate(currentDate.getDate() + 1);
+    });
+    project.phases.push(phase);
+  });
+
+  saveProject(true);
+  render();
+}
+
+/* ═══════════════════════════════════════════════════
+   DATA OPERATIONS
+═══════════════════════════════════════════════════ */
+function findTask(taskId) {
+  for (const ph of project.phases) {
+    const t = ph.tasks.find(t => t.id === taskId);
+    if (t) return t;
+  }
+  return null;
+}
+
+function selectTask(taskId) {
+  selectedTaskId = taskId;
+  renderWBS();
+  renderGantt();
+}
+
+function togglePhase(phaseId) {
+  const ph = project.phases.find(p => p.id === phaseId);
+  if (ph) { ph.collapsed = !ph.collapsed; render(); }
+}
+
+function deletePhase(phaseId) {
+  if (!confirm('Smazat celou fázi včetně všech úkolů?')) return;
+  project.phases = project.phases.filter(p => p.id !== phaseId);
+  saveProject(true);
+  render();
+}
+
+function deleteTask(taskId) {
+  if (!confirm('Smazat tento úkol?')) return;
+  project.phases.forEach(ph => {
+    ph.tasks = ph.tasks.filter(t => t.id !== taskId);
+  });
+  saveProject(true);
+  render();
+}
+
+function updatePhaseName(phaseId, name) {
+  const ph = project.phases.find(p => p.id === phaseId);
+  if (ph) { ph.name = name; saveProject(true); }
+}
+
+function updateTaskField(taskId, field, value) {
+  const task = findTask(taskId);
+  if (task) { task[field] = value; saveProject(true); renderHeader(); }
+}
+
+function cycleStatus() {
+  const statuses = ['priprava', 'realizace', 'dokonceno'];
+  const idx = statuses.indexOf(project.status);
+  project.status = statuses[(idx + 1) % statuses.length];
+  saveProject(true);
+  renderHeader();
+}
+
+function editProjectMeta() {
+  const code = prompt('Kód projektu:', project.code || 'PRJ-001');
+  if (code !== null) { project.code = code; saveProject(true); renderHeader(); }
+}
+
+document.getElementById('project-name').addEventListener('change', (e) => {
+  project.name = e.target.value.trim() || 'Nový projekt';
+  saveProject(true);
+});
+
+/* ═══════════════════════════════════════════════════
+   SAVE / LOAD
+═══════════════════════════════════════════════════ */
+function saveProject(silent) {
+  localStorage.setItem('besixtime_project', JSON.stringify(project));
+  if (!silent) showToast('Projekt uložen');
+}
+
+function loadProject() {
+  document.getElementById('json-file-input').click();
+}
+
+function exportProjectJSON() {
+  const blob = new Blob([JSON.stringify(project, null, 2)], {type: 'application/json'});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = (project.name || 'projekt').replace(/\s/g,'_') + '.json';
+  a.click();
+  showToast('JSON exportován');
+}
+
+function importProjectJSON() {
+  document.getElementById('json-file-input').click();
+}
+
+function handleJSONImport(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    try {
+      project = JSON.parse(ev.target.result);
+      saveProject(true);
+      render();
+      showToast('Projekt importován');
+    } catch(err) { alert('Chyba při importu JSON: ' + err.message); }
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+}
+
+function exportCashflowXLSX() {
+  const data = buildCashflowData();
+  const mn = ['Leden','Únor','Březen','Duben','Květen','Červen','Červenec','Srpen','Září','Říjen','Listopad','Prosinec'];
+  const monthLabels = data.months.map(m => mn[m.getMonth()] + ' ' + m.getFullYear());
+
+  const wb = XLSX.utils.book_new();
+  
+  // Summary sheet
+  const summaryData = [
+    ['BeSix Time — Cashflow Export'],
+    ['Projekt:', project.name],
+    ['Kód:', project.code],
+    ['Datum exportu:', new Date().toLocaleDateString('cs-CZ')],
+    [],
+    ['Fáze / Úkol', ...monthLabels, 'CELKEM']
+  ];
+
+  const phaseMap = {};
+  data.taskData.forEach(t => {
+    if (!phaseMap[t.phaseName]) phaseMap[t.phaseName] = { tasks: [], monthly: new Array(data.months.length).fill(0) };
+    phaseMap[t.phaseName].tasks.push(t);
+    t.monthly.forEach((v,i) => phaseMap[t.phaseName].monthly[i] += v);
+  });
+
+  Object.entries(phaseMap).forEach(([phaseName, pd]) => {
+    const phTotal = pd.monthly.reduce((a,b) => a+b, 0);
+    summaryData.push([phaseName, ...pd.monthly.map(v => Math.round(v)), Math.round(phTotal)]);
+    pd.tasks.forEach(t => {
+      const tTotal = t.monthly.reduce((a,b) => a+b, 0);
+      summaryData.push(['  └ ' + t.taskName, ...t.monthly.map(v => Math.round(v)), Math.round(tTotal)]);
+    });
+  });
+
+  const grandTotal = data.totalMonthly.reduce((a,b) => a+b, 0);
+  summaryData.push(['CELKEM', ...data.totalMonthly.map(v => Math.round(v)), Math.round(grandTotal)]);
+  summaryData.push([]);
+  summaryData.push(['Kumulativní plán', ...data.cumulative.map(v => Math.round(v)), '']);
+
+  const ws = XLSX.utils.aoa_to_sheet(summaryData);
+  ws['!cols'] = [{wch: 35}, ...data.months.map(() => ({wch: 14})), {wch: 16}];
+  XLSX.utils.book_append_sheet(wb, ws, 'Cashflow');
+
+  const fname = (project.name || 'projekt').replace(/\s/g,'_') + '_cashflow.xlsx';
+  XLSX.writeFile(wb, fname);
+  showToast('Excel exportován');
+}
+
+/* ═══════════════════════════════════════════════════
+   TOAST
+═══════════════════════════════════════════════════ */
+function showToast(msg) {
+  const existing = document.getElementById('toast');
+  if (existing) existing.remove();
+  const t = document.createElement('div');
+  t.id = 'toast';
+  t.style.cssText = `
+    position:fixed;bottom:24px;right:24px;
+    background:var(--charcoal);color:white;
+    padding:10px 18px;border-radius:6px;
+    font-size:11px;font-weight:700;
+    box-shadow:var(--shadow-lg);
+    z-index:9999;
+    border-left:3px solid var(--olive);
+    animation:slideUp 0.2s ease;
+    font-family:var(--font-main);
+  `;
+  t.textContent = '✓ ' + msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2500);
+}
+
+/* ═══════════════════════════════════════════════════
+   EXPORT MENU
+═══════════════════════════════════════════════════ */
+function toggleExportMenu(e) {
+  e.stopPropagation();
+  const menu = document.getElementById('export-menu');
+  menu.classList.toggle('hidden');
+}
+
+document.addEventListener('click', () => {
+  const menu = document.getElementById('export-menu');
+  if (menu) menu.classList.add('hidden');
+});
+
+/* ═══════════════════════════════════════════════════
+   HELPERS
+═══════════════════════════════════════════════════ */
+function daysBetween(a, b) {
+  const da = a instanceof Date ? a : new Date(a);
+  const db = b instanceof Date ? b : new Date(b);
+  return Math.max(0, Math.round((db - da) / 86400000));
+}
+
+function getOverlapDays(start1, end1, start2, end2) {
+  const s = Math.max(start1.getTime(), start2.getTime());
+  const e = Math.min(end1.getTime(), end2.getTime());
+  return Math.max(0, (e - s) / 86400000);
+}
+
+function formatDateShort(dateStr) {
+  if (!dateStr) return '—';
+  const d = new Date(dateStr);
+  return d.getDate() + '.' + (d.getMonth()+1) + '.' + d.getFullYear();
+}
+
+function formatCZK(v) {
+  if (!v) return '0 Kč';
+  if (v >= 1000000) return (v/1000000).toFixed(1).replace('.',',') + ' mil. Kč';
+  if (v >= 10000) return Math.round(v/1000).toLocaleString('cs-CZ') + ' tis. Kč';
+  return v.toLocaleString('cs-CZ') + ' Kč';
+}
+
+function escHtml(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function getPhaseDates(phase) {
+  const dates = phase.tasks.filter(t=>t.startDate).map(t => ({ s: new Date(t.startDate), e: new Date(t.endDate||t.startDate) }));
+  if (!dates.length) return { start: '—', end: '—' };
+  const s = new Date(Math.min(...dates.map(d=>d.s.getTime())));
+  const e = new Date(Math.max(...dates.map(d=>d.e.getTime())));
+  return { start: formatDateShort(s), end: formatDateShort(e) };
+}
+
+function getPhaseDatesRaw(phase) {
+  const dates = phase.tasks.filter(t=>t.startDate).map(t => ({ s: new Date(t.startDate), e: new Date(t.endDate||t.startDate) }));
+  if (!dates.length) return { start: null, end: null };
+  return { start: new Date(Math.min(...dates.map(d=>d.s.getTime()))), end: new Date(Math.max(...dates.map(d=>d.e.getTime()))) };
+}
+
+function getPhaseBudget(phase) {
+  return phase.tasks.reduce((s,t) => s + (t.budget||0), 0);
+}
+
+function getPhaseProgress(phase) {
+  const tasks = phase.tasks.filter(t => t.type !== 'milestone');
+  if (!tasks.length) return 0;
+  return Math.round(tasks.reduce((s,t) => s + (t.progress||0), 0) / tasks.length);
+}
+
+function isOverdue(task) {
+  if (!task.endDate || task.progress >= 100) return false;
+  return new Date(task.endDate) < new Date();
+}
+
+function getWeekNumber(d) {
+  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  date.setUTCDate(date.getUTCDate() + 4 - (date.getUTCDay()||7));
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(),0,1));
+  return Math.ceil((((date - yearStart) / 86400000) + 1)/7);
+}
+
+function groupDaysByMonth(start, end) {
+  const groups = [];
+  let d = new Date(start);
+  while (d <= end) {
+    const month = d.getMonth(), year = d.getFullYear();
+    const mn = ['Leden','Únor','Březen','Duben','Květen','Červen','Červenec','Srpen','Září','Říjen','Listopad','Prosinec'];
+    let days = 0;
+    while (d <= end && d.getMonth() === month) { days++; d.setDate(d.getDate() + 1); }
+    groups.push({ label: mn[month] + ' ' + year, days });
+  }
+  return groups;
+}
+
+function groupWeeksByMonth(start, end) {
+  const groups = [];
+  let d = new Date(start);
+  d.setDate(d.getDate() - d.getDay() + 1);
+  const monthWeeks = {};
+  while (d <= end) {
+    const key = d.getFullYear() + '-' + d.getMonth();
+    if (!monthWeeks[key]) monthWeeks[key] = { month: d.getMonth(), year: d.getFullYear(), weeks: 0 };
+    monthWeeks[key].weeks++;
+    d.setDate(d.getDate() + 7);
+  }
+  const mn = ['Leden','Únor','Březen','Duben','Květen','Červen','Červenec','Srpen','Září','Říjen','Listopad','Prosinec'];
+  Object.values(monthWeeks).forEach(m => groups.push({ label: mn[m.month] + ' ' + m.year, weeks: m.weeks }));
+  return groups;
+}
+
+/* ═══════════════════════════════════════════════════
+   KEYBOARD SHORTCUTS
+═══════════════════════════════════════════════════ */
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeModal();
+  if (e.key === 'n' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); openAddTaskModal(); }
+  if (e.key === 'p' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); openAddPhaseModal(); }
+  if (e.key === 's' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveProject(); }
+});
+
+/* ═══════════════════════════════════════════════════
+   SCROLL SYNC (WBS ↔ Gantt)
+═══════════════════════════════════════════════════ */
+const wbsBody = document.getElementById('wbs-body');
+const ganttScroll = document.getElementById('gantt-scroll-wrap');
+
+let syncingScroll = false;
+
+wbsBody.addEventListener('scroll', () => {
+  if (syncingScroll) return;
+  syncingScroll = true;
+  ganttScroll.scrollTop = wbsBody.scrollTop;
+  requestAnimationFrame(() => syncingScroll = false);
+});
+
+ganttScroll.addEventListener('scroll', () => {
+  if (syncingScroll) return;
+  syncingScroll = true;
+  wbsBody.scrollTop = ganttScroll.scrollTop;
+  requestAnimationFrame(() => syncingScroll = false);
+});
+
+/* ═══════════════════════════════════════════════════
+   START
+═══════════════════════════════════════════════════ */
+init();
+</script>
+</body>
+</html>
