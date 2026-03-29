@@ -2,6 +2,7 @@
 error_reporting(0);
 ini_set('display_errors', 0);
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/mailer.php';
 
 header('Content-Type: application/json');
 header('Cache-Control: no-store');
@@ -101,13 +102,37 @@ if ($action === 'invite' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
-    // Find user by email
+    // Load project name + invite_code for emails
+    $stmtP = $pdo->prepare("SELECT name, invite_code FROM projects WHERE id = ?");
+    $stmtP->execute([$projectId]);
+    $project = $stmtP->fetch();
+    if (!$project) {
+        http_response_code(404);
+        echo json_encode(['ok' => false, 'error' => 'Projekt nenalezen']);
+        exit;
+    }
+
+    // Load inviter name
+    $stmtI = $pdo->prepare("SELECT name FROM users WHERE id = ?");
+    $stmtI->execute([$userId]);
+    $inviter = $stmtI->fetch();
+    $inviterName = $inviter['name'] ?? 'BeSix';
+
+    // Find invitee by email
     $stmt = $pdo->prepare("SELECT id, name FROM users WHERE email = ?");
     $stmt->execute([$email]);
     $user = $stmt->fetch();
 
     if (!$user) {
-        echo json_encode(['ok' => false, 'error' => 'Uživatel s tímto e-mailem není registrován v BeSix']);
+        // Not registered — send invite-link email so they can register & join
+        $inviteUrl = 'https://time.besix.cz/invite.php?code=' . urlencode($project['invite_code']);
+        $html = buildInviteEmail($inviterName, $project['name'], $inviteUrl);
+        $sent = sendBrevoEmail($email, $email, 'Pozvánka do projektu ' . $project['name'] . ' – BeSix Time', $html);
+        echo json_encode([
+            'ok'      => true,
+            'message' => 'Pozvánka odeslána na ' . $email . ($sent ? '' : ' (e-mail se nepodařilo odeslat, zkontrolujte API klíč)'),
+            'invited' => false,
+        ]);
         exit;
     }
 
@@ -119,10 +144,16 @@ if ($action === 'invite' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
+    // Add to project
     $stmt = $pdo->prepare("INSERT INTO project_members (project_id, user_id, role) VALUES (?, ?, ?)");
     $stmt->execute([$projectId, $user['id'], $role]);
 
-    echo json_encode(['ok' => true, 'message' => $user['name'] . ' byl přidán jako ' . $role]);
+    // Send notification email to the added user
+    $projectUrl = 'https://time.besix.cz/';
+    $html = buildAddedToProjectEmail($inviterName, $project['name'], $projectUrl);
+    sendBrevoEmail($email, $user['name'], 'Byli jste přidáni do projektu ' . $project['name'] . ' – BeSix Time', $html);
+
+    echo json_encode(['ok' => true, 'message' => $user['name'] . ' byl přidán jako ' . $role, 'invited' => true]);
     exit;
 }
 
