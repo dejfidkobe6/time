@@ -1814,12 +1814,15 @@ function renderProjectList(projects) {
     return;
   }
   el.innerHTML = projects.map(p => `
-    <div class="proj-sel-item" onclick="selectProject(${p.id}, ${JSON.stringify(escHtml(p.name))})">
+    <div class="proj-sel-item" data-pid="${p.id}" data-name="${_esc(p.name)}">
       <div class="proj-sel-dot" style="background:${p.bg_color || 'var(--olive)'}"></div>
-      <span class="proj-sel-name">${escHtml(p.name)}</span>
-      <span class="proj-sel-role">${escHtml(p.role)}</span>
+      <span class="proj-sel-name">${_esc(p.name)}</span>
+      <span class="proj-sel-role">${_esc(p.role)}</span>
     </div>
   `).join('');
+  el.querySelectorAll('.proj-sel-item').forEach(div => {
+    div.addEventListener('click', () => selectProject(+div.dataset.pid, div.dataset.name));
+  });
 }
 
 async function selectProject(projectId, projectName) {
