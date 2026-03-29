@@ -2161,42 +2161,169 @@ function openProjectOverview() {
    SPRÁVA UŽIVATELŮ
 ═══════════════════════════════════════════════════ */
 async function openMembersModal() {
+  if (!currentProjectId) return;
   openModal(`
-    <div class="modal">
+    <div class="modal" style="max-width:500px;">
       <div class="modal-header">
         <span class="modal-title">Správa uživatelů</span>
         <button class="modal-close" onclick="closeModal()">×</button>
       </div>
-      <div class="modal-body" id="members-modal-body">
-        <div style="text-align:center;padding:20px;color:var(--text-muted);font-size:12px;">Načítám…</div>
+      <div class="modal-body" id="members-modal-body" style="padding:0;">
+        <div style="text-align:center;padding:24px;color:var(--text-muted);font-size:12px;">Načítám…</div>
       </div>
     </div>
   `);
+  await reloadMembersModal();
+}
 
+async function reloadMembersModal() {
+  const body = document.getElementById('members-modal-body');
+  if (!body) return;
   try {
-    const res = await fetch('/api/projects.php?action=members&project_id=' + currentProjectId);
-    const data = await res.json();
-    const members = data.members || [];
-    const roleLabel = { owner: 'Vlastník', admin: 'Admin', member: 'Člen', viewer: 'Viewer' };
-    document.getElementById('members-modal-body').innerHTML = `
-      <div style="margin-bottom:12px;font-size:12px;color:var(--text-muted);font-weight:600;">${members.length} člen${members.length === 1 ? '' : 'ů'}</div>
-      ${members.map(m => `
-        <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border-light);">
-          <div style="width:32px;height:32px;border-radius:50%;background:${m.avatar_color||'var(--olive)'};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:white;flex-shrink:0;">
-            ${_esc((m.name||'?').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase())}
+    const [mRes, lRes] = await Promise.all([
+      fetch('/api/projects.php?action=members&project_id=' + currentProjectId),
+      fetch('/api/projects.php?action=invite_link&project_id=' + currentProjectId),
+    ]);
+    const mData = await mRes.json();
+    const lData = lRes.ok ? await lRes.json() : {};
+    const members = mData.members || [];
+    const inviteCode = lData.invite_code || '';
+    const inviteUrl = inviteCode ? location.origin + '/invite.php?code=' + inviteCode : '';
+
+    const roleLabel = { owner: 'Vlastník', admin: 'Admin', member: 'Člen', viewer: 'Prohlížeč' };
+    const roleColor = { owner: 'var(--olive)', admin: 'var(--warning)', member: 'var(--text-muted)', viewer: 'var(--text-muted)' };
+
+    // Check current user role
+    const myMember = members.find(m => currentUser && +m.id === +currentUser.id);
+    const canManage = myMember && (myMember.role === 'owner' || myMember.role === 'admin');
+
+    body.innerHTML = `
+      <div style="padding:16px 20px;border-bottom:1px solid var(--border);">
+        <div style="font-size:11px;font-weight:700;color:var(--text-muted);margin-bottom:12px;">${members.length} člen${members.length === 1 ? '' : members.length < 5 ? 'i' : 'ů'}</div>
+        ${members.map(m => `
+          <div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border-light);">
+            <div style="width:34px;height:34px;border-radius:50%;background:${m.avatar_color||'var(--olive)'};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:white;flex-shrink:0;">
+              ${_esc((m.name||'?').split(' ').filter(Boolean).map(w=>w[0]).join('').slice(0,2).toUpperCase())}
+            </div>
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${_esc(m.name)}</div>
+              <div style="font-size:11px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${_esc(m.email)}</div>
+            </div>
+            ${canManage && m.role !== 'owner' ? `
+              <select style="font-size:10px;font-weight:700;border:1px solid var(--border);border-radius:4px;padding:3px 6px;background:var(--bg);color:var(--text);font-family:var(--font-main);cursor:pointer;"
+                onchange="changeMemberRole(${m.id},this.value)">
+                <option value="admin" ${m.role==='admin'?'selected':''}>Admin</option>
+                <option value="member" ${m.role==='member'?'selected':''}>Člen</option>
+                <option value="viewer" ${m.role==='viewer'?'selected':''}>Prohlížeč</option>
+              </select>
+              <button onclick="removeMember(${m.id},'${_esc(m.name)}')"
+                style="width:26px;height:26px;display:flex;align-items:center;justify-content:center;border:none;background:none;color:var(--text-muted);cursor:pointer;border-radius:4px;font-size:16px;flex-shrink:0;transition:all 0.1s;"
+                onmouseover="this.style.background='var(--danger-light)';this.style.color='var(--danger)'"
+                onmouseout="this.style.background='none';this.style.color='var(--text-muted)'"
+                title="Odebrat člena">×</button>
+            ` : `
+              <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:${roleColor[m.role]||'var(--text-muted)'};background:var(--bg);padding:3px 9px;border-radius:20px;border:1px solid var(--border);white-space:nowrap;">${roleLabel[m.role]||m.role}</span>
+            `}
           </div>
-          <div style="flex:1;">
-            <div style="font-size:13px;font-weight:700;">${_esc(m.name)}</div>
-            <div style="font-size:11px;color:var(--text-muted);">${_esc(m.email)}</div>
+        `).join('')}
+      </div>
+
+      ${canManage ? `
+        <div style="padding:16px 20px;border-bottom:1px solid var(--border);">
+          <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:0.7px;color:var(--text-muted);margin-bottom:10px;">Pozvat uživatele</div>
+          <div style="display:flex;gap:8px;align-items:flex-start;">
+            <input class="form-input" id="invite-email" type="email" placeholder="E-mail uživatele" style="flex:1;font-size:12px;">
+            <select class="form-select" id="invite-role" style="width:108px;font-size:12px;">
+              <option value="member">Člen</option>
+              <option value="admin">Admin</option>
+              <option value="viewer">Prohlížeč</option>
+            </select>
+            <button class="btn btn-primary" style="white-space:nowrap;font-size:11px;" onclick="inviteMember()">Pozvat</button>
           </div>
-          <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);background:var(--bg);padding:3px 8px;border-radius:20px;border:1px solid var(--border);">${roleLabel[m.role]||m.role}</span>
+          <div id="invite-msg" style="font-size:11px;margin-top:6px;min-height:16px;"></div>
         </div>
-      `).join('')}
+
+        ${inviteUrl ? `
+          <div style="padding:14px 20px;">
+            <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:0.7px;color:var(--text-muted);margin-bottom:8px;">Odkaz pro přidání</div>
+            <div style="display:flex;gap:6px;">
+              <input class="form-input" value="${_esc(inviteUrl)}" readonly style="flex:1;font-size:11px;color:var(--text-muted);background:var(--bg);" onclick="this.select()">
+              <button class="btn btn-secondary" style="font-size:11px;white-space:nowrap;" onclick="copyInviteLink('${_esc(inviteUrl)}',this)">Kopírovat</button>
+            </div>
+            <div style="font-size:10px;color:var(--text-muted);margin-top:5px;">Každý, kdo otevře tento odkaz a je přihlášen, se stane členem projektu.</div>
+          </div>
+        ` : ''}
+      ` : ''}
     `;
   } catch(e) {
-    document.getElementById('members-modal-body').innerHTML =
-      '<div style="color:var(--danger);font-size:12px;">Nepodařilo se načíst členy.</div>';
+    if (document.getElementById('members-modal-body')) {
+      document.getElementById('members-modal-body').innerHTML =
+        '<div style="padding:20px;color:var(--danger);font-size:12px;">Nepodařilo se načíst členy: ' + e.message + '</div>';
+    }
   }
+}
+
+async function inviteMember() {
+  const email = document.getElementById('invite-email')?.value.trim();
+  const role  = document.getElementById('invite-role')?.value;
+  const msg   = document.getElementById('invite-msg');
+  if (!email) return;
+  msg.style.color = 'var(--text-muted)';
+  msg.textContent = 'Odesílám…';
+  try {
+    const res = await fetch('/api/projects.php?action=invite', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project_id: currentProjectId, email, role }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      msg.style.color = 'var(--success)';
+      msg.textContent = '✓ ' + (data.message || 'Uživatel přidán');
+      document.getElementById('invite-email').value = '';
+      setTimeout(() => reloadMembersModal(), 800);
+    } else {
+      msg.style.color = 'var(--danger)';
+      msg.textContent = data.error || 'Chyba';
+    }
+  } catch(e) {
+    msg.style.color = 'var(--danger)';
+    msg.textContent = 'Chyba: ' + e.message;
+  }
+}
+
+async function removeMember(memberId, memberName) {
+  if (!confirm('Odebrat ' + memberName + ' z projektu?')) return;
+  try {
+    const res = await fetch('/api/projects.php?action=remove_member', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project_id: currentProjectId, user_id: memberId }),
+    });
+    const data = await res.json();
+    if (data.ok) { showToast(memberName + ' odebrán'); reloadMembersModal(); }
+    else alert(data.error || 'Nepodařilo se odebrat člena');
+  } catch(e) { alert('Chyba: ' + e.message); }
+}
+
+async function changeMemberRole(memberId, newRole) {
+  try {
+    const res = await fetch('/api/projects.php?action=change_role', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project_id: currentProjectId, user_id: memberId, role: newRole }),
+    });
+    const data = await res.json();
+    if (data.ok) showToast('Role změněna');
+    else { alert(data.error || 'Nepodařilo se změnit roli'); reloadMembersModal(); }
+  } catch(e) { alert('Chyba: ' + e.message); }
+}
+
+function copyInviteLink(url, btn) {
+  navigator.clipboard.writeText(url).then(() => {
+    btn.textContent = '✓ Zkopírováno';
+    setTimeout(() => btn.textContent = 'Kopírovat', 2000);
+  });
 }
 
 /* ═══════════════════════════════════════════════════
