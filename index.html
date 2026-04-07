@@ -1504,6 +1504,17 @@ html, body {
 .sched-btn.manual { color: var(--text-muted); border-color: var(--border); }
 .sched-btn svg { width: 12px; height: 12px; }
 
+/* Fill handle — chain-create dependencies by dragging down */
+.row-fill-handle {
+  position: absolute; right: 3px; bottom: 3px;
+  width: 9px; height: 9px;
+  background: var(--olive); border-radius: 2px;
+  cursor: s-resize; opacity: 0; transition: opacity 0.15s;
+  z-index: 4;
+}
+.wbs-row:hover .row-fill-handle { opacity: 0.7; }
+.wbs-row.fill-preview { background: rgba(74,83,64,0.12) !important; outline: 1px dashed var(--olive); outline-offset: -1px; }
+
 /* ═══════════════════════════════════════
    BAR RESIZE & CONNECT HANDLES
 ═══════════════════════════════════════ */
@@ -2827,7 +2838,8 @@ function createTaskRow(task, phase, pi, ti) {
       <button class="row-action-btn danger" onclick="deleteTask('${task.id}');event.stopPropagation();" title="Smazat">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
       </button>
-    </div>`;
+    </div>
+    <div class="row-fill-handle" data-taskid="${task.id}" title="Potáhnout pro hromadné propojení"></div>`;
   return row;
 }
 
@@ -3356,6 +3368,83 @@ function initDepDraw() {
       }
     }
     drawingFrom = null;
+  });
+}
+
+/* ═══════════════════════════════════════════════════
+   FILL HANDLE — drag down to chain-link multiple tasks
+═══════════════════════════════════════════════════ */
+function initFillHandle() {
+  const wbsBody = document.getElementById('wbs-body');
+  let dragging = false;
+  let fromTaskId = null;
+  let previewed = [];
+
+  function allTaskRows() {
+    return [...document.querySelectorAll('#wbs-body .wbs-row[data-task-id]')];
+  }
+
+  wbsBody.addEventListener('mousedown', (e) => {
+    const handle = e.target.closest('.row-fill-handle');
+    if (!handle) return;
+    e.preventDefault(); e.stopPropagation();
+    dragging = true;
+    fromTaskId = handle.dataset.taskid;
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    // Clear previous previews
+    previewed.forEach(r => r.classList.remove('fill-preview'));
+    previewed = [];
+
+    const rows = allTaskRows();
+    const fromRow = rows.find(r => r.dataset.taskId === fromTaskId);
+    if (!fromRow) return;
+    const fromIdx = rows.indexOf(fromRow);
+
+    rows.forEach((row, idx) => {
+      if (idx <= fromIdx) return;
+      const rect = row.getBoundingClientRect();
+      if (rect.top < e.clientY) {
+        row.classList.add('fill-preview');
+        previewed.push(row);
+      }
+    });
+  });
+
+  document.addEventListener('mouseup', (e) => {
+    if (!dragging) return;
+    dragging = false;
+
+    const targetRows = [...previewed];
+    previewed.forEach(r => r.classList.remove('fill-preview'));
+    previewed = [];
+
+    if (!targetRows.length || !fromTaskId) return;
+
+    // Build chain: fromTask → row1 → row2 → …
+    let prevId = fromTaskId;
+    let count = 0;
+    targetRows.forEach(row => {
+      const task = findTask(row.dataset.taskId);
+      if (!task) return;
+      if (!task.predecessors) task.predecessors = [];
+      if (!task.predecessors.some(p => p.taskId === prevId)) {
+        task.predecessors.push({ taskId: prevId, type: 'FS', lag: 0 });
+        enforceConstraints(task);
+        cascadeSuccessors(task.id);
+        count++;
+      }
+      prevId = task.id;
+    });
+
+    if (count) {
+      saveProject(true);
+      render();
+      showToast(`Vytvořeno ${count} vazeb FS`);
+    }
+    fromTaskId = null;
   });
 }
 
@@ -5315,6 +5404,7 @@ function collectPreds(taskId) {
    START
 ═══════════════════════════════════════════════════ */
 initDepDraw();
+initFillHandle();
 initSplitter();
 init();
 </script>
