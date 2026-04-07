@@ -3068,11 +3068,11 @@ function addDays(dateStr, n) {
   return d.toISOString().split('T')[0];
 }
 
-/// Enforce predecessor constraints on a single task (clamp its start if violated)
+/// Enforce predecessor constraints on a single task — strict snap for auto-scheduled tasks
 function enforceConstraints(task) {
   if (task.manual) return;
   const newStart = computeConstrainedStart(task);
-  if (newStart && newStart > task.startDate) {
+  if (newStart && newStart !== task.startDate) {
     const dur = daysBetween(task.startDate, task.endDate);
     task.startDate = newStart;
     task.endDate   = addDays(newStart, dur);
@@ -5046,7 +5046,7 @@ function inlineEdit(span, taskId, field, type) {
     let val = input.value;
     if (type === 'number') val = parseFloat(val) || 0;
     task[field] = val;
-    if (field === 'startDate' || field === 'endDate') cascadeSuccessors(task.id);
+    if (field === 'startDate' || field === 'endDate') { enforceConstraints(task); cascadeSuccessors(task.id); }
     saveProject(true); render();
   }
   input.addEventListener('blur', commit);
