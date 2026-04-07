@@ -1492,7 +1492,7 @@ html, body {
   border-radius: 3px; padding: 1px 4px; color: var(--olive);
   white-space: nowrap; cursor: pointer; transition: border-color 0.1s;
 }
-.pred-chip:hover { border-color: var(--olive); }
+.pred-chip:hover { border-color: var(--olive); background: var(--bg-hover); }
 
 /* ═══════════════════════════════════════
    BAR RESIZE & CONNECT HANDLES
@@ -2705,14 +2705,16 @@ function createTaskRow(task, phase, pi, ti) {
         </div>`;
       case 'wbs': return `<span class="wbs-date-cell" style="color:var(--text-muted);">${getWBSNum(pi,ti)}</span>`;
       case 'predecessors': return `<div class="pred-chips" style="padding:2px 4px;">${
-        (task.predecessors||[]).map(p => {
+        (task.predecessors||[]).map((p, predIdx) => {
           const lbl = formatOnePred(p);
-          return lbl ? `<span class="pred-chip" onclick="openEditTaskModal('${task.id}');event.stopPropagation();" title="Předchůdce">${escHtml(lbl)}</span>` : '';
+          return lbl ? `<span class="pred-chip" ondblclick="openDepEditor(findTask('${task.id}'),${predIdx});event.stopPropagation();" title="Dvojklik pro úpravu vazby">${escHtml(lbl)}</span>` : '';
         }).join('')
       }</div>`;
       case 'successors': return `<div class="pred-chips" style="padding:2px 4px;">${
         getSuccessors(task.id).map(s => {
-          return `<span class="pred-chip" style="border-color:rgba(90,128,64,0.4);" onclick="openEditTaskModal('${s.taskId}');event.stopPropagation();" title="Následovník">${escHtml(s.label)}</span>`;
+          const succTask = findTask(s.taskId);
+          const predIdx = succTask ? (succTask.predecessors||[]).findIndex(p => p.taskId === task.id) : -1;
+          return `<span class="pred-chip" style="border-color:rgba(90,128,64,0.4);" ondblclick="${predIdx>=0?`openDepEditor(findTask('${s.taskId}'),${predIdx});event.stopPropagation();`:''}" title="Dvojklik pro úpravu vazby">${escHtml(s.label)}</span>`;
         }).join('')
       }</div>`;
       case 'start': return `<span class="cell-editable wbs-date-cell" onclick="inlineEdit(this,'${task.id}','startDate','date');event.stopPropagation();">${formatDateShort(task.startDate)}</span>`;
