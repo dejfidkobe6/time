@@ -2671,6 +2671,7 @@ function getCriticalPath() {
 }
 
 function getTaskColor(task, phase, pi) {
+  if (getSettings().showCriticalPath && getCriticalPath().has(task.id)) return '#c0392b';
   const baseColor = PHASE_COLORS[pi % PHASE_COLORS.length];
   if (ganttColorMode === 'phase') return baseColor;
   if (ganttColorMode === 'status') {
@@ -2692,8 +2693,6 @@ function getTaskColor(task, phase, pi) {
     for (let i = 0; i < task.assignee.length; i++) hash = task.assignee.charCodeAt(i) + ((hash << 5) - hash);
     return PHASE_COLORS[Math.abs(hash) % PHASE_COLORS.length];
   }
-  // Critical path override
-  if (getSettings().showCriticalPath && getCriticalPath().has(task.id)) return '#c0392b';
   return baseColor;
 }
 
