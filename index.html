@@ -413,7 +413,27 @@ html, body {
   text-transform: uppercase;
   letter-spacing: 0.7px;
   color: rgba(255,255,255,0.5);
+  user-select: none;
+  position: relative;
 }
+.wbs-col-head[draggable="true"] {
+  cursor: grab;
+}
+.wbs-col-head[draggable="true"]:hover {
+  color: rgba(255,255,255,0.85);
+}
+.wbs-col-head.col-drag-over-left::before,
+.wbs-col-head.col-drag-over-right::after {
+  content: '';
+  position: absolute;
+  top: 0; bottom: 0;
+  width: 2px;
+  background: #8fba6e;
+  border-radius: 2px;
+}
+.wbs-col-head.col-drag-over-left::before  { left: -2px; }
+.wbs-col-head.col-drag-over-right::after  { right: -2px; }
+.wbs-col-head.col-dragging { opacity: 0.35; }
 
 #wbs-body {
   flex: 1;
@@ -2415,8 +2435,63 @@ function renderWBSHeader() {
   hdr.style.gridTemplateColumns = getColTemplate();
   hdr.innerHTML = visibleColumns.map(id => {
     const d = COLUMN_DEFS.find(c => c.id === id);
-    return `<span class="wbs-col-head">${d ? d.label : ''}</span>`;
+    const fixed = d?.fixed;
+    return `<span class="wbs-col-head" data-col-id="${id}" ${fixed ? '' : 'draggable="true"'} title="${d ? d.label : ''}">${d ? d.label : ''}</span>`;
   }).join('');
+  initColDrag(hdr);
+}
+
+function initColDrag(hdr) {
+  let dragColId = null;
+
+  hdr.querySelectorAll('[draggable="true"]').forEach(el => {
+    el.addEventListener('dragstart', e => {
+      dragColId = el.dataset.colId;
+      el.classList.add('col-dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    el.addEventListener('dragend', () => {
+      dragColId = null;
+      hdr.querySelectorAll('.col-dragging, .col-drag-over-left, .col-drag-over-right')
+         .forEach(n => n.classList.remove('col-dragging', 'col-drag-over-left', 'col-drag-over-right'));
+    });
+    el.addEventListener('dragover', e => {
+      if (!dragColId || el.dataset.colId === dragColId) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      hdr.querySelectorAll('.col-drag-over-left, .col-drag-over-right')
+         .forEach(n => n.classList.remove('col-drag-over-left', 'col-drag-over-right'));
+      const rect = el.getBoundingClientRect();
+      const isLeft = e.clientX < rect.left + rect.width / 2;
+      el.classList.add(isLeft ? 'col-drag-over-left' : 'col-drag-over-right');
+    });
+    el.addEventListener('dragleave', () => {
+      el.classList.remove('col-drag-over-left', 'col-drag-over-right');
+    });
+    el.addEventListener('drop', e => {
+      e.preventDefault();
+      if (!dragColId || el.dataset.colId === dragColId) return;
+      const rect = el.getBoundingClientRect();
+      const insertBefore = e.clientX < rect.left + rect.width / 2;
+
+      const fromIdx = visibleColumns.indexOf(dragColId);
+      let toIdx = visibleColumns.indexOf(el.dataset.colId);
+      if (fromIdx < 0 || toIdx < 0) return;
+
+      visibleColumns.splice(fromIdx, 1);
+      toIdx = visibleColumns.indexOf(el.dataset.colId);
+      visibleColumns.splice(insertBefore ? toIdx : toIdx + 1, 0, dragColId);
+
+      // 'name' must stay first
+      if (visibleColumns[0] !== 'name') {
+        visibleColumns = visibleColumns.filter(c => c !== 'name');
+        visibleColumns.unshift('name');
+      }
+
+      localStorage.setItem('bt_cols', JSON.stringify(visibleColumns));
+      renderWBS();
+    });
+  });
 }
 
 function renderWBS() {
