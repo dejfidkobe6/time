@@ -2177,46 +2177,100 @@ function openProjectOverview() {
     ? (totalBudget/1000000).toFixed(1) + ' mil. Kč'
     : totalBudget.toLocaleString('cs-CZ') + ' Kč';
 
+  const inp = `padding:9px 12px;border:1px solid var(--border);border-radius:10px;background:var(--bg-card);color:var(--text);font-size:13px;font-family:inherit;width:100%;box-sizing:border-box;`;
+  const lbl = `font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);margin-bottom:5px;display:block;`;
+
   openModal(`
-    <div class="modal">
+    <div class="modal" style="max-width:480px;">
       <div class="modal-header">
         <span class="modal-title">Přehled projektu</span>
         <button class="modal-close" onclick="closeModal()">×</button>
       </div>
-      <div class="modal-body">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
-          <div style="background:var(--bg);border-radius:var(--radius);padding:14px;">
-            <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-muted);margin-bottom:4px;">Název</div>
-            <div style="font-size:13px;font-weight:700;">${_esc(project.name)}</div>
-          </div>
-          <div style="background:var(--bg);border-radius:var(--radius);padding:14px;">
-            <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-muted);margin-bottom:4px;">Kód</div>
-            <div style="font-size:13px;font-weight:700;">${_esc(project.code)}</div>
-          </div>
-          <div style="background:var(--bg);border-radius:var(--radius);padding:14px;">
-            <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-muted);margin-bottom:4px;">Zahájení</div>
+      <div class="modal-body" style="display:flex;flex-direction:column;gap:14px;">
+        <div>
+          <label style="${lbl}">Název projektu</label>
+          <input id="ov-name" style="${inp}" value="${_esc(project.name)}">
+        </div>
+        <div>
+          <label style="${lbl}">Popis</label>
+          <input id="ov-desc" style="${inp}" value="${_esc(project.description||'')}" placeholder="Volitelný popis…">
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div style="background:var(--bg);border-radius:var(--radius);padding:12px;">
+            <div style="${lbl}">Zahájení</div>
             <div style="font-size:12px;font-weight:600;">${start}</div>
           </div>
-          <div style="background:var(--bg);border-radius:var(--radius);padding:14px;">
-            <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-muted);margin-bottom:4px;">Dokončení</div>
+          <div style="background:var(--bg);border-radius:var(--radius);padding:12px;">
+            <div style="${lbl}">Dokončení</div>
             <div style="font-size:12px;font-weight:600;">${end}</div>
           </div>
-          <div style="background:var(--bg);border-radius:var(--radius);padding:14px;">
-            <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-muted);margin-bottom:4px;">Rozpočet</div>
+          <div style="background:var(--bg);border-radius:var(--radius);padding:12px;">
+            <div style="${lbl}">Rozpočet</div>
             <div style="font-size:13px;font-weight:700;color:var(--olive);">${budgetFmt}</div>
           </div>
-          <div style="background:var(--bg);border-radius:var(--radius);padding:14px;">
-            <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-muted);margin-bottom:4px;">Úkoly</div>
+          <div style="background:var(--bg);border-radius:var(--radius);padding:12px;">
+            <div style="${lbl}">Úkoly</div>
             <div style="font-size:13px;font-weight:700;">${doneCount} / ${taskCount} hotovo</div>
           </div>
         </div>
       </div>
-      <div class="modal-footer">
-        <button class="btn btn-secondary" onclick="closeModal();document.getElementById('project-overlay').classList.remove('hidden');showProjectSelector()">Změnit projekt</button>
-        <button class="btn btn-primary" onclick="closeModal()">Zavřít</button>
+      <div class="modal-footer" style="justify-content:space-between;">
+        <button class="btn btn-danger" onclick="confirmDeleteProject()">Smazat projekt</button>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-secondary" onclick="closeModal();document.getElementById('project-overlay').classList.remove('hidden');showProjectSelector()">Změnit projekt</button>
+          <button class="btn btn-primary" onclick="saveProjectOverview()">Uložit</button>
+        </div>
       </div>
     </div>
   `);
+}
+
+async function saveProjectOverview() {
+  const name = document.getElementById('ov-name').value.trim();
+  const desc = document.getElementById('ov-desc').value.trim();
+  if (!name) { alert('Název je povinný'); return; }
+  try {
+    const res = await fetch('/api/projects.php?action=rename', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project_id: currentProjectId, name, description: desc }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      project.name = name;
+      project.description = desc;
+      const pnEl = document.getElementById('project-name'); if (pnEl) pnEl.value = name;
+      closeModal();
+      showToast('Projekt uložen');
+    } else {
+      alert(data.error || 'Chyba při ukládání');
+    }
+  } catch (e) { alert('Chyba: ' + e.message); }
+}
+
+function confirmDeleteProject() {
+  if (!confirm(`Opravdu smazat projekt „${project.name}"?\n\nTato akce je nevratná — budou smazána všechna data projektu.`)) return;
+  deleteProject();
+}
+
+async function deleteProject() {
+  try {
+    const res = await fetch('/api/projects.php?action=delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project_id: currentProjectId }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      closeModal();
+      currentProjectId = null;
+      project = { name: '', phases: [] };
+      document.getElementById('project-overlay').classList.remove('hidden');
+      showProjectSelector();
+    } else {
+      alert(data.error || 'Chyba při mazání projektu');
+    }
+  } catch (e) { alert('Chyba: ' + e.message); }
 }
 
 /* ═══════════════════════════════════════════════════

@@ -239,5 +239,52 @@ if ($action === 'invite_link') {
     exit;
 }
 
+// --- RENAME ---
+if ($action === 'rename' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    $body      = json_decode(file_get_contents('php://input'), true) ?? [];
+    $projectId = (int)($body['project_id'] ?? 0);
+    $name      = trim($body['name'] ?? '');
+    $code      = trim($body['code'] ?? '');
+    $description = trim($body['description'] ?? '');
+
+    requireProjectRole($projectId, 'admin');
+
+    if ($name === '') {
+        http_response_code(400);
+        echo json_encode(['ok' => false, 'error' => 'Název je povinný']);
+        exit;
+    }
+
+    $stmt = $pdo->prepare("UPDATE projects SET name = ?, description = ? WHERE id = ?");
+    $stmt->execute([$name, $description ?: null, $projectId]);
+    echo json_encode(['ok' => true, 'name' => $name]);
+    exit;
+}
+
+// --- DELETE ---
+if ($action === 'delete' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    $body      = json_decode(file_get_contents('php://input'), true) ?? [];
+    $projectId = (int)($body['project_id'] ?? 0);
+
+    requireProjectRole($projectId, 'owner');
+
+    try {
+        $pdo->beginTransaction();
+        // Delete schedule data
+        $pdo->prepare("DELETE FROM time_schedules WHERE project_id = ?")->execute([$projectId]);
+        // Delete members
+        $pdo->prepare("DELETE FROM project_members WHERE project_id = ?")->execute([$projectId]);
+        // Delete project
+        $pdo->prepare("DELETE FROM projects WHERE id = ?")->execute([$projectId]);
+        $pdo->commit();
+        echo json_encode(['ok' => true]);
+    } catch (Exception $e) {
+        $pdo->rollBack();
+        http_response_code(500);
+        echo json_encode(['ok' => false, 'error' => 'Chyba při mazání projektu']);
+    }
+    exit;
+}
+
 http_response_code(400);
 echo json_encode(['ok' => false, 'error' => 'Neznámá akce']);
