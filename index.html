@@ -3936,6 +3936,7 @@ function openModal(html) {
 function closeModal() {
   const m = document.getElementById('active-modal');
   if (m) m.remove();
+  _insertAfter = null;
 }
 
 function openAddPhaseModal() {
@@ -3988,6 +3989,20 @@ function confirmAddPhase() {
   closeModal();
   saveProject(true);
   render();
+}
+
+let _insertAfter = null; // { phaseId, afterIdx } for Ctrl++ insertion
+
+function addTaskAfterSelected() {
+  if (!selectedTaskId) { openAddTaskModal(); return; }
+  let foundPhase = null, foundIdx = -1;
+  project.phases.forEach(ph => {
+    const idx = ph.tasks.findIndex(t => t.id === selectedTaskId);
+    if (idx >= 0) { foundPhase = ph; foundIdx = idx; }
+  });
+  if (!foundPhase) { openAddTaskModal(); return; }
+  _insertAfter = { phaseId: foundPhase.id, afterIdx: foundIdx };
+  openAddTaskModal(foundPhase.id);
 }
 
 function openAddTaskModal(phaseId) {
@@ -4078,10 +4093,18 @@ function confirmAddTask() {
   };
   
   const phase = project.phases.find(p => p.id === phaseId);
-  if (phase) phase.tasks.push(task);
+  if (phase) {
+    if (_insertAfter && _insertAfter.phaseId === phaseId) {
+      phase.tasks.splice(_insertAfter.afterIdx + 1, 0, task);
+    } else {
+      phase.tasks.push(task);
+    }
+  }
+  _insertAfter = null;
   closeModal();
   saveProject(true);
   render();
+  selectTask(task.id);
 }
 
 function openEditTaskModal(taskId) {
@@ -5031,6 +5054,7 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'n' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); openAddTaskModal(); }
   if (e.key === 'p' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); openAddPhaseModal(); }
   if (e.key === 's' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveProject(); }
+  if ((e.key === '+' || e.key === '=') && (e.ctrlKey || e.metaKey)) { e.preventDefault(); addTaskAfterSelected(); }
 });
 
 /* ═══════════════════════════════════════════════════
