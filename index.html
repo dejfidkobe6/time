@@ -3247,6 +3247,7 @@ function initDepDraw() {
         if (!toTask.predecessors) toTask.predecessors = [];
         if (!toTask.predecessors.some(p => p.taskId === drawingFrom)) {
           toTask.predecessors.push({ taskId: drawingFrom, type: 'FS', lag: 0 });
+          cascadeSuccessors(toTask.id);
           saveProject(true); render();
           showToast('Vazba FS vytvořena');
         }
@@ -4320,37 +4321,33 @@ function openDepEditor(toTask, predIndex) {
   const typeLabels = { FS: 'FS — Konec → Začátek', FF: 'FF — Konec → Konec', SS: 'SS — Začátek → Začátek', SF: 'SF — Začátek → Konec' };
   const typeOpts = types.map(t => `<option value="${t}" ${(pred.type||'FS')===t?'selected':''}>${typeLabels[t]}</option>`).join('');
 
-  const mc = document.getElementById('modal-container');
-  mc.innerHTML = `
-  <div class="modal-overlay" onclick="closeModal()">
-  <div class="modal" style="max-width:360px;" onclick="event.stopPropagation()">
-    <div class="modal-header">
-      <span class="modal-title">Vazba: úkol ${predWBS} → ${toWBS}</span>
-      <button class="modal-close" onclick="closeModal()">×</button>
-    </div>
-    <div class="modal-body" style="display:flex;flex-direction:column;gap:14px;">
-      <div>
-        <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:5px;">Typ vazby</label>
-        <select id="dep-type-sel" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:10px;background:var(--bg-card);color:var(--text);font-size:14px;font-family:inherit;">
-          ${typeOpts}
-        </select>
+  openModal(`
+    <div class="modal" style="max-width:360px;" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <span class="modal-title">Vazba: úkol ${predWBS} → ${toWBS}</span>
+        <button class="modal-close" onclick="closeModal()">×</button>
       </div>
-      <div>
-        <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:5px;">Prodleva (dny, záporná = překryv)</label>
-        <input id="dep-lag-inp" type="number" value="${pred.lag||0}" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:10px;background:var(--bg-card);color:var(--text);font-size:14px;font-family:inherit;">
+      <div class="modal-body" style="display:flex;flex-direction:column;gap:14px;">
+        <div>
+          <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:5px;">Typ vazby</label>
+          <select id="dep-type-sel" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:10px;background:var(--bg-card);color:var(--text);font-size:14px;font-family:inherit;">
+            ${typeOpts}
+          </select>
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:5px;">Prodleva (dny, záporná = překryv)</label>
+          <input id="dep-lag-inp" type="number" value="${pred.lag||0}" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:10px;background:var(--bg-card);color:var(--text);font-size:14px;font-family:inherit;">
+        </div>
+        <div style="font-size:12px;color:var(--text-muted);">
+          <strong>${escHtml(predTask?.name||'')}</strong> → <strong>${escHtml(toTask.name)}</strong>
+        </div>
       </div>
-      <div style="font-size:12px;color:var(--text-muted);">
-        <strong>${escHtml(predTask?.name||'')}</strong> → <strong>${escHtml(toTask.name)}</strong>
+      <div class="modal-footer">
+        <button class="btn btn-danger" onclick="deleteDepAndClose('${toTask.id}',${predIndex})">Smazat vazbu</button>
+        <button class="btn btn-secondary" onclick="closeModal()">Zrušit</button>
+        <button class="btn btn-primary" onclick="saveDepAndClose('${toTask.id}',${predIndex})">Uložit</button>
       </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-danger" onclick="deleteDepAndClose('${toTask.id}',${predIndex})">Smazat vazbu</button>
-      <button class="btn btn-secondary" onclick="closeModal()">Zrušit</button>
-      <button class="btn btn-primary" onclick="saveDepAndClose('${toTask.id}',${predIndex})">Uložit</button>
-    </div>
-  </div>
-  </div>`;
-  mc.querySelector('.modal-overlay').style.display = 'flex';
+    </div>`);
 }
 
 function saveDepAndClose(toTaskId, predIndex) {
@@ -4358,9 +4355,10 @@ function saveDepAndClose(toTaskId, predIndex) {
   if (!task) { closeModal(); return; }
   task.predecessors[predIndex].type = document.getElementById('dep-type-sel').value;
   task.predecessors[predIndex].lag  = parseInt(document.getElementById('dep-lag-inp').value) || 0;
+  cascadeSuccessors(toTaskId);
   closeModal();
   saveProject();
-  renderGantt();
+  render();
 }
 
 function deleteDepAndClose(toTaskId, predIndex) {
@@ -4369,7 +4367,7 @@ function deleteDepAndClose(toTaskId, predIndex) {
   task.predecessors.splice(predIndex, 1);
   closeModal();
   saveProject();
-  renderGantt();
+  render();
 }
 
 function openProjectSettings() {
