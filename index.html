@@ -1673,6 +1673,9 @@ html, body {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         Přidat úkol
       </button>
+      <button class="btn btn-secondary" onclick="openProjectSettings()" title="Nastavení projektu" style="padding:0 10px;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
       <div id="header-user-chip" style="display:flex;align-items:center;gap:6px;margin-left:4px;padding:0 4px;border-left:1px solid var(--border);">
         <div id="header-user-avatar" style="width:28px;height:28px;border-radius:50%;background:var(--olive);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;flex-shrink:0;"></div>
         <span id="header-user-name" style="font-size:12px;color:var(--text-muted);max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
@@ -2540,6 +2543,45 @@ function formatPreds(preds) {
   }).filter(Boolean).join(', ');
 }
 
+// ── Critical path (longest path through dependency network) ──────────────────
+function computeCriticalPath() {
+  const allTasks = [];
+  project.phases.forEach(ph => ph.tasks.forEach(t => allTasks.push(t)));
+  const ef = {};  // earliest finish
+  // Forward pass
+  allTasks.forEach(t => {
+    if (!t.endDate) return;
+    let start = t.startDate;
+    (t.predecessors || []).forEach(pred => {
+      const p = allTasks.find(x => x.id === pred.taskId);
+      if (p?.endDate && p.endDate > (start || '')) start = p.endDate;
+    });
+    const dur = t.startDate && t.endDate ? daysBetween(t.startDate, t.endDate) : 0;
+    ef[t.id] = start ? addDays(start, dur) : (t.endDate || '');
+  });
+  const projectEnd = Object.values(ef).reduce((a, b) => a > b ? a : b, '');
+  // Backward pass — tasks on critical path: any chain that reaches projectEnd
+  const onCP = new Set();
+  function trace(taskId) {
+    if (onCP.has(taskId)) return;
+    onCP.add(taskId);
+    allTasks.forEach(t => {
+      (t.predecessors || []).forEach(pred => {
+        if (pred.taskId === taskId) trace(t.id);
+      });
+    });
+  }
+  allTasks.filter(t => ef[t.id] === projectEnd).forEach(t => trace(t.id));
+  return onCP;
+}
+
+let _criticalPathCache = null;
+function getCriticalPath() {
+  if (!getSettings().showCriticalPath) return new Set();
+  if (!_criticalPathCache) _criticalPathCache = computeCriticalPath();
+  return _criticalPathCache;
+}
+
 function getTaskColor(task, phase, pi) {
   const baseColor = PHASE_COLORS[pi % PHASE_COLORS.length];
   if (ganttColorMode === 'phase') return baseColor;
@@ -2562,6 +2604,8 @@ function getTaskColor(task, phase, pi) {
     for (let i = 0; i < task.assignee.length; i++) hash = task.assignee.charCodeAt(i) + ((hash << 5) - hash);
     return PHASE_COLORS[Math.abs(hash) % PHASE_COLORS.length];
   }
+  // Critical path override
+  if (getSettings().showCriticalPath && getCriticalPath().has(task.id)) return '#c0392b';
   return baseColor;
 }
 
@@ -2744,6 +2788,7 @@ function dateToX(date, minD) {
 }
 
 function renderGantt() {
+  _criticalPathCache = null; // invalidate on each render
   const { minD, maxD } = getGanttBounds();
   const totalUnits = timescale === 'days' ? daysBetween(minD, maxD) :
                      timescale === 'weeks' ? Math.ceil(daysBetween(minD, maxD)/7) + 1 :
@@ -2783,7 +2828,10 @@ function renderGanttHeader(minD, maxD, totalW) {
       cell.style.width = cellW + 'px';
       cell.style.minWidth = cellW + 'px';
       const dow = d.getDay();
-      if (ganttOpts.wknd && (dow === 0 || dow === 6)) cell.style.background = 'rgba(255,255,255,0.05)';
+      const s = getSettings();
+      const dateStr = d.toISOString().split('T')[0];
+      const isNonWork = (ganttOpts.wknd && !s.workDays.includes(dow)) || s.holidays.includes(dateStr);
+      if (isNonWork) cell.style.background = 'rgba(255,255,255,0.05)';
       cell.textContent = d.getDate();
       unitsRow.appendChild(cell);
       d.setDate(d.getDate() + 1);
@@ -2979,20 +3027,86 @@ function addDays(dateStr, n) {
   return d.toISOString().split('T')[0];
 }
 
-// Enforce FS predecessor constraints: task cannot start before any FS predecessor ends
+/// Enforce predecessor constraints on a single task (clamp its start if violated)
 function enforceConstraints(task) {
   (task.predecessors || []).forEach(pred => {
-    if ((pred.type || 'FS') !== 'FS') return;
+    const type = pred.type || 'FS';
     const predTask = findTask(pred.taskId);
-    if (!predTask?.endDate) return;
-    const lagDays = pred.lag || 0;
-    const minStart = addDays(predTask.endDate, lagDays);
-    if (task.startDate < minStart) {
-      const dur = daysBetween(task.startDate, task.endDate);
-      task.startDate = minStart;
-      task.endDate = addDays(minStart, dur);
+    if (!predTask) return;
+    const lag = pred.lag || 0;
+    if (type === 'FS' && predTask.endDate && task.startDate) {
+      const minStart = addDays(predTask.endDate, lag);
+      if (task.startDate < minStart) {
+        const dur = daysBetween(task.startDate, task.endDate);
+        task.startDate = minStart;
+        task.endDate = addDays(minStart, dur);
+      }
+    } else if (type === 'SS' && predTask.startDate && task.startDate) {
+      const minStart = addDays(predTask.startDate, lag);
+      if (task.startDate < minStart) {
+        const dur = daysBetween(task.startDate, task.endDate);
+        task.startDate = minStart;
+        task.endDate = addDays(minStart, dur);
+      }
+    } else if (type === 'FF' && predTask.endDate && task.endDate) {
+      const minEnd = addDays(predTask.endDate, lag);
+      if (task.endDate < minEnd) {
+        const dur = daysBetween(task.startDate, task.endDate);
+        task.endDate = minEnd;
+        task.startDate = addDays(minEnd, -dur);
+      }
     }
   });
+}
+
+// Cascade: when a task's dates change, propagate to all successors (BFS, cycle-safe)
+function cascadeSuccessors(changedTaskId) {
+  const queue = [changedTaskId];
+  const visited = new Set();
+  while (queue.length) {
+    const id = queue.shift();
+    if (visited.has(id)) continue;
+    visited.add(id);
+    const changed = findTask(id);
+    if (!changed) continue;
+    project.phases.forEach(ph => {
+      ph.tasks.forEach(task => {
+        if (visited.has(task.id)) return;
+        (task.predecessors || []).forEach(pred => {
+          if (pred.taskId !== id) return;
+          const type = pred.type || 'FS';
+          const lag  = pred.lag || 0;
+          let shifted = false;
+          if (type === 'FS' && changed.endDate && task.startDate) {
+            const minStart = addDays(changed.endDate, lag);
+            if (task.startDate < minStart) {
+              const dur = daysBetween(task.startDate, task.endDate);
+              task.startDate = minStart;
+              task.endDate   = addDays(minStart, dur);
+              shifted = true;
+            }
+          } else if (type === 'SS' && changed.startDate && task.startDate) {
+            const minStart = addDays(changed.startDate, lag);
+            if (task.startDate < minStart) {
+              const dur = daysBetween(task.startDate, task.endDate);
+              task.startDate = minStart;
+              task.endDate   = addDays(minStart, dur);
+              shifted = true;
+            }
+          } else if (type === 'FF' && changed.endDate && task.endDate) {
+            const minEnd = addDays(changed.endDate, lag);
+            if (task.endDate < minEnd) {
+              const dur = daysBetween(task.startDate, task.endDate);
+              task.endDate   = minEnd;
+              task.startDate = addDays(minEnd, -dur);
+              shifted = true;
+            }
+          }
+          if (shifted) queue.push(task.id);
+        });
+      });
+    });
+  }
 }
 
 function makeDraggableBar(barWrap, task, minD) {
@@ -3026,6 +3140,7 @@ function makeDraggableBar(barWrap, task, minD) {
     task.startDate = newStart.toISOString().split('T')[0];
     task.endDate = addDays(task.startDate, dur);
     enforceConstraints(task);
+    cascadeSuccessors(task.id);
     saveProject(true); render();
   });
 }
@@ -3067,6 +3182,7 @@ function makeResizableBar(barWrap, task, minD) {
         task.startDate = newStart.toISOString().split('T')[0];
         task.endDate = addDays(task.startDate, xToDays(newW));
         enforceConstraints(task);
+        cascadeSuccessors(task.id);
       }
       saveProject(true); render();
     }
@@ -4130,6 +4246,151 @@ const TEMPLATES = {
   }
 };
 
+/* ═══════════════════════════════════════════════════
+   PROJECT SETTINGS
+═══════════════════════════════════════════════════ */
+function getSettings() {
+  return project.settings || (project.settings = {
+    workDays:        [1,2,3,4,5],   // 0=Sun … 6=Sat
+    holidays:        [],            // ['YYYY-MM-DD', …]
+    autoSchedule:    true,
+    showCriticalPath:false,
+    defaultDuration: 5,
+    currency:        'CZK',
+    projectStart:    '',
+    projectDeadline: '',
+    notes:           '',
+  });
+}
+
+function openProjectSettings() {
+  const s = getSettings();
+  const dayNames = ['Ne','Po','Út','St','Čt','Pá','So'];
+  const dayChecks = [1,2,3,4,5,6,0].map(d => `
+    <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:12px;">
+      <input type="checkbox" value="${d}" ${s.workDays.includes(d)?'checked':''} onchange="toggleWorkDay(${d},this.checked)">
+      ${dayNames[d]}
+    </label>`).join('');
+
+  const holidayRows = () => (s.holidays||[]).map((h,i) => `
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+      <span style="font-size:12px;flex:1;">${h}</span>
+      <button class="btn btn-ghost btn-icon" onclick="removeHoliday(${i})" style="padding:2px;height:22px;width:22px;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>`).join('') || '<div style="font-size:11px;color:var(--text-muted);">Žádné výjimky</div>';
+
+  openModal(`
+    <div class="modal" style="width:520px;">
+      <div class="modal-header">
+        <div class="modal-title">Nastavení projektu</div>
+        <button class="modal-close" onclick="closeModal()">×</button>
+      </div>
+      <div class="modal-body" style="padding:0;">
+
+        <!-- Sekce: Plánování -->
+        <div style="padding:16px 20px;border-bottom:1px solid var(--border);">
+          <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;color:var(--text-muted);margin-bottom:10px;">Plánování</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <div class="form-field">
+              <label class="form-label">Datum zahájení projektu</label>
+              <input type="date" class="form-input" value="${s.projectStart||''}"
+                onchange="project.settings.projectStart=this.value;saveProject(true);">
+            </div>
+            <div class="form-field">
+              <label class="form-label">Deadline projektu</label>
+              <input type="date" class="form-input" value="${s.projectDeadline||''}"
+                onchange="project.settings.projectDeadline=this.value;saveProject(true);">
+            </div>
+            <div class="form-field">
+              <label class="form-label">Výchozí délka úkolu (dny)</label>
+              <input type="number" class="form-input" min="1" max="365" value="${s.defaultDuration||5}"
+                onchange="project.settings.defaultDuration=+this.value;saveProject(true);">
+            </div>
+            <div class="form-field">
+              <label class="form-label">Měna</label>
+              <select class="form-select" onchange="project.settings.currency=this.value;saveProject(true);renderHeader();">
+                ${['CZK','EUR','USD','GBP'].map(c=>`<option value="${c}" ${s.currency===c?'selected':''}>${c}</option>`).join('')}
+              </select>
+            </div>
+          </div>
+          <div style="margin-top:10px;display:flex;flex-direction:column;gap:8px;">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;">
+              <input type="checkbox" ${s.autoSchedule?'checked':''} onchange="project.settings.autoSchedule=this.checked;saveProject(true);">
+              <span>Automatické přeplánování (cascade) po změně termínu</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;">
+              <input type="checkbox" id="sett-cp" ${s.showCriticalPath?'checked':''} onchange="project.settings.showCriticalPath=this.checked;saveProject(true);renderGantt();">
+              <span>Zobrazit kritickou cestu</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Sekce: Pracovní dny -->
+        <div style="padding:16px 20px;border-bottom:1px solid var(--border);">
+          <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;color:var(--text-muted);margin-bottom:10px;">Pracovní dny</div>
+          <div style="display:flex;gap:12px;flex-wrap:wrap;">${dayChecks}</div>
+        </div>
+
+        <!-- Sekce: Svátky / výjimky -->
+        <div style="padding:16px 20px;border-bottom:1px solid var(--border);">
+          <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;color:var(--text-muted);margin-bottom:10px;">Svátky a nepracovní výjimky</div>
+          <div id="holidays-list">${holidayRows()}</div>
+          <div style="display:flex;gap:6px;margin-top:8px;">
+            <input type="date" id="holiday-add-input" class="form-input" style="flex:1;">
+            <button class="btn btn-secondary" onclick="addHoliday()">Přidat</button>
+          </div>
+        </div>
+
+        <!-- Sekce: Poznámky -->
+        <div style="padding:16px 20px;">
+          <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;color:var(--text-muted);margin-bottom:10px;">Poznámky k projektu</div>
+          <textarea class="form-input" rows="3" style="width:100%;resize:vertical;"
+            placeholder="Interní poznámky…"
+            onchange="project.settings.notes=this.value;saveProject(true);">${s.notes||''}</textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary" onclick="closeModal()">Zavřít</button>
+      </div>
+    </div>
+  `);
+}
+
+function toggleWorkDay(day, on) {
+  const s = getSettings();
+  if (on) { if (!s.workDays.includes(day)) s.workDays.push(day); }
+  else     { s.workDays = s.workDays.filter(d => d !== day); }
+  saveProject(true); renderGantt();
+}
+
+function addHoliday() {
+  const inp = document.getElementById('holiday-add-input');
+  const val = inp?.value;
+  if (!val) return;
+  const s = getSettings();
+  if (!s.holidays.includes(val)) {
+    s.holidays.push(val);
+    s.holidays.sort();
+    saveProject(true); renderGantt();
+  }
+  inp.value = '';
+  document.getElementById('holidays-list').innerHTML = s.holidays.map((h,i) => `
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+      <span style="font-size:12px;flex:1;">${h}</span>
+      <button class="btn btn-ghost btn-icon" onclick="removeHoliday(${i})" style="padding:2px;height:22px;width:22px;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>`).join('') || '<div style="font-size:11px;color:var(--text-muted);">Žádné výjimky</div>';
+}
+
+function removeHoliday(idx) {
+  const s = getSettings();
+  s.holidays.splice(idx, 1);
+  saveProject(true); renderGantt();
+  openProjectSettings(); // refresh modal
+}
+
 function openTemplateModal() {
   openModal(`
     <div class="modal" style="width:580px;">
@@ -4663,6 +4924,7 @@ function inlineEdit(span, taskId, field, type) {
     let val = input.value;
     if (type === 'number') val = parseFloat(val) || 0;
     task[field] = val;
+    if (field === 'startDate' || field === 'endDate') cascadeSuccessors(task.id);
     saveProject(true); render();
   }
   input.addEventListener('blur', commit);
