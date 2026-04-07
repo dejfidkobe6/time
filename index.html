@@ -3070,34 +3070,13 @@ function addDays(dateStr, n) {
 
 /// Enforce predecessor constraints on a single task (clamp its start if violated)
 function enforceConstraints(task) {
-  (task.predecessors || []).forEach(pred => {
-    const type = pred.type || 'FS';
-    const predTask = findTask(pred.taskId);
-    if (!predTask) return;
-    const lag = pred.lag || 0;
-    if (type === 'FS' && predTask.endDate && task.startDate) {
-      const minStart = addDays(predTask.endDate, lag);
-      if (task.startDate < minStart) {
-        const dur = daysBetween(task.startDate, task.endDate);
-        task.startDate = minStart;
-        task.endDate = addDays(minStart, dur);
-      }
-    } else if (type === 'SS' && predTask.startDate && task.startDate) {
-      const minStart = addDays(predTask.startDate, lag);
-      if (task.startDate < minStart) {
-        const dur = daysBetween(task.startDate, task.endDate);
-        task.startDate = minStart;
-        task.endDate = addDays(minStart, dur);
-      }
-    } else if (type === 'FF' && predTask.endDate && task.endDate) {
-      const minEnd = addDays(predTask.endDate, lag);
-      if (task.endDate < minEnd) {
-        const dur = daysBetween(task.startDate, task.endDate);
-        task.endDate = minEnd;
-        task.startDate = addDays(minEnd, -dur);
-      }
-    }
-  });
+  if (task.manual) return;
+  const newStart = computeConstrainedStart(task);
+  if (newStart && newStart > task.startDate) {
+    const dur = daysBetween(task.startDate, task.endDate);
+    task.startDate = newStart;
+    task.endDate   = addDays(newStart, dur);
+  }
 }
 
 function toggleTaskSchedule(taskId) {
@@ -3109,8 +3088,27 @@ function toggleTaskSchedule(taskId) {
   renderGantt();
 }
 
-// Cascade: when a task's dates change, propagate to all successors (BFS, cycle-safe)
-// Skips tasks with task.manual === true (manually scheduled)
+// Given a task, compute the start date it should have based on all its predecessors.
+// Returns a date string, or null if no predecessors constrain it.
+function computeConstrainedStart(task) {
+  let latestStart = null;
+  (task.predecessors || []).forEach(pred => {
+    const predTask = findTask(pred.taskId);
+    if (!predTask) return;
+    const type = pred.type || 'FS';
+    const lag  = pred.lag || 0;
+    let s = null;
+    // FS: successor starts the day after predecessor ends (+ lag days)
+    if      (type === 'FS' && predTask.endDate)   s = addDays(predTask.endDate,   lag + 1);
+    else if (type === 'SS' && predTask.startDate) s = addDays(predTask.startDate, lag);
+    // FF and SF affect endDate not startDate — handled separately
+    if (s && (!latestStart || s > latestStart)) latestStart = s;
+  });
+  return latestStart;
+}
+
+// Cascade: when a task's dates change, snap all auto-scheduled successors (BFS, cycle-safe)
+// Works in both directions — if predecessor moves earlier, successors pull back too.
 function cascadeSuccessors(changedTaskId) {
   const queue = [changedTaskId];
   const visited = new Set();
@@ -3118,44 +3116,21 @@ function cascadeSuccessors(changedTaskId) {
     const id = queue.shift();
     if (visited.has(id)) continue;
     visited.add(id);
-    const changed = findTask(id);
-    if (!changed) continue;
     project.phases.forEach(ph => {
       ph.tasks.forEach(task => {
         if (visited.has(task.id)) return;
-        if (task.manual === true) return;  // skip manually scheduled tasks
-        (task.predecessors || []).forEach(pred => {
-          if (pred.taskId !== id) return;
-          const type = pred.type || 'FS';
-          const lag  = pred.lag || 0;
-          let shifted = false;
-          if (type === 'FS' && changed.endDate && task.startDate) {
-            const minStart = addDays(changed.endDate, lag);
-            if (task.startDate < minStart) {
-              const dur = daysBetween(task.startDate, task.endDate);
-              task.startDate = minStart;
-              task.endDate   = addDays(minStart, dur);
-              shifted = true;
-            }
-          } else if (type === 'SS' && changed.startDate && task.startDate) {
-            const minStart = addDays(changed.startDate, lag);
-            if (task.startDate < minStart) {
-              const dur = daysBetween(task.startDate, task.endDate);
-              task.startDate = minStart;
-              task.endDate   = addDays(minStart, dur);
-              shifted = true;
-            }
-          } else if (type === 'FF' && changed.endDate && task.endDate) {
-            const minEnd = addDays(changed.endDate, lag);
-            if (task.endDate < minEnd) {
-              const dur = daysBetween(task.startDate, task.endDate);
-              task.endDate   = minEnd;
-              task.startDate = addDays(minEnd, -dur);
-              shifted = true;
-            }
-          }
-          if (shifted) queue.push(task.id);
-        });
+        if (task.manual === true) return;
+        // Does this task depend on the just-processed task?
+        const hasPred = (task.predecessors || []).some(p => p.taskId === id);
+        if (!hasPred) return;
+        // Recompute from ALL predecessors (not just the changed one)
+        const newStart = computeConstrainedStart(task);
+        if (!newStart) return;
+        if (newStart === task.startDate) return;
+        const dur = daysBetween(task.startDate, task.endDate);
+        task.startDate = newStart;
+        task.endDate   = addDays(newStart, dur);
+        queue.push(task.id);
       });
     });
   }
