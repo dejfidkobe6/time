@@ -442,6 +442,14 @@ html, body {
 .wbs-col-head.col-drag-over-right::after  { right: -2px; }
 .wbs-col-head.col-dragging { opacity: 0.35; }
 
+/* Column resize handle */
+.col-resize-handle {
+  position: absolute; right: 0; top: 0; bottom: 0; width: 6px;
+  cursor: col-resize; z-index: 3;
+  border-right: 2px solid transparent; transition: border-color 0.15s;
+}
+.col-resize-handle:hover, .col-resize-handle.resizing { border-right-color: rgba(143,186,110,0.8); }
+
 #wbs-body {
   flex: 1;
   overflow-y: auto;
@@ -2003,6 +2011,8 @@ const COLUMN_DEFS = [
   { id: 'budget',       label: 'Rozpočet',     w: '74px'  },
 ];
 let visibleColumns = (() => { try { return JSON.parse(localStorage.getItem('bt_cols') || 'null') || ['name','wbs','predecessors','successors','schedule','start','end','duration','progress','budget']; } catch(e) { return ['name','wbs','predecessors','successors','schedule','start','end','duration','progress','budget']; } })();
+// Persisted custom column widths (overrides COLUMN_DEFS.w)
+let colWidths = (() => { try { return JSON.parse(localStorage.getItem('bt_col_w') || 'null') || {}; } catch(e) { return {}; } })();
 // always ensure 'name' is first and 'wbs' is second when present
 if (!visibleColumns.includes('name')) visibleColumns.unshift('name');
 if (visibleColumns.includes('wbs') && visibleColumns[1] !== 'wbs') {
@@ -2527,9 +2537,10 @@ function renderWBSHeader() {
   hdr.innerHTML = visibleColumns.map(id => {
     const d = COLUMN_DEFS.find(c => c.id === id);
     const fixed = d?.fixed;
-    return `<span class="wbs-col-head" data-col-id="${id}" ${fixed ? '' : 'draggable="true"'} title="${d ? d.label : ''}">${d ? d.label : ''}</span>`;
+    return `<span class="wbs-col-head" data-col-id="${id}" ${fixed ? '' : 'draggable="true"'} title="${d ? d.label : ''}">${d ? d.label : ''}<span class="col-resize-handle" data-col-id="${id}"></span></span>`;
   }).join('');
   initColDrag(hdr);
+  initColResize(hdr);
 }
 
 function initColDrag(hdr) {
@@ -2584,6 +2595,38 @@ function initColDrag(hdr) {
   });
 }
 
+function initColResize(hdr) {
+  hdr.querySelectorAll('.col-resize-handle').forEach(handle => {
+    handle.addEventListener('mousedown', e => {
+      e.preventDefault(); e.stopPropagation();
+      const colId = handle.dataset.colId;
+      const headEl = hdr.querySelector(`.wbs-col-head[data-col-id="${colId}"]`);
+      const startX = e.clientX;
+      const startW = headEl.getBoundingClientRect().width;
+      handle.classList.add('resizing');
+      document.body.style.cursor = 'col-resize';
+
+      function onMove(ev) {
+        const newW = Math.max(30, startW + ev.clientX - startX);
+        colWidths[colId] = Math.round(newW);
+        // Live-update grid template on header + all rows
+        const tpl = getColTemplate();
+        hdr.style.gridTemplateColumns = tpl;
+        document.querySelectorAll('.wbs-row-content').forEach(r => r.style.gridTemplateColumns = tpl);
+      }
+      function onUp() {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        handle.classList.remove('resizing');
+        document.body.style.cursor = '';
+        localStorage.setItem('bt_col_w', JSON.stringify(colWidths));
+      }
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+  });
+}
+
 function renderWBS() {
   renderWBSHeader();
   const body = document.getElementById('wbs-body');
@@ -2603,11 +2646,13 @@ function renderWBS() {
   });
 }
 
+function getColWidth(id) {
+  if (colWidths[id]) return colWidths[id] + 'px';
+  const d = COLUMN_DEFS.find(c => c.id === id);
+  return d ? (d.w || '1fr') : null;
+}
 function getColTemplate() {
-  return visibleColumns.map(id => {
-    const d = COLUMN_DEFS.find(c => c.id === id);
-    return d ? (d.w || '1fr') : null;
-  }).filter(Boolean).join(' ');
+  return visibleColumns.map(id => getColWidth(id)).filter(Boolean).join(' ');
 }
 
 function getWBSNum(phaseIdx, taskIdx) {
