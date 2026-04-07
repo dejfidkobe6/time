@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS user_oauth (
   provider_id VARCHAR(128) NOT NULL,
   created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   UNIQUE KEY uq_provider (provider, provider_id),
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  KEY idx_user_id (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Registrace aplikace

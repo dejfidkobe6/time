@@ -99,7 +99,7 @@ try {
 
     // ─── Find or create user ─────────────────────────────────────────────────
 
-    // Ensure user_oauth table exists (create if not)
+    // Ensure user_oauth table exists (no FK constraint — shared DB compatibility)
     $pdo->exec("CREATE TABLE IF NOT EXISTS user_oauth (
         id          INT AUTO_INCREMENT PRIMARY KEY,
         user_id     INT NOT NULL,
@@ -107,7 +107,7 @@ try {
         provider_id VARCHAR(128) NOT NULL,
         created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE KEY uq_provider (provider, provider_id),
-        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        KEY idx_user_id (user_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
     // 1. Find via oauth link
