@@ -307,6 +307,13 @@ html, body {
 }
 .btn-secondary:hover { border-color: var(--olive); color: var(--olive); background: var(--bg-hover); }
 
+.btn-danger {
+  background: #c0392b;
+  color: white;
+  border: 1px solid #a93226;
+}
+.btn-danger:hover { background: #a93226; }
+
 .btn-ghost {
   background: transparent;
   color: var(--text-muted);
@@ -1973,9 +1980,13 @@ const COLUMN_DEFS = [
   { id: 'progress',     label: 'Postup',       w: '62px'  },
   { id: 'budget',       label: 'Rozpočet',     w: '74px'  },
 ];
-let visibleColumns = (() => { try { return JSON.parse(localStorage.getItem('bt_cols') || 'null') || ['name','predecessors','successors','start','end','duration','progress','budget']; } catch(e) { return ['name','predecessors','successors','start','end','duration','progress','budget']; } })();
-// always ensure 'name' is first
+let visibleColumns = (() => { try { return JSON.parse(localStorage.getItem('bt_cols') || 'null') || ['name','wbs','predecessors','successors','start','end','duration','progress','budget']; } catch(e) { return ['name','wbs','predecessors','successors','start','end','duration','progress','budget']; } })();
+// always ensure 'name' is first and 'wbs' is second when present
 if (!visibleColumns.includes('name')) visibleColumns.unshift('name');
+if (visibleColumns.includes('wbs') && visibleColumns[1] !== 'wbs') {
+  visibleColumns = visibleColumns.filter(c => c !== 'wbs');
+  visibleColumns.splice(1, 0, 'wbs');
+}
 
 let ganttColorMode = localStorage.getItem('bt_colormode') || 'phase';
 let ganttFilter    = localStorage.getItem('bt_filter')    || 'all';
@@ -2486,11 +2497,10 @@ function initColDrag(hdr) {
       toIdx = visibleColumns.indexOf(el.dataset.colId);
       visibleColumns.splice(insertBefore ? toIdx : toIdx + 1, 0, dragColId);
 
-      // 'name' must stay first
-      if (visibleColumns[0] !== 'name') {
-        visibleColumns = visibleColumns.filter(c => c !== 'name');
-        visibleColumns.unshift('name');
-      }
+      // 'name' must stay first; 'wbs' stays second when present
+      const _rest = visibleColumns.filter(c => c !== 'name' && c !== 'wbs');
+      if (visibleColumns.includes('wbs')) visibleColumns = ['name', 'wbs', ..._rest];
+      else visibleColumns = ['name', ..._rest];
 
       localStorage.setItem('bt_cols', JSON.stringify(visibleColumns));
       renderWBS();
@@ -2525,8 +2535,13 @@ function getColTemplate() {
 }
 
 function getWBSNum(phaseIdx, taskIdx) {
-  if (taskIdx === undefined) return String(phaseIdx + 1);
-  return (phaseIdx + 1) + '.' + (taskIdx + 1);
+  if (taskIdx === undefined) return '';  // phases have no WBS number
+  let count = 0;
+  for (let pi = 0; pi < project.phases.length; pi++) {
+    if (pi === phaseIdx) return String(count + taskIdx + 1);
+    count += project.phases[pi].tasks.length;
+  }
+  return '';
 }
 
 function formatPreds(preds) {
@@ -3286,8 +3301,13 @@ function renderDependencies(minD) {
 
   project.phases.forEach(ph => {
     ph.tasks.forEach(task => {
-      const preds = task.predecessors || (task.dependsOn ? [{ taskId: task.dependsOn, type: 'FS', lag: 0 }] : []);
-      preds.forEach(pred => {
+      // Migrate legacy dependsOn to predecessors array
+      if (!task.predecessors && task.dependsOn) {
+        task.predecessors = [{ taskId: task.dependsOn, type: 'FS', lag: 0 }];
+        delete task.dependsOn;
+      }
+      const preds = task.predecessors || [];
+      preds.forEach((pred, predIndex) => {
         const predTask = findTask(pred.taskId);
         if (!predTask) return;
         const type = pred.type || 'FS';
@@ -3352,6 +3372,22 @@ function renderDependencies(minD) {
         if (cfg.dash) path.setAttribute('stroke-dasharray', cfg.dash);
         path.setAttribute('marker-end', `url(#arr-${type})`);
         g.appendChild(path);
+
+        // Invisible wide hit area for double-click editing
+        const hit = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        hit.setAttribute('d', d);
+        hit.setAttribute('stroke', 'transparent');
+        hit.setAttribute('stroke-width', '12');
+        hit.setAttribute('fill', 'none');
+        hit.style.pointerEvents = 'stroke';
+        hit.style.cursor = 'pointer';
+        hit.title = `${type}${lag ? (lag>0?'+'+lag:lag) : ''} — двойной клик для редактирования`;
+        hit.addEventListener('dblclick', (e) => {
+          e.stopPropagation();
+          openDepEditor(task, predIndex);
+        });
+        g.appendChild(hit);
+
         svg.appendChild(g);
       });
     });
@@ -4263,6 +4299,79 @@ function getSettings() {
   });
 }
 
+/* ═══════════════════════════════════════════════════
+   DEPENDENCY EDITOR (double-click on arrow)
+═══════════════════════════════════════════════════ */
+function openDepEditor(toTask, predIndex) {
+  const pred = toTask.predecessors[predIndex];
+  const predTask = findTask(pred.taskId);
+  const predWBS = (() => {
+    let w = '';
+    project.phases.forEach((ph, pi) => ph.tasks.forEach((t, ti) => { if (t.id === pred.taskId) w = getWBSNum(pi, ti); }));
+    return w;
+  })();
+  const toWBS = (() => {
+    let w = '';
+    project.phases.forEach((ph, pi) => ph.tasks.forEach((t, ti) => { if (t.id === toTask.id) w = getWBSNum(pi, ti); }));
+    return w;
+  })();
+
+  const types = ['FS','FF','SS','SF'];
+  const typeLabels = { FS: 'FS — Konec → Začátek', FF: 'FF — Konec → Konec', SS: 'SS — Začátek → Začátek', SF: 'SF — Začátek → Konec' };
+  const typeOpts = types.map(t => `<option value="${t}" ${(pred.type||'FS')===t?'selected':''}>${typeLabels[t]}</option>`).join('');
+
+  const mc = document.getElementById('modal-container');
+  mc.innerHTML = `
+  <div class="modal-overlay" onclick="closeModal()">
+  <div class="modal" style="max-width:360px;" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <span class="modal-title">Vazba: úkol ${predWBS} → ${toWBS}</span>
+      <button class="modal-close" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:14px;">
+      <div>
+        <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:5px;">Typ vazby</label>
+        <select id="dep-type-sel" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:10px;background:var(--bg-card);color:var(--text);font-size:14px;font-family:inherit;">
+          ${typeOpts}
+        </select>
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:5px;">Prodleva (dny, záporná = překryv)</label>
+        <input id="dep-lag-inp" type="number" value="${pred.lag||0}" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:10px;background:var(--bg-card);color:var(--text);font-size:14px;font-family:inherit;">
+      </div>
+      <div style="font-size:12px;color:var(--text-muted);">
+        <strong>${escHtml(predTask?.name||'')}</strong> → <strong>${escHtml(toTask.name)}</strong>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-danger" onclick="deleteDepAndClose('${toTask.id}',${predIndex})">Smazat vazbu</button>
+      <button class="btn btn-secondary" onclick="closeModal()">Zrušit</button>
+      <button class="btn btn-primary" onclick="saveDepAndClose('${toTask.id}',${predIndex})">Uložit</button>
+    </div>
+  </div>
+  </div>`;
+  mc.querySelector('.modal-overlay').style.display = 'flex';
+}
+
+function saveDepAndClose(toTaskId, predIndex) {
+  const task = findTask(toTaskId);
+  if (!task) { closeModal(); return; }
+  task.predecessors[predIndex].type = document.getElementById('dep-type-sel').value;
+  task.predecessors[predIndex].lag  = parseInt(document.getElementById('dep-lag-inp').value) || 0;
+  closeModal();
+  saveProject();
+  renderGantt();
+}
+
+function deleteDepAndClose(toTaskId, predIndex) {
+  const task = findTask(toTaskId);
+  if (!task) { closeModal(); return; }
+  task.predecessors.splice(predIndex, 1);
+  closeModal();
+  saveProject();
+  renderGantt();
+}
+
 function openProjectSettings() {
   const s = getSettings();
   const dayNames = ['Ne','Po','Út','St','Čt','Pá','So'];
@@ -4852,8 +4961,10 @@ function toggleColumnPicker(e) {
 function toggleColumn(id, on) {
   if (on) { if (!visibleColumns.includes(id)) visibleColumns.push(id); }
   else visibleColumns = visibleColumns.filter(c => c !== id);
-  // keep 'name' always first
-  visibleColumns = ['name', ...visibleColumns.filter(c => c !== 'name')];
+  // keep 'name' always first; 'wbs' always second when present
+  const rest = visibleColumns.filter(c => c !== 'name' && c !== 'wbs');
+  if (visibleColumns.includes('wbs')) visibleColumns = ['name', 'wbs', ...rest];
+  else visibleColumns = ['name', ...rest];
   localStorage.setItem('bt_cols', JSON.stringify(visibleColumns));
   renderWBS();
 }
