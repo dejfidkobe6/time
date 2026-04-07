@@ -3125,7 +3125,7 @@ function renderGanttRows(minD, totalW) {
             ? fsSuccStarts.reduce((a,b) => a < b ? a : b) // earliest successor start
             : (projectEndDate || '');
           if (floatEnd && floatEnd > task.endDate) {
-            const fx1 = Math.round(dateToX(new Date(task.endDate), minD)) + (x2 - x);
+            const fx1 = x2;
             const fx2 = Math.round(dateToX(new Date(floatEnd), minD));
             const fw  = fx2 - fx1;
             if (fw > 2) {
