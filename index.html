@@ -307,6 +307,13 @@ html, body {
 }
 .btn-secondary:hover { border-color: var(--olive); color: var(--olive); background: var(--bg-hover); }
 
+.btn-danger {
+  background: #c0392b;
+  color: white;
+  border: 1px solid #a93226;
+}
+.btn-danger:hover { background: #a93226; }
+
 .btn-ghost {
   background: transparent;
   color: var(--text-muted);
@@ -1673,6 +1680,9 @@ html, body {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         Přidat úkol
       </button>
+      <button class="btn btn-secondary" onclick="openProjectSettings()" title="Nastavení projektu" style="padding:0 10px;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
       <div id="header-user-chip" style="display:flex;align-items:center;gap:6px;margin-left:4px;padding:0 4px;border-left:1px solid var(--border);">
         <div id="header-user-avatar" style="width:28px;height:28px;border-radius:50%;background:var(--olive);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;flex-shrink:0;"></div>
         <span id="header-user-name" style="font-size:12px;color:var(--text-muted);max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
@@ -1970,9 +1980,13 @@ const COLUMN_DEFS = [
   { id: 'progress',     label: 'Postup',       w: '62px'  },
   { id: 'budget',       label: 'Rozpočet',     w: '74px'  },
 ];
-let visibleColumns = (() => { try { return JSON.parse(localStorage.getItem('bt_cols') || 'null') || ['name','predecessors','successors','start','end','duration','progress','budget']; } catch(e) { return ['name','predecessors','successors','start','end','duration','progress','budget']; } })();
-// always ensure 'name' is first
+let visibleColumns = (() => { try { return JSON.parse(localStorage.getItem('bt_cols') || 'null') || ['name','wbs','predecessors','successors','start','end','duration','progress','budget']; } catch(e) { return ['name','wbs','predecessors','successors','start','end','duration','progress','budget']; } })();
+// always ensure 'name' is first and 'wbs' is second when present
 if (!visibleColumns.includes('name')) visibleColumns.unshift('name');
+if (visibleColumns.includes('wbs') && visibleColumns[1] !== 'wbs') {
+  visibleColumns = visibleColumns.filter(c => c !== 'wbs');
+  visibleColumns.splice(1, 0, 'wbs');
+}
 
 let ganttColorMode = localStorage.getItem('bt_colormode') || 'phase';
 let ganttFilter    = localStorage.getItem('bt_filter')    || 'all';
@@ -2483,11 +2497,10 @@ function initColDrag(hdr) {
       toIdx = visibleColumns.indexOf(el.dataset.colId);
       visibleColumns.splice(insertBefore ? toIdx : toIdx + 1, 0, dragColId);
 
-      // 'name' must stay first
-      if (visibleColumns[0] !== 'name') {
-        visibleColumns = visibleColumns.filter(c => c !== 'name');
-        visibleColumns.unshift('name');
-      }
+      // 'name' must stay first; 'wbs' stays second when present
+      const _rest = visibleColumns.filter(c => c !== 'name' && c !== 'wbs');
+      if (visibleColumns.includes('wbs')) visibleColumns = ['name', 'wbs', ..._rest];
+      else visibleColumns = ['name', ..._rest];
 
       localStorage.setItem('bt_cols', JSON.stringify(visibleColumns));
       renderWBS();
@@ -2522,8 +2535,13 @@ function getColTemplate() {
 }
 
 function getWBSNum(phaseIdx, taskIdx) {
-  if (taskIdx === undefined) return String(phaseIdx + 1);
-  return (phaseIdx + 1) + '.' + (taskIdx + 1);
+  if (taskIdx === undefined) return '';  // phases have no WBS number
+  let count = 0;
+  for (let pi = 0; pi < project.phases.length; pi++) {
+    if (pi === phaseIdx) return String(count + taskIdx + 1);
+    count += project.phases[pi].tasks.length;
+  }
+  return '';
 }
 
 function formatPreds(preds) {
@@ -2538,6 +2556,45 @@ function formatPreds(preds) {
     const lag = p.lag ? (p.lag > 0 ? '+' + p.lag : String(p.lag)) : '';
     return lbl ? lbl + type + lag : '';
   }).filter(Boolean).join(', ');
+}
+
+// ── Critical path (longest path through dependency network) ──────────────────
+function computeCriticalPath() {
+  const allTasks = [];
+  project.phases.forEach(ph => ph.tasks.forEach(t => allTasks.push(t)));
+  const ef = {};  // earliest finish
+  // Forward pass
+  allTasks.forEach(t => {
+    if (!t.endDate) return;
+    let start = t.startDate;
+    (t.predecessors || []).forEach(pred => {
+      const p = allTasks.find(x => x.id === pred.taskId);
+      if (p?.endDate && p.endDate > (start || '')) start = p.endDate;
+    });
+    const dur = t.startDate && t.endDate ? daysBetween(t.startDate, t.endDate) : 0;
+    ef[t.id] = start ? addDays(start, dur) : (t.endDate || '');
+  });
+  const projectEnd = Object.values(ef).reduce((a, b) => a > b ? a : b, '');
+  // Backward pass — tasks on critical path: any chain that reaches projectEnd
+  const onCP = new Set();
+  function trace(taskId) {
+    if (onCP.has(taskId)) return;
+    onCP.add(taskId);
+    allTasks.forEach(t => {
+      (t.predecessors || []).forEach(pred => {
+        if (pred.taskId === taskId) trace(t.id);
+      });
+    });
+  }
+  allTasks.filter(t => ef[t.id] === projectEnd).forEach(t => trace(t.id));
+  return onCP;
+}
+
+let _criticalPathCache = null;
+function getCriticalPath() {
+  if (!getSettings().showCriticalPath) return new Set();
+  if (!_criticalPathCache) _criticalPathCache = computeCriticalPath();
+  return _criticalPathCache;
 }
 
 function getTaskColor(task, phase, pi) {
@@ -2562,6 +2619,8 @@ function getTaskColor(task, phase, pi) {
     for (let i = 0; i < task.assignee.length; i++) hash = task.assignee.charCodeAt(i) + ((hash << 5) - hash);
     return PHASE_COLORS[Math.abs(hash) % PHASE_COLORS.length];
   }
+  // Critical path override
+  if (getSettings().showCriticalPath && getCriticalPath().has(task.id)) return '#c0392b';
   return baseColor;
 }
 
@@ -2744,6 +2803,7 @@ function dateToX(date, minD) {
 }
 
 function renderGantt() {
+  _criticalPathCache = null; // invalidate on each render
   const { minD, maxD } = getGanttBounds();
   const totalUnits = timescale === 'days' ? daysBetween(minD, maxD) :
                      timescale === 'weeks' ? Math.ceil(daysBetween(minD, maxD)/7) + 1 :
@@ -2783,7 +2843,10 @@ function renderGanttHeader(minD, maxD, totalW) {
       cell.style.width = cellW + 'px';
       cell.style.minWidth = cellW + 'px';
       const dow = d.getDay();
-      if (ganttOpts.wknd && (dow === 0 || dow === 6)) cell.style.background = 'rgba(255,255,255,0.05)';
+      const s = getSettings();
+      const dateStr = d.toISOString().split('T')[0];
+      const isNonWork = (ganttOpts.wknd && !s.workDays.includes(dow)) || s.holidays.includes(dateStr);
+      if (isNonWork) cell.style.background = 'rgba(255,255,255,0.05)';
       cell.textContent = d.getDate();
       unitsRow.appendChild(cell);
       d.setDate(d.getDate() + 1);
@@ -2979,20 +3042,86 @@ function addDays(dateStr, n) {
   return d.toISOString().split('T')[0];
 }
 
-// Enforce FS predecessor constraints: task cannot start before any FS predecessor ends
+/// Enforce predecessor constraints on a single task (clamp its start if violated)
 function enforceConstraints(task) {
   (task.predecessors || []).forEach(pred => {
-    if ((pred.type || 'FS') !== 'FS') return;
+    const type = pred.type || 'FS';
     const predTask = findTask(pred.taskId);
-    if (!predTask?.endDate) return;
-    const lagDays = pred.lag || 0;
-    const minStart = addDays(predTask.endDate, lagDays);
-    if (task.startDate < minStart) {
-      const dur = daysBetween(task.startDate, task.endDate);
-      task.startDate = minStart;
-      task.endDate = addDays(minStart, dur);
+    if (!predTask) return;
+    const lag = pred.lag || 0;
+    if (type === 'FS' && predTask.endDate && task.startDate) {
+      const minStart = addDays(predTask.endDate, lag);
+      if (task.startDate < minStart) {
+        const dur = daysBetween(task.startDate, task.endDate);
+        task.startDate = minStart;
+        task.endDate = addDays(minStart, dur);
+      }
+    } else if (type === 'SS' && predTask.startDate && task.startDate) {
+      const minStart = addDays(predTask.startDate, lag);
+      if (task.startDate < minStart) {
+        const dur = daysBetween(task.startDate, task.endDate);
+        task.startDate = minStart;
+        task.endDate = addDays(minStart, dur);
+      }
+    } else if (type === 'FF' && predTask.endDate && task.endDate) {
+      const minEnd = addDays(predTask.endDate, lag);
+      if (task.endDate < minEnd) {
+        const dur = daysBetween(task.startDate, task.endDate);
+        task.endDate = minEnd;
+        task.startDate = addDays(minEnd, -dur);
+      }
     }
   });
+}
+
+// Cascade: when a task's dates change, propagate to all successors (BFS, cycle-safe)
+function cascadeSuccessors(changedTaskId) {
+  const queue = [changedTaskId];
+  const visited = new Set();
+  while (queue.length) {
+    const id = queue.shift();
+    if (visited.has(id)) continue;
+    visited.add(id);
+    const changed = findTask(id);
+    if (!changed) continue;
+    project.phases.forEach(ph => {
+      ph.tasks.forEach(task => {
+        if (visited.has(task.id)) return;
+        (task.predecessors || []).forEach(pred => {
+          if (pred.taskId !== id) return;
+          const type = pred.type || 'FS';
+          const lag  = pred.lag || 0;
+          let shifted = false;
+          if (type === 'FS' && changed.endDate && task.startDate) {
+            const minStart = addDays(changed.endDate, lag);
+            if (task.startDate < minStart) {
+              const dur = daysBetween(task.startDate, task.endDate);
+              task.startDate = minStart;
+              task.endDate   = addDays(minStart, dur);
+              shifted = true;
+            }
+          } else if (type === 'SS' && changed.startDate && task.startDate) {
+            const minStart = addDays(changed.startDate, lag);
+            if (task.startDate < minStart) {
+              const dur = daysBetween(task.startDate, task.endDate);
+              task.startDate = minStart;
+              task.endDate   = addDays(minStart, dur);
+              shifted = true;
+            }
+          } else if (type === 'FF' && changed.endDate && task.endDate) {
+            const minEnd = addDays(changed.endDate, lag);
+            if (task.endDate < minEnd) {
+              const dur = daysBetween(task.startDate, task.endDate);
+              task.endDate   = minEnd;
+              task.startDate = addDays(minEnd, -dur);
+              shifted = true;
+            }
+          }
+          if (shifted) queue.push(task.id);
+        });
+      });
+    });
+  }
 }
 
 function makeDraggableBar(barWrap, task, minD) {
@@ -3026,6 +3155,7 @@ function makeDraggableBar(barWrap, task, minD) {
     task.startDate = newStart.toISOString().split('T')[0];
     task.endDate = addDays(task.startDate, dur);
     enforceConstraints(task);
+    cascadeSuccessors(task.id);
     saveProject(true); render();
   });
 }
@@ -3067,6 +3197,7 @@ function makeResizableBar(barWrap, task, minD) {
         task.startDate = newStart.toISOString().split('T')[0];
         task.endDate = addDays(task.startDate, xToDays(newW));
         enforceConstraints(task);
+        cascadeSuccessors(task.id);
       }
       saveProject(true); render();
     }
@@ -3170,8 +3301,13 @@ function renderDependencies(minD) {
 
   project.phases.forEach(ph => {
     ph.tasks.forEach(task => {
-      const preds = task.predecessors || (task.dependsOn ? [{ taskId: task.dependsOn, type: 'FS', lag: 0 }] : []);
-      preds.forEach(pred => {
+      // Migrate legacy dependsOn to predecessors array
+      if (!task.predecessors && task.dependsOn) {
+        task.predecessors = [{ taskId: task.dependsOn, type: 'FS', lag: 0 }];
+        delete task.dependsOn;
+      }
+      const preds = task.predecessors || [];
+      preds.forEach((pred, predIndex) => {
         const predTask = findTask(pred.taskId);
         if (!predTask) return;
         const type = pred.type || 'FS';
@@ -3236,6 +3372,22 @@ function renderDependencies(minD) {
         if (cfg.dash) path.setAttribute('stroke-dasharray', cfg.dash);
         path.setAttribute('marker-end', `url(#arr-${type})`);
         g.appendChild(path);
+
+        // Invisible wide hit area for double-click editing
+        const hit = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        hit.setAttribute('d', d);
+        hit.setAttribute('stroke', 'transparent');
+        hit.setAttribute('stroke-width', '12');
+        hit.setAttribute('fill', 'none');
+        hit.style.pointerEvents = 'stroke';
+        hit.style.cursor = 'pointer';
+        hit.title = `${type}${lag ? (lag>0?'+'+lag:lag) : ''} — двойной клик для редактирования`;
+        hit.addEventListener('dblclick', (e) => {
+          e.stopPropagation();
+          openDepEditor(task, predIndex);
+        });
+        g.appendChild(hit);
+
         svg.appendChild(g);
       });
     });
@@ -4130,6 +4282,224 @@ const TEMPLATES = {
   }
 };
 
+/* ═══════════════════════════════════════════════════
+   PROJECT SETTINGS
+═══════════════════════════════════════════════════ */
+function getSettings() {
+  return project.settings || (project.settings = {
+    workDays:        [1,2,3,4,5],   // 0=Sun … 6=Sat
+    holidays:        [],            // ['YYYY-MM-DD', …]
+    autoSchedule:    true,
+    showCriticalPath:false,
+    defaultDuration: 5,
+    currency:        'CZK',
+    projectStart:    '',
+    projectDeadline: '',
+    notes:           '',
+  });
+}
+
+/* ═══════════════════════════════════════════════════
+   DEPENDENCY EDITOR (double-click on arrow)
+═══════════════════════════════════════════════════ */
+function openDepEditor(toTask, predIndex) {
+  const pred = toTask.predecessors[predIndex];
+  const predTask = findTask(pred.taskId);
+  const predWBS = (() => {
+    let w = '';
+    project.phases.forEach((ph, pi) => ph.tasks.forEach((t, ti) => { if (t.id === pred.taskId) w = getWBSNum(pi, ti); }));
+    return w;
+  })();
+  const toWBS = (() => {
+    let w = '';
+    project.phases.forEach((ph, pi) => ph.tasks.forEach((t, ti) => { if (t.id === toTask.id) w = getWBSNum(pi, ti); }));
+    return w;
+  })();
+
+  const types = ['FS','FF','SS','SF'];
+  const typeLabels = { FS: 'FS — Konec → Začátek', FF: 'FF — Konec → Konec', SS: 'SS — Začátek → Začátek', SF: 'SF — Začátek → Konec' };
+  const typeOpts = types.map(t => `<option value="${t}" ${(pred.type||'FS')===t?'selected':''}>${typeLabels[t]}</option>`).join('');
+
+  const mc = document.getElementById('modal-container');
+  mc.innerHTML = `
+  <div class="modal-overlay" onclick="closeModal()">
+  <div class="modal" style="max-width:360px;" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <span class="modal-title">Vazba: úkol ${predWBS} → ${toWBS}</span>
+      <button class="modal-close" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:14px;">
+      <div>
+        <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:5px;">Typ vazby</label>
+        <select id="dep-type-sel" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:10px;background:var(--bg-card);color:var(--text);font-size:14px;font-family:inherit;">
+          ${typeOpts}
+        </select>
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:5px;">Prodleva (dny, záporná = překryv)</label>
+        <input id="dep-lag-inp" type="number" value="${pred.lag||0}" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:10px;background:var(--bg-card);color:var(--text);font-size:14px;font-family:inherit;">
+      </div>
+      <div style="font-size:12px;color:var(--text-muted);">
+        <strong>${escHtml(predTask?.name||'')}</strong> → <strong>${escHtml(toTask.name)}</strong>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-danger" onclick="deleteDepAndClose('${toTask.id}',${predIndex})">Smazat vazbu</button>
+      <button class="btn btn-secondary" onclick="closeModal()">Zrušit</button>
+      <button class="btn btn-primary" onclick="saveDepAndClose('${toTask.id}',${predIndex})">Uložit</button>
+    </div>
+  </div>
+  </div>`;
+  mc.querySelector('.modal-overlay').style.display = 'flex';
+}
+
+function saveDepAndClose(toTaskId, predIndex) {
+  const task = findTask(toTaskId);
+  if (!task) { closeModal(); return; }
+  task.predecessors[predIndex].type = document.getElementById('dep-type-sel').value;
+  task.predecessors[predIndex].lag  = parseInt(document.getElementById('dep-lag-inp').value) || 0;
+  closeModal();
+  saveProject();
+  renderGantt();
+}
+
+function deleteDepAndClose(toTaskId, predIndex) {
+  const task = findTask(toTaskId);
+  if (!task) { closeModal(); return; }
+  task.predecessors.splice(predIndex, 1);
+  closeModal();
+  saveProject();
+  renderGantt();
+}
+
+function openProjectSettings() {
+  const s = getSettings();
+  const dayNames = ['Ne','Po','Út','St','Čt','Pá','So'];
+  const dayChecks = [1,2,3,4,5,6,0].map(d => `
+    <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:12px;">
+      <input type="checkbox" value="${d}" ${s.workDays.includes(d)?'checked':''} onchange="toggleWorkDay(${d},this.checked)">
+      ${dayNames[d]}
+    </label>`).join('');
+
+  const holidayRows = () => (s.holidays||[]).map((h,i) => `
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+      <span style="font-size:12px;flex:1;">${h}</span>
+      <button class="btn btn-ghost btn-icon" onclick="removeHoliday(${i})" style="padding:2px;height:22px;width:22px;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>`).join('') || '<div style="font-size:11px;color:var(--text-muted);">Žádné výjimky</div>';
+
+  openModal(`
+    <div class="modal" style="width:520px;">
+      <div class="modal-header">
+        <div class="modal-title">Nastavení projektu</div>
+        <button class="modal-close" onclick="closeModal()">×</button>
+      </div>
+      <div class="modal-body" style="padding:0;">
+
+        <!-- Sekce: Plánování -->
+        <div style="padding:16px 20px;border-bottom:1px solid var(--border);">
+          <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;color:var(--text-muted);margin-bottom:10px;">Plánování</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <div class="form-field">
+              <label class="form-label">Datum zahájení projektu</label>
+              <input type="date" class="form-input" value="${s.projectStart||''}"
+                onchange="project.settings.projectStart=this.value;saveProject(true);">
+            </div>
+            <div class="form-field">
+              <label class="form-label">Deadline projektu</label>
+              <input type="date" class="form-input" value="${s.projectDeadline||''}"
+                onchange="project.settings.projectDeadline=this.value;saveProject(true);">
+            </div>
+            <div class="form-field">
+              <label class="form-label">Výchozí délka úkolu (dny)</label>
+              <input type="number" class="form-input" min="1" max="365" value="${s.defaultDuration||5}"
+                onchange="project.settings.defaultDuration=+this.value;saveProject(true);">
+            </div>
+            <div class="form-field">
+              <label class="form-label">Měna</label>
+              <select class="form-select" onchange="project.settings.currency=this.value;saveProject(true);renderHeader();">
+                ${['CZK','EUR','USD','GBP'].map(c=>`<option value="${c}" ${s.currency===c?'selected':''}>${c}</option>`).join('')}
+              </select>
+            </div>
+          </div>
+          <div style="margin-top:10px;display:flex;flex-direction:column;gap:8px;">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;">
+              <input type="checkbox" ${s.autoSchedule?'checked':''} onchange="project.settings.autoSchedule=this.checked;saveProject(true);">
+              <span>Automatické přeplánování (cascade) po změně termínu</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;">
+              <input type="checkbox" id="sett-cp" ${s.showCriticalPath?'checked':''} onchange="project.settings.showCriticalPath=this.checked;saveProject(true);renderGantt();">
+              <span>Zobrazit kritickou cestu</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Sekce: Pracovní dny -->
+        <div style="padding:16px 20px;border-bottom:1px solid var(--border);">
+          <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;color:var(--text-muted);margin-bottom:10px;">Pracovní dny</div>
+          <div style="display:flex;gap:12px;flex-wrap:wrap;">${dayChecks}</div>
+        </div>
+
+        <!-- Sekce: Svátky / výjimky -->
+        <div style="padding:16px 20px;border-bottom:1px solid var(--border);">
+          <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;color:var(--text-muted);margin-bottom:10px;">Svátky a nepracovní výjimky</div>
+          <div id="holidays-list">${holidayRows()}</div>
+          <div style="display:flex;gap:6px;margin-top:8px;">
+            <input type="date" id="holiday-add-input" class="form-input" style="flex:1;">
+            <button class="btn btn-secondary" onclick="addHoliday()">Přidat</button>
+          </div>
+        </div>
+
+        <!-- Sekce: Poznámky -->
+        <div style="padding:16px 20px;">
+          <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;color:var(--text-muted);margin-bottom:10px;">Poznámky k projektu</div>
+          <textarea class="form-input" rows="3" style="width:100%;resize:vertical;"
+            placeholder="Interní poznámky…"
+            onchange="project.settings.notes=this.value;saveProject(true);">${s.notes||''}</textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary" onclick="closeModal()">Zavřít</button>
+      </div>
+    </div>
+  `);
+}
+
+function toggleWorkDay(day, on) {
+  const s = getSettings();
+  if (on) { if (!s.workDays.includes(day)) s.workDays.push(day); }
+  else     { s.workDays = s.workDays.filter(d => d !== day); }
+  saveProject(true); renderGantt();
+}
+
+function addHoliday() {
+  const inp = document.getElementById('holiday-add-input');
+  const val = inp?.value;
+  if (!val) return;
+  const s = getSettings();
+  if (!s.holidays.includes(val)) {
+    s.holidays.push(val);
+    s.holidays.sort();
+    saveProject(true); renderGantt();
+  }
+  inp.value = '';
+  document.getElementById('holidays-list').innerHTML = s.holidays.map((h,i) => `
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+      <span style="font-size:12px;flex:1;">${h}</span>
+      <button class="btn btn-ghost btn-icon" onclick="removeHoliday(${i})" style="padding:2px;height:22px;width:22px;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>`).join('') || '<div style="font-size:11px;color:var(--text-muted);">Žádné výjimky</div>';
+}
+
+function removeHoliday(idx) {
+  const s = getSettings();
+  s.holidays.splice(idx, 1);
+  saveProject(true); renderGantt();
+  openProjectSettings(); // refresh modal
+}
+
 function openTemplateModal() {
   openModal(`
     <div class="modal" style="width:580px;">
@@ -4591,8 +4961,10 @@ function toggleColumnPicker(e) {
 function toggleColumn(id, on) {
   if (on) { if (!visibleColumns.includes(id)) visibleColumns.push(id); }
   else visibleColumns = visibleColumns.filter(c => c !== id);
-  // keep 'name' always first
-  visibleColumns = ['name', ...visibleColumns.filter(c => c !== 'name')];
+  // keep 'name' always first; 'wbs' always second when present
+  const rest = visibleColumns.filter(c => c !== 'name' && c !== 'wbs');
+  if (visibleColumns.includes('wbs')) visibleColumns = ['name', 'wbs', ...rest];
+  else visibleColumns = ['name', ...rest];
   localStorage.setItem('bt_cols', JSON.stringify(visibleColumns));
   renderWBS();
 }
@@ -4663,6 +5035,7 @@ function inlineEdit(span, taskId, field, type) {
     let val = input.value;
     if (type === 'number') val = parseFloat(val) || 0;
     task[field] = val;
+    if (field === 'startDate' || field === 'endDate') cascadeSuccessors(task.id);
     saveProject(true); render();
   }
   input.addEventListener('blur', commit);
