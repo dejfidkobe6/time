@@ -3227,6 +3227,7 @@ function makeResizableBar(barWrap, task, minD) {
       if (edge === 'right') {
         const newW = parseInt(barWrap.style.width);
         task.endDate = addDays(task.startDate, xToDays(newW));
+        cascadeSuccessors(task.id);
       } else {
         const newLeft = parseInt(barWrap.style.left);
         const newW = parseInt(barWrap.style.width);
