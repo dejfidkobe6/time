@@ -2627,31 +2627,39 @@ function formatPreds(preds) {
 function computeCriticalPath() {
   const allTasks = [];
   project.phases.forEach(ph => ph.tasks.forEach(t => allTasks.push(t)));
-  const ef = {};  // earliest finish
-  // Forward pass
-  allTasks.forEach(t => {
-    if (!t.endDate) return;
-    let start = t.startDate;
-    (t.predecessors || []).forEach(pred => {
-      const p = allTasks.find(x => x.id === pred.taskId);
-      if (p?.endDate && p.endDate > (start || '')) start = p.endDate;
-    });
-    const dur = t.startDate && t.endDate ? daysBetween(t.startDate, t.endDate) : 0;
-    ef[t.id] = start ? addDays(start, dur) : (t.endDate || '');
-  });
-  const projectEnd = Object.values(ef).reduce((a, b) => a > b ? a : b, '');
-  // Backward pass — tasks on critical path: any chain that reaches projectEnd
+  if (!allTasks.length) return new Set();
+
+  // Project end = latest endDate across all tasks
+  const projectEnd = allTasks
+    .filter(t => t.endDate)
+    .map(t => t.endDate)
+    .reduce((a, b) => a > b ? a : b, '');
+  if (!projectEnd) return new Set();
+
   const onCP = new Set();
+
+  // Backward trace: follow tight predecessor chains
+  // A link is tight when the successor starts exactly 1 day after the predecessor ends (+lag)
   function trace(taskId) {
     if (onCP.has(taskId)) return;
     onCP.add(taskId);
-    allTasks.forEach(t => {
-      (t.predecessors || []).forEach(pred => {
-        if (pred.taskId === taskId) trace(t.id);
-      });
+    const task = allTasks.find(t => t.id === taskId);
+    if (!task) return;
+    (task.predecessors || []).forEach(pred => {
+      const predTask = allTasks.find(t => t.id === pred.taskId);
+      if (!predTask || !predTask.endDate || !task.startDate) return;
+      const type = pred.type || 'FS';
+      const lag  = pred.lag || 0;
+      let tight = false;
+      if      (type === 'FS') tight = task.startDate === addDays(predTask.endDate, lag + 1);
+      else if (type === 'SS') tight = task.startDate === addDays(predTask.startDate, lag);
+      else if (type === 'FF') tight = task.endDate   === addDays(predTask.endDate,   lag);
+      if (tight) trace(pred.taskId);
     });
   }
-  allTasks.filter(t => ef[t.id] === projectEnd).forEach(t => trace(t.id));
+
+  // Start from tasks whose endDate equals project end
+  allTasks.filter(t => t.endDate === projectEnd).forEach(t => trace(t.id));
   return onCP;
 }
 
@@ -3101,6 +3109,33 @@ function renderGanttRows(minD, totalW) {
         makeDraggableBar(barWrap, task, minD);
         makeResizableBar(barWrap, task, minD);
         tRow.appendChild(barWrap);
+
+        // Float bar (time reserve) — 50% transparent extension after bar end
+        if (getSettings().showFloat && task.endDate) {
+          const allTasks2 = [];
+          project.phases.forEach(ph2 => ph2.tasks.forEach(t2 => allTasks2.push(t2)));
+          // Collect all FS successors of this task
+          const fsSuccStarts = allTasks2
+            .filter(t2 => (t2.predecessors||[]).some(p => p.taskId === task.id && (p.type||'FS') === 'FS'))
+            .map(t2 => t2.startDate)
+            .filter(Boolean);
+          // If no FS successors, use project end
+          const projectEndDate = allTasks2.filter(t2=>t2.endDate).map(t2=>t2.endDate).reduce((a,b)=>a>b?a:b,'');
+          const floatEnd = fsSuccStarts.length
+            ? fsSuccStarts.reduce((a,b) => a < b ? a : b) // earliest successor start
+            : (projectEndDate || '');
+          if (floatEnd && floatEnd > task.endDate) {
+            const fx1 = Math.round(dateToX(new Date(task.endDate), minD)) + (x2 - x);
+            const fx2 = Math.round(dateToX(new Date(floatEnd), minD));
+            const fw  = fx2 - fx1;
+            if (fw > 2) {
+              const floatBar = document.createElement('div');
+              floatBar.style.cssText = `position:absolute;left:${fx1}px;width:${fw}px;top:50%;transform:translateY(-50%);height:22px;background:${barColor};opacity:0.35;border-radius:0 6px 6px 0;pointer-events:none;border:1px dashed ${barColor};box-sizing:border-box;`;
+              tRow.appendChild(floatBar);
+            }
+          }
+        }
+
         } // end taskMatchesFilter
       }
 
@@ -3358,8 +3393,14 @@ function renderDependencies(minD) {
     SS: { color: '#4a5ab4', dash: '2,3'       },
     SF: { color: '#a07810', dash: '6,2,2,2'   },
   };
+  const CP_COLOR = '#c0392b';  // critical path arrow color
+  const cp = getCriticalPath();
 
   const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+  // Add CP marker
+  defs.innerHTML += `<marker id="arr-CP" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+    <path d="M1,1 L7,4 L1,7 Z" fill="${CP_COLOR}" stroke="none"/>
+  </marker>`;
   Object.entries(TYPE_CFG).forEach(([t, cfg]) => {
     defs.innerHTML += `
       <marker id="arr-${t}" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse">
@@ -3381,7 +3422,14 @@ function renderDependencies(minD) {
         if (!predTask) return;
         const type = pred.type || 'FS';
         const lag  = pred.lag || 0;
-        const cfg  = TYPE_CFG[type] || TYPE_CFG.FS;
+        // Check if this specific link is on the critical path (both tasks on CP and link is tight)
+        const isCPLink = cp.has(predTask.id) && cp.has(task.id) && (() => {
+          if (type === 'FS') return task.startDate === addDays(predTask.endDate, lag + 1);
+          if (type === 'SS') return task.startDate === addDays(predTask.startDate, lag);
+          if (type === 'FF') return task.endDate   === addDays(predTask.endDate,   lag);
+          return false;
+        })();
+        const cfg = isCPLink ? { color: CP_COLOR, dash: '' } : (TYPE_CFG[type] || TYPE_CFG.FS);
 
         const ry1 = getTaskRowY(predTask.id);
         const ry2 = getTaskRowY(task.id);
@@ -3439,7 +3487,8 @@ function renderDependencies(minD) {
         path.setAttribute('fill', 'none');
         path.setAttribute('opacity', '0.8');
         if (cfg.dash) path.setAttribute('stroke-dasharray', cfg.dash);
-        path.setAttribute('marker-end', `url(#arr-${type})`);
+        path.setAttribute('marker-end', `url(#arr-${isCPLink ? 'CP' : type})`);
+        if (isCPLink) { path.setAttribute('stroke-width', '2.2'); path.setAttribute('opacity', '1'); }
         g.appendChild(path);
 
         // Invisible wide hit area for double-click editing
@@ -4360,6 +4409,7 @@ function getSettings() {
     holidays:        [],            // ['YYYY-MM-DD', …]
     autoSchedule:    true,
     showCriticalPath:false,
+    showFloat:       false,
     defaultDuration: 5,
     currency:        'CZK',
     projectStart:    '',
@@ -4496,8 +4546,12 @@ function openProjectSettings() {
               <span>Automatické přeplánování (cascade) po změně termínu</span>
             </label>
             <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;">
-              <input type="checkbox" id="sett-cp" ${s.showCriticalPath?'checked':''} onchange="project.settings.showCriticalPath=this.checked;saveProject(true);renderGantt();">
-              <span>Zobrazit kritickou cestu</span>
+              <input type="checkbox" id="sett-cp" ${s.showCriticalPath?'checked':''} onchange="project.settings.showCriticalPath=this.checked;_criticalPathCache=null;saveProject(true);renderGantt();">
+              <span>Zobrazit kritickou cestu (červeně)</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;">
+              <input type="checkbox" ${s.showFloat?'checked':''} onchange="project.settings.showFloat=this.checked;saveProject(true);renderGantt();">
+              <span>Zobrazit časovou rezervu (průhledný bar za úkolem)</span>
             </label>
           </div>
         </div>
