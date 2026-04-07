@@ -1938,17 +1938,18 @@ let currentProjectId = null;
    COLUMNS CONFIG
 ═══════════════════════════════════════════════════ */
 const COLUMN_DEFS = [
-  { id: 'name',         label: 'Název',       w: null,    fixed: true },
-  { id: 'wbs',          label: 'WBS',         w: '42px'  },
-  { id: 'predecessors', label: 'Předchůdci',  w: '90px'  },
-  { id: 'start',        label: 'Zahájení',    w: '80px'  },
-  { id: 'end',          label: 'Dokončení',   w: '80px'  },
-  { id: 'duration',     label: 'Trvání',      w: '54px'  },
-  { id: 'assignee',     label: 'Přiřazení',   w: '78px'  },
-  { id: 'progress',     label: 'Postup',      w: '62px'  },
-  { id: 'budget',       label: 'Rozpočet',    w: '74px'  },
+  { id: 'name',         label: 'Název',        w: null,   fixed: true },
+  { id: 'wbs',          label: 'WBS',          w: '42px'  },
+  { id: 'predecessors', label: 'Předchůdci',   w: '90px'  },
+  { id: 'successors',   label: 'Následovníci', w: '90px'  },
+  { id: 'start',        label: 'Zahájení',     w: '80px'  },
+  { id: 'end',          label: 'Dokončení',    w: '80px'  },
+  { id: 'duration',     label: 'Trvání',       w: '54px'  },
+  { id: 'assignee',     label: 'Přiřazení',    w: '78px'  },
+  { id: 'progress',     label: 'Postup',       w: '62px'  },
+  { id: 'budget',       label: 'Rozpočet',     w: '74px'  },
 ];
-let visibleColumns = (() => { try { return JSON.parse(localStorage.getItem('bt_cols') || 'null') || ['name','predecessors','start','end','duration','progress','budget']; } catch(e) { return ['name','predecessors','start','end','duration','progress','budget']; } })();
+let visibleColumns = (() => { try { return JSON.parse(localStorage.getItem('bt_cols') || 'null') || ['name','predecessors','successors','start','end','duration','progress','budget']; } catch(e) { return ['name','predecessors','successors','start','end','duration','progress','budget']; } })();
 // always ensure 'name' is first
 if (!visibleColumns.includes('name')) visibleColumns.unshift('name');
 
@@ -2574,6 +2575,11 @@ function createTaskRow(task, phase, pi, ti) {
           return lbl ? `<span class="pred-chip" onclick="openEditTaskModal('${task.id}');event.stopPropagation();" title="Předchůdce">${escHtml(lbl)}</span>` : '';
         }).join('')
       }</div>`;
+      case 'successors': return `<div class="pred-chips" style="padding:2px 4px;">${
+        getSuccessors(task.id).map(s => {
+          return `<span class="pred-chip" style="border-color:rgba(90,128,64,0.4);" onclick="openEditTaskModal('${s.taskId}');event.stopPropagation();" title="Následovník">${escHtml(s.label)}</span>`;
+        }).join('')
+      }</div>`;
       case 'start': return `<span class="cell-editable wbs-date-cell" onclick="inlineEdit(this,'${task.id}','startDate','date');event.stopPropagation();">${formatDateShort(task.startDate)}</span>`;
       case 'end': return `<span class="cell-editable wbs-date-cell" onclick="inlineEdit(this,'${task.id}','endDate','date');event.stopPropagation();">${formatDateShort(task.endDate)}</span>`;
       case 'duration': return `<span class="cell-editable wbs-date-cell" onclick="inlineEditDuration(this,'${task.id}');event.stopPropagation();">${dur > 0 ? dur + 'd' : '—'}</span>`;
@@ -2610,6 +2616,23 @@ function formatOnePred(p) {
   const type = p.type || 'FS';
   const lag = p.lag ? (p.lag > 0 ? '+' + p.lag : '' + p.lag) : '';
   return wbs + ' ' + type + lag;
+}
+
+function getSuccessors(taskId) {
+  const result = [];
+  project.phases.forEach((ph, pi) => {
+    ph.tasks.forEach((t, ti) => {
+      (t.predecessors || []).forEach(p => {
+        if (p.taskId === taskId) {
+          const wbs = getWBSNum(pi, ti);
+          const type = p.type || 'FS';
+          const lag = p.lag ? (p.lag > 0 ? '+' + p.lag : '' + p.lag) : '';
+          result.push({ taskId: t.id, label: wbs + ' ' + type + lag });
+        }
+      });
+    });
+  });
+  return result;
 }
 
 /* ═══════════════════════════════════════════════════
@@ -2880,6 +2903,22 @@ function addDays(dateStr, n) {
   return d.toISOString().split('T')[0];
 }
 
+// Enforce FS predecessor constraints: task cannot start before any FS predecessor ends
+function enforceConstraints(task) {
+  (task.predecessors || []).forEach(pred => {
+    if ((pred.type || 'FS') !== 'FS') return;
+    const predTask = findTask(pred.taskId);
+    if (!predTask?.endDate) return;
+    const lagDays = pred.lag || 0;
+    const minStart = addDays(predTask.endDate, lagDays);
+    if (task.startDate < minStart) {
+      const dur = daysBetween(task.startDate, task.endDate);
+      task.startDate = minStart;
+      task.endDate = addDays(minStart, dur);
+    }
+  });
+}
+
 function makeDraggableBar(barWrap, task, minD) {
   let isDragging = false, startX = 0, origLeft = 0;
 
@@ -2906,12 +2945,11 @@ function makeDraggableBar(barWrap, task, minD) {
     barWrap.style.cursor = 'grab';
     barWrap.style.zIndex = '';
     const newX = parseInt(barWrap.style.left);
-    const offset = xToDays(newX);
-    const origStart = new Date(task.startDate), origEnd = new Date(task.endDate);
-    const dur = origEnd - origStart;
-    const newStart = new Date(minD); newStart.setDate(newStart.getDate() + Math.round(offset));
+    const dur = daysBetween(task.startDate, task.endDate);
+    const newStart = new Date(minD); newStart.setDate(newStart.getDate() + Math.round(xToDays(newX)));
     task.startDate = newStart.toISOString().split('T')[0];
-    task.endDate = new Date(newStart.getTime() + dur).toISOString().split('T')[0];
+    task.endDate = addDays(task.startDate, dur);
+    enforceConstraints(task);
     saveProject(true); render();
   });
 }
@@ -2949,10 +2987,10 @@ function makeResizableBar(barWrap, task, minD) {
       } else {
         const newLeft = parseInt(barWrap.style.left);
         const newW = parseInt(barWrap.style.width);
-        const newOffset = xToDays(newLeft);
-        const newStart = new Date(minD); newStart.setDate(newStart.getDate() + Math.round(newOffset));
+        const newStart = new Date(minD); newStart.setDate(newStart.getDate() + Math.round(xToDays(newLeft)));
         task.startDate = newStart.toISOString().split('T')[0];
         task.endDate = addDays(task.startDate, xToDays(newW));
+        enforceConstraints(task);
       }
       saveProject(true); render();
     }
@@ -2996,14 +3034,14 @@ function initDepDraw() {
     svg.style.display = 'none';
     const target = e.target.closest('.gantt-bar-wrap');
     if (target && target.dataset.taskId && target.dataset.taskId !== drawingFrom) {
-      const toTaskId = target.dataset.taskId;
-      const fromTask = findTask(drawingFrom);
-      if (fromTask) {
-        if (!fromTask.predecessors) fromTask.predecessors = [];
-        if (!fromTask.predecessors.some(p => p.taskId === toTaskId)) {
-          fromTask.predecessors.push({ taskId: toTaskId, type: 'FS', lag: 0 });
+      // Drag FROM predecessor (finish) TO successor (start) → FS
+      const toTask = findTask(target.dataset.taskId);
+      if (toTask) {
+        if (!toTask.predecessors) toTask.predecessors = [];
+        if (!toTask.predecessors.some(p => p.taskId === drawingFrom)) {
+          toTask.predecessors.push({ taskId: drawingFrom, type: 'FS', lag: 0 });
           saveProject(true); render();
-          showToast('Závislost vytvořena');
+          showToast('Vazba FS vytvořena');
         }
       }
     }
@@ -3031,21 +3069,26 @@ function renderDependencies(minD) {
   svg.innerHTML = '';
   if (!ganttOpts.deps) return;
 
-  const rowH = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--row-h')) || 40;
-  const barH = 22; // .gantt-bar-wrap height
+  const rowH    = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--row-h')) || 40;
+  const barH    = 22;
   const pxPerDay = timescale === 'days' ? cellW : timescale === 'weeks' ? cellW / 7 : cellW / 30.44;
-  const ELBOW = 12; // horizontal jog in px
+  const ELBOW   = 14;  // horizontal jog
+  const GAP     = 5;   // offset from bar edge so line doesn't touch bar
 
-  // FS=green, FF=red, SS=blue, SF=amber
-  const TYPE_COLORS = { FS: '#5a8040', FF: '#b44040', SS: '#3a7ab4', SF: '#b48020' };
+  // Modern palette: FS teal, FF orange-red, SS indigo, SF amber
+  const TYPE_CFG = {
+    FS: { color: '#2e7d6e', dash: ''          },
+    FF: { color: '#c0440a', dash: '5,3'       },
+    SS: { color: '#4a5ab4', dash: '2,3'       },
+    SF: { color: '#a07810', dash: '6,2,2,2'   },
+  };
 
   const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
-  ['FS','FF','SS','SF'].forEach(t => {
-    const c = TYPE_COLORS[t];
-    // Arrowhead pointing RIGHT (for horizontal arrival)
-    defs.innerHTML += `<marker id="arr-${t}" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto">
-      <path d="M0,0 L0,9 L9,4.5 z" fill="${c}"/>
-    </marker>`;
+  Object.entries(TYPE_CFG).forEach(([t, cfg]) => {
+    defs.innerHTML += `
+      <marker id="arr-${t}" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+        <path d="M1,1 L7,4 L1,7 Z" fill="${cfg.color}" stroke="none"/>
+      </marker>`;
   });
   svg.appendChild(defs);
 
@@ -3056,78 +3099,65 @@ function renderDependencies(minD) {
         const predTask = findTask(pred.taskId);
         if (!predTask) return;
         const type = pred.type || 'FS';
-        const lag = pred.lag || 0;
+        const lag  = pred.lag || 0;
+        const cfg  = TYPE_CFG[type] || TYPE_CFG.FS;
 
         const ry1 = getTaskRowY(predTask.id);
         const ry2 = getTaskRowY(task.id);
         if (ry1 < 0 || ry2 < 0) return;
-        // Arrow at vertical center of bar
         const y1 = ry1 + rowH / 2;
         const y2 = ry2 + rowH / 2;
 
         let x1, x2;
         if (type === 'FS') {
-          // Right edge of pred bar → left edge of successor bar
           if (!predTask.endDate || !task.startDate) return;
-          x1 = dateToX(new Date(predTask.endDate), minD);
-          x2 = dateToX(new Date(task.startDate), minD) + lag * pxPerDay;
+          x1 = dateToX(new Date(predTask.endDate), minD) + GAP;
+          x2 = dateToX(new Date(task.startDate), minD) + lag * pxPerDay - GAP;
         } else if (type === 'FF') {
-          // Right edge of pred → right edge of successor
           if (!predTask.endDate || !task.endDate) return;
-          x1 = dateToX(new Date(predTask.endDate), minD);
-          x2 = dateToX(new Date(task.endDate), minD) + lag * pxPerDay;
+          x1 = dateToX(new Date(predTask.endDate), minD) + GAP;
+          x2 = dateToX(new Date(task.endDate), minD) + lag * pxPerDay + GAP;
         } else if (type === 'SS') {
-          // Left edge of pred → left edge of successor
           if (!predTask.startDate || !task.startDate) return;
-          x1 = dateToX(new Date(predTask.startDate), minD);
-          x2 = dateToX(new Date(task.startDate), minD) + lag * pxPerDay;
+          x1 = dateToX(new Date(predTask.startDate), minD) - GAP;
+          x2 = dateToX(new Date(task.startDate), minD) + lag * pxPerDay - GAP;
         } else if (type === 'SF') {
-          // Left edge of pred → right edge of successor
           if (!predTask.startDate || !task.endDate) return;
-          x1 = dateToX(new Date(predTask.startDate), minD);
-          x2 = dateToX(new Date(task.endDate), minD) + lag * pxPerDay;
+          x1 = dateToX(new Date(predTask.startDate), minD) - GAP;
+          x2 = dateToX(new Date(task.endDate), minD) + lag * pxPerDay + GAP;
         } else return;
 
-        const color = TYPE_COLORS[type];
         const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
 
-        // Source dot (small circle at start point)
+        // Source dot
         const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-        dot.setAttribute('cx', x1); dot.setAttribute('cy', y1);
-        dot.setAttribute('r', '3');
-        dot.setAttribute('fill', color);
+        dot.setAttribute('cx', x1); dot.setAttribute('cy', y1); dot.setAttribute('r', '3.5');
+        dot.setAttribute('fill', cfg.color); dot.setAttribute('opacity', '0.85');
         g.appendChild(dot);
 
-        // Path routing (MS-Project style elbow):
-        // 1. Jog right ELBOW px from x1
-        // 2. Go vertically to y2
-        // 3. Go horizontally to x2 (arrowhead at end)
-        // If x2 < x1+ELBOW (successor left of jog point): do U-routing
-        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        // Path routing via row-gap channel
+        const jog     = x1 + ELBOW;
+        const yDir    = y2 >= y1 ? 1 : -1;
+        const yChan   = y1 + yDir * rowH / 2;   // in gap between bar rows
+        const path    = document.createElementNS('http://www.w3.org/2000/svg', 'path');
         let d;
-        const jog = x1 + ELBOW;
-        // Row-gap channel: midpoint between rows, outside both bars
-        const yDir = y2 >= y1 ? 1 : -1;
-        const yChannel = y1 + yDir * rowH / 2;
 
         if (Math.abs(y1 - y2) < 2) {
-          // Same row — straight horizontal
           d = `M ${x1},${y1} H ${x2}`;
         } else if (x2 >= jog) {
-          // Simple elbow: right jog → vertical → arrive at x2 from left
-          // Use channel routing to avoid crossing bars in intermediate rows
-          d = `M ${x1},${y1} H ${jog} V ${yChannel} H ${x2 - ELBOW} V ${y2} H ${x2}`;
+          d = `M ${x1},${y1} H ${jog} V ${yChan} H ${x2 - ELBOW} V ${y2} H ${x2}`;
         } else {
-          // Tight/overlapping: drop into row-gap channel first, then approach from left
-          // Never goes through destination bar
-          const approachX = x2 - ELBOW;
-          d = `M ${x1},${y1} V ${yChannel} H ${approachX} V ${y2} H ${x2}`;
+          d = `M ${x1},${y1} V ${yChan} H ${x2 - ELBOW} V ${y2} H ${x2}`;
         }
 
         path.setAttribute('d', d);
-        path.setAttribute('stroke', color);
-        path.setAttribute('stroke-width', '1.5');
+        path.setAttribute('stroke', cfg.color);
+        path.setAttribute('stroke-width', '1.75');
+        path.setAttribute('stroke-linecap', 'round');
+        path.setAttribute('stroke-linejoin', 'round');
         path.setAttribute('fill', 'none');
+        path.setAttribute('opacity', '0.8');
+        if (cfg.dash) path.setAttribute('stroke-dasharray', cfg.dash);
         path.setAttribute('marker-end', `url(#arr-${type})`);
         g.appendChild(path);
         svg.appendChild(g);
@@ -4458,6 +4488,14 @@ ganttScroll.addEventListener('scroll', () => {
   wbsBody.scrollTop = ganttScroll.scrollTop;
   requestAnimationFrame(() => syncingScroll = false);
 });
+
+// Ctrl+scroll or pinch-zoom on Gantt canvas = zoom timeline
+ganttScroll.addEventListener('wheel', (e) => {
+  if (e.ctrlKey || e.metaKey) {
+    e.preventDefault();
+    zoomGantt(e.deltaY < 0 ? 1 : -1);
+  }
+}, { passive: false });
 
 /* ═══════════════════════════════════════════════════
    COLUMN PICKER
