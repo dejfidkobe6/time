@@ -1998,8 +1998,8 @@ let currentProjectId = null;
    COLUMNS CONFIG
 ═══════════════════════════════════════════════════ */
 const COLUMN_DEFS = [
-  { id: 'name',         label: 'Název',        w: null,   fixed: true },
-  { id: 'wbs',          label: 'WBS',          w: '42px'  },
+  { id: 'wbs',          label: 'WBS',          w: '42px',  fixed: true },
+  { id: 'name',         label: 'Název',        w: null    },
   { id: 'predecessors', label: 'Předchůdci',   w: '90px'  },
   { id: 'successors',   label: 'Následovníci', w: '90px'  },
   { id: 'start',        label: 'Zahájení',     w: '80px'  },
@@ -2010,15 +2010,13 @@ const COLUMN_DEFS = [
   { id: 'progress',     label: 'Postup',       w: '62px'  },
   { id: 'budget',       label: 'Rozpočet',     w: '74px'  },
 ];
-let visibleColumns = (() => { try { return JSON.parse(localStorage.getItem('bt_cols') || 'null') || ['name','wbs','predecessors','successors','schedule','start','end','duration','progress','budget']; } catch(e) { return ['name','wbs','predecessors','successors','schedule','start','end','duration','progress','budget']; } })();
+let visibleColumns = (() => { try { const saved = JSON.parse(localStorage.getItem('bt_cols') || 'null'); if (saved && saved[0] === 'wbs') return saved; return ['wbs','name','predecessors','successors','schedule','start','end','duration','progress','budget']; } catch(e) { return ['wbs','name','predecessors','successors','schedule','start','end','duration','progress','budget']; } })();
 // Persisted custom column widths (overrides COLUMN_DEFS.w)
 let colWidths = (() => { try { return JSON.parse(localStorage.getItem('bt_col_w') || 'null') || {}; } catch(e) { return {}; } })();
-// always ensure 'name' is first and 'wbs' is second when present
-if (!visibleColumns.includes('name')) visibleColumns.unshift('name');
-if (visibleColumns.includes('wbs') && visibleColumns[1] !== 'wbs') {
-  visibleColumns = visibleColumns.filter(c => c !== 'wbs');
-  visibleColumns.splice(1, 0, 'wbs');
-}
+// always ensure 'wbs' is first (fixed), 'name' is present
+if (!visibleColumns.includes('wbs')) visibleColumns.unshift('wbs');
+if (visibleColumns[0] !== 'wbs') { visibleColumns = visibleColumns.filter(c => c !== 'wbs'); visibleColumns.unshift('wbs'); }
+if (!visibleColumns.includes('name')) visibleColumns.splice(1, 0, 'name');
 
 let ganttColorMode = localStorage.getItem('bt_colormode') || 'phase';
 let ganttFilter    = localStorage.getItem('bt_filter')    || 'all';
@@ -2584,10 +2582,8 @@ function initColDrag(hdr) {
       toIdx = visibleColumns.indexOf(el.dataset.colId);
       visibleColumns.splice(insertBefore ? toIdx : toIdx + 1, 0, dragColId);
 
-      // 'name' must stay first; 'wbs' stays second when present
-      const _rest = visibleColumns.filter(c => c !== 'name' && c !== 'wbs');
-      if (visibleColumns.includes('wbs')) visibleColumns = ['name', 'wbs', ..._rest];
-      else visibleColumns = ['name', ..._rest];
+      // 'wbs' must stay first (fixed)
+      if (visibleColumns[0] !== 'wbs') { visibleColumns = visibleColumns.filter(c => c !== 'wbs'); visibleColumns.unshift('wbs'); }
 
       localStorage.setItem('bt_cols', JSON.stringify(visibleColumns));
       renderWBS();
@@ -5239,10 +5235,10 @@ function toggleColumnPicker(e) {
 function toggleColumn(id, on) {
   if (on) { if (!visibleColumns.includes(id)) visibleColumns.push(id); }
   else visibleColumns = visibleColumns.filter(c => c !== id);
-  // keep 'name' always first; 'wbs' always second when present
-  const rest = visibleColumns.filter(c => c !== 'name' && c !== 'wbs');
-  if (visibleColumns.includes('wbs')) visibleColumns = ['name', 'wbs', ...rest];
-  else visibleColumns = ['name', ...rest];
+  // keep 'wbs' first, 'name' always present
+  if (!visibleColumns.includes('wbs')) visibleColumns.unshift('wbs');
+  if (visibleColumns[0] !== 'wbs') { visibleColumns = visibleColumns.filter(c => c !== 'wbs'); visibleColumns.unshift('wbs'); }
+  if (!visibleColumns.includes('name')) visibleColumns.splice(1, 0, 'name');
   localStorage.setItem('bt_cols', JSON.stringify(visibleColumns));
   renderWBS();
 }
