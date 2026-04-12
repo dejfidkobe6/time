@@ -17,6 +17,17 @@ $pdo = new PDO(
     ]
 );
 
+// Auto-create remember_tokens table if missing
+$pdo->exec("CREATE TABLE IF NOT EXISTS remember_tokens (
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  user_id    INT NOT NULL,
+  token_hash VARCHAR(64) NOT NULL,
+  expires_at DATETIME NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_token (token_hash),
+  KEY idx_user (user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
 // Sdílená session cookie přes celé besix.cz
 session_name('BESIX_SESS');
 ini_set('session.cookie_domain',   '.besix.cz');
@@ -24,8 +35,37 @@ ini_set('session.cookie_secure',   '1');
 ini_set('session.cookie_httponly', '1');
 ini_set('session.cookie_samesite', 'Lax');
 
+// Remember-me cookie name
+define('REMEMBER_COOKIE', 'besix_remember');
+
+function tryRememberLogin(): void {
+    global $pdo;
+    if (empty($_COOKIE[REMEMBER_COOKIE])) return;
+    $raw  = $_COOKIE[REMEMBER_COOKIE];
+    $hash = hash('sha256', $raw);
+    $stmt = $pdo->prepare(
+        "SELECT user_id FROM remember_tokens WHERE token_hash = ? AND expires_at > NOW()"
+    );
+    $stmt->execute([$hash]);
+    $row = $stmt->fetch();
+    if (!$row) {
+        // Invalid / expired — clear cookie
+        setcookie(REMEMBER_COOKIE, '', time() - 3600, '/', '.besix.cz', true, true);
+        return;
+    }
+    $_SESSION['user_id'] = $row['user_id'];
+    // Rotate token on each use (prevents replay after logout)
+    $newRaw  = bin2hex(random_bytes(32));
+    $newHash = hash('sha256', $newRaw);
+    $expires = date('Y-m-d H:i:s', strtotime('+30 days'));
+    $pdo->prepare("UPDATE remember_tokens SET token_hash = ?, expires_at = ? WHERE token_hash = ?")
+        ->execute([$newHash, $expires, $hash]);
+    setcookie(REMEMBER_COOKIE, $newRaw, strtotime('+30 days'), '/', '.besix.cz', true, true);
+}
+
 function requireAuth(): int {
     if (session_status() === PHP_SESSION_NONE) session_start();
+    if (empty($_SESSION['user_id'])) tryRememberLogin();
     if (empty($_SESSION['user_id'])) {
         http_response_code(401);
         echo json_encode(['ok' => false, 'error' => 'Nepřihlášen']);

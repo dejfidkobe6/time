@@ -2,6 +2,7 @@
 require_once __DIR__ . '/api/config.php';
 if (session_status() === PHP_SESSION_NONE) session_start();
 
+if (empty($_SESSION['user_id'])) tryRememberLogin();
 if (!empty($_SESSION['user_id'])) {
     header('Location: /');
     exit;
@@ -26,6 +27,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } else {
                 session_regenerate_id(true);
                 $_SESSION['user_id'] = $user['id'];
+
+                // Remember me — persistent cookie 30 days
+                if (!empty($_POST['remember'])) {
+                    $token   = bin2hex(random_bytes(32));
+                    $hash    = hash('sha256', $token);
+                    $expires = date('Y-m-d H:i:s', strtotime('+30 days'));
+                    // Remove any old tokens for this user first
+                    $pdo->prepare("DELETE FROM remember_tokens WHERE user_id = ?")->execute([$user['id']]);
+                    $pdo->prepare("INSERT INTO remember_tokens (user_id, token_hash, expires_at) VALUES (?,?,?)")
+                        ->execute([$user['id'], $hash, $expires]);
+                    setcookie(REMEMBER_COOKIE, $token, strtotime('+30 days'), '/', '.besix.cz', true, true);
+                }
+
                 header('Location: /');
                 exit;
             }
@@ -289,6 +303,11 @@ input:focus {
         <label for="password">Heslo</label>
         <input type="password" id="password" name="password"
                placeholder="••••••••" required>
+      </div>
+      <div class="field" style="display:flex;align-items:center;gap:8px;margin-top:2px;">
+        <input type="checkbox" id="remember" name="remember" value="1"
+               style="width:16px;height:16px;accent-color:#4A5340;cursor:pointer;flex-shrink:0;">
+        <label for="remember" style="margin:0;font-weight:400;color:#8E8E93;cursor:pointer;user-select:none;">Zapamatovat si mě na 30 dní</label>
       </div>
       <button type="submit" class="btn-submit">Přihlásit se</button>
     </form>

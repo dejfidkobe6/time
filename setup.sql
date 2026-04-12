@@ -12,6 +12,17 @@ CREATE TABLE IF NOT EXISTS user_oauth (
   KEY idx_user_id (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- Persistentní "zapamatuj si mě" tokeny
+CREATE TABLE IF NOT EXISTS remember_tokens (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  user_id     INT NOT NULL,
+  token_hash  VARCHAR(64) NOT NULL,
+  expires_at  DATETIME NOT NULL,
+  created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_token (token_hash),
+  KEY idx_user (user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- Registrace aplikace
 INSERT IGNORE INTO apps (app_key, app_name) VALUES ('time', 'BeSix Time — Harmonogram');
 
