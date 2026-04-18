@@ -8,7 +8,6 @@
 error_reporting(0);
 ini_set('display_errors', 0);
 
-// Config may fail if secrets.php missing — catch and redirect
 try {
     require_once __DIR__ . '/config.php';
 } catch (Throwable $e) {
@@ -99,55 +98,31 @@ try {
 
     // ─── Find or create user ─────────────────────────────────────────────────
 
-    // Ensure user_oauth table exists (no FK constraint — shared DB compatibility)
-    $pdo->exec("CREATE TABLE IF NOT EXISTS user_oauth (
-        id          INT AUTO_INCREMENT PRIMARY KEY,
-        user_id     INT NOT NULL,
-        provider    VARCHAR(32) NOT NULL,
-        provider_id VARCHAR(128) NOT NULL,
-        created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE KEY uq_provider (provider, provider_id),
-        KEY idx_user_id (user_id)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-
-    // 1. Find via oauth link
-    $stmt = $pdo->prepare(
-        "SELECT u.id FROM users u
-         JOIN user_oauth uo ON uo.user_id = u.id
-         WHERE uo.provider = 'google' AND uo.provider_id = ?"
-    );
+    // 1. Find by google_id column on users table
+    $stmt = $pdo->prepare("SELECT id FROM users WHERE google_id = ?");
     $stmt->execute([$googleId]);
     $row = $stmt->fetch();
 
     if (!$row) {
-        // 2. Match by email
+        // 2. Match by email — link Google to existing account
         $stmt = $pdo->prepare("SELECT id FROM users WHERE email = ?");
         $stmt->execute([$email]);
         $row = $stmt->fetch();
 
         if ($row) {
-            // Link Google to existing account
-            $pdo->prepare(
-                "INSERT IGNORE INTO user_oauth (user_id, provider, provider_id) VALUES (?, 'google', ?)"
-            )->execute([$row['id'], $googleId]);
+            $pdo->prepare("UPDATE users SET google_id = ? WHERE id = ?")
+                ->execute([$googleId, $row['id']]);
         } else {
             // 3. Create new user
             $colors = ['#4A5340','#3a6b5a','#5a4a6b','#6b3a3a','#3a4a6b','#6b5a3a'];
             $avatarColor = $colors[array_rand($colors)];
 
-            $pdo->beginTransaction();
             $pdo->prepare(
-                "INSERT INTO users (name, email, password_hash, is_verified, avatar_color)
-                 VALUES (?, ?, NULL, 1, ?)"
-            )->execute([$name, $email, $avatarColor]);
-            $newUserId = (int)$pdo->lastInsertId();
+                "INSERT INTO users (name, email, password_hash, is_verified, avatar_color, google_id)
+                 VALUES (?, ?, '!google', 1, ?, ?)"
+            )->execute([$name, $email, $avatarColor, $googleId]);
 
-            $pdo->prepare(
-                "INSERT INTO user_oauth (user_id, provider, provider_id) VALUES (?, 'google', ?)"
-            )->execute([$newUserId, $googleId]);
-            $pdo->commit();
-
-            $row = ['id' => $newUserId];
+            $row = ['id' => (int)$pdo->lastInsertId()];
         }
     }
 
@@ -163,8 +138,7 @@ try {
     exit;
 
 } catch (Throwable $e) {
-    // Catch all PHP errors and redirect with message instead of showing 500
-    if ($pdo && $pdo->inTransaction()) $pdo->rollBack();
+    if (isset($pdo) && $pdo->inTransaction()) $pdo->rollBack();
     header('Location: /login.php?error=' . urlencode('Chyba přihlášení: ' . $e->getMessage()));
     exit;
 }
