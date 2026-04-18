@@ -22,27 +22,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $user = $stmt->fetch();
 
         if ($user && password_verify($password, $user['password_hash'])) {
-            if (!$user['is_verified']) {
-                $error = 'Účet není ověřen. Zkontrolujte e-mail.';
-            } else {
-                session_regenerate_id(true);
-                $_SESSION['user_id'] = $user['id'];
+            session_regenerate_id(true);
+            $_SESSION['user_id'] = $user['id'];
 
-                // Remember me — persistent cookie 30 days
-                if (!empty($_POST['remember'])) {
-                    $token   = bin2hex(random_bytes(32));
-                    $hash    = hash('sha256', $token);
-                    $expires = date('Y-m-d H:i:s', strtotime('+30 days'));
-                    // Remove any old tokens for this user first
-                    $pdo->prepare("DELETE FROM remember_tokens WHERE user_id = ?")->execute([$user['id']]);
-                    $pdo->prepare("INSERT INTO remember_tokens (user_id, token_hash, expires_at) VALUES (?,?,?)")
-                        ->execute([$user['id'], $hash, $expires]);
-                    setcookie(REMEMBER_COOKIE, $token, strtotime('+30 days'), '/', '.besix.cz', true, true);
-                }
-
-                header('Location: /');
-                exit;
+            // Remember me — persistent cookie 30 days
+            if (!empty($_POST['remember'])) {
+                $token   = bin2hex(random_bytes(32));
+                $hash    = hash('sha256', $token);
+                $expires = date('Y-m-d H:i:s', strtotime('+30 days'));
+                $pdo->prepare("DELETE FROM remember_tokens WHERE user_id = ?")->execute([$user['id']]);
+                $pdo->prepare("INSERT INTO remember_tokens (user_id, token_hash, expires_at) VALUES (?,?,?)")
+                    ->execute([$user['id'], $hash, $expires]);
+                setcookie(REMEMBER_COOKIE, $token, strtotime('+30 days'), '/', '.besix.cz', true, true);
             }
+
+            header('Location: /');
+            exit;
         } else {
             $error = 'Nesprávný e-mail nebo heslo.';
         }
