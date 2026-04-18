@@ -21,7 +21,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->execute([$email]);
         $user = $stmt->fetch();
 
-        if ($user && password_verify($password, $user['password_hash'])) {
+        if ($user && $user['password_hash'] === '!google') {
+            $error = 'Tento účet používá přihlášení přes Google. Použijte tlačítko "Přihlásit se přes Google" výše.';
+        } elseif ($user && password_verify($password, $user['password_hash'])) {
             session_regenerate_id(true);
             $_SESSION['user_id'] = $user['id'];
 
