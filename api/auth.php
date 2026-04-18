@@ -15,7 +15,7 @@ if ($action === 'me') {
         exit;
     }
     $stmt = $pdo->prepare(
-        "SELECT id, name, email, avatar_color FROM users WHERE id = ? AND is_verified = 1"
+        "SELECT id, name, email, avatar_color FROM users WHERE id = ?"
     );
     $stmt->execute([(int)$_SESSION['user_id']]);
     $user = $stmt->fetch();
