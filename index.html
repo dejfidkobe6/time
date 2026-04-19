@@ -712,12 +712,12 @@ html, body {
 
 /* Time header */
 #gantt-time-header {
-  position: sticky;
-  top: 0;
   background: var(--charcoal);
   z-index: 10;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+  flex-shrink: 0;
 }
 
 .time-months-row {
@@ -1859,15 +1859,15 @@ html, body {
               </button>
             </div>
           </div>
+          <div id="gantt-time-header">
+            <div class="time-months-row" id="gantt-months-row"></div>
+            <div class="time-units-row" id="gantt-units-row"></div>
+          </div>
           <div id="gantt-scroll-wrap">
             <div id="gantt-canvas-wrap">
-              <div id="gantt-time-header">
-                <div class="time-months-row" id="gantt-months-row"></div>
-                <div class="time-units-row" id="gantt-units-row"></div>
-              </div>
               <div id="gantt-rows"></div>
               <div id="today-line" style="display:none;"></div>
-              <svg id="gantt-dep-svg" class="gantt-dep-svg" style="position:absolute;top:44px;left:0;width:100%;height:100%;pointer-events:none;"></svg>
+              <svg id="gantt-dep-svg" class="gantt-dep-svg" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;"></svg>
             </div>
           </div>
         </div>
@@ -2980,8 +2980,6 @@ function renderGantt() {
   const totalW = totalUnits * cellW;
 
   renderGanttHeader(minD, maxD, totalW);
-  const hdr = document.getElementById('gantt-time-header');
-  if (hdr) hdr.style.width = totalW + 'px';
   renderGanttRows(minD, totalW);
   renderTodayLine(minD, totalW);
   renderDependencies(minD);
@@ -4117,7 +4115,10 @@ function scrollToToday() {
   const { minD } = getGanttBounds();
   const x = dateToX(new Date(), minD);
   const scroll = document.getElementById('gantt-scroll-wrap');
-  scroll.scrollLeft = Math.max(0, x - scroll.clientWidth / 2);
+  const tgt = Math.max(0, x - scroll.clientWidth / 2);
+  scroll.scrollLeft = tgt;
+  const th = document.getElementById('gantt-time-header');
+  if (th) th.scrollLeft = tgt;
 }
 
 /* ═══════════════════════════════════════════════════
@@ -5416,10 +5417,12 @@ wbsBody.addEventListener('scroll', () => {
   requestAnimationFrame(() => syncingScroll = false);
 });
 
+const ganttTimeHdr = document.getElementById('gantt-time-header');
 ganttScroll.addEventListener('scroll', () => {
   if (syncingScroll) return;
   syncingScroll = true;
   wbsBody.scrollTop = ganttScroll.scrollTop;
+  if (ganttTimeHdr) ganttTimeHdr.scrollLeft = ganttScroll.scrollLeft;
   requestAnimationFrame(() => syncingScroll = false);
 });
 
