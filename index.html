@@ -441,6 +441,11 @@ html, body {
 .wbs-col-head.col-drag-over-left::before  { left: -2px; }
 .wbs-col-head.col-drag-over-right::after  { right: -2px; }
 .wbs-col-head.col-dragging { opacity: 0.35; }
+.wbs-col-head.col-selected { background: rgba(143,186,110,0.15) !important; color: #8fba6e !important; border-radius: 4px; }
+
+/* Day-of-week abbreviation inside day cells */
+.day-dow { font-size: 7px; display: block; color: rgba(255,255,255,0.3); line-height: 1.2; text-transform: uppercase; }
+.time-unit-cell.has-dow { flex-direction: column; justify-content: center; gap: 0; }
 
 /* Column resize handle */
 .col-resize-handle {
@@ -2550,7 +2555,8 @@ function renderWBSHeader() {
   hdr.innerHTML = visibleColumns.map(id => {
     const d = COLUMN_DEFS.find(c => c.id === id);
     const fixed = d?.fixed;
-    return `<span class="wbs-col-head" data-col-id="${id}" ${fixed ? '' : 'draggable="true"'} title="${d ? d.label : ''}">${d ? d.label : ''}<span class="col-resize-handle" data-col-id="${id}"></span></span>`;
+    const sel = selectedColId === id ? ' col-selected' : '';
+    return `<span class="wbs-col-head${sel}" data-col-id="${id}" ${fixed ? '' : 'draggable="true"'} title="${d ? d.label : ''}" onclick="handleColHeaderClick('${id}',event)">${d ? d.label : ''}<span class="col-resize-handle" data-col-id="${id}"></span></span>`;
   }).join('');
   initColDrag(hdr);
   initColResize(hdr);
@@ -2986,21 +2992,29 @@ function renderGanttHeader(minD, maxD, totalW) {
   unitsRow.style.width = totalW + 'px';
 
   if (timescale === 'days') {
-    // Group by months
-    const months = groupDaysByMonth(minD, maxD);
-    months.forEach(m => {
+    const CZ_DAY = ['Ne','Po','Út','St','Čt','Pá','So'];
+    // Top row: week spans Mon–Sun
+    let wk = new Date(minD);
+    const dow0 = wk.getDay();
+    wk.setDate(wk.getDate() - (dow0 === 0 ? 6 : dow0 - 1)); // snap to Monday
+    while (wk <= maxD) {
+      const wkSun = new Date(wk); wkSun.setDate(wk.getDate() + 6);
+      const cs = wk < minD ? new Date(minD) : new Date(wk);
+      const ce = wkSun > maxD ? new Date(maxD) : new Date(wkSun);
+      const span = daysBetween(cs, ce) + 1;
       const cell = document.createElement('div');
       cell.className = 'time-month-cell';
-      cell.style.width = (m.days * cellW) + 'px';
-      cell.style.minWidth = (m.days * cellW) + 'px';
-      cell.textContent = m.label;
+      cell.style.width = (span * cellW) + 'px';
+      cell.style.minWidth = (span * cellW) + 'px';
+      cell.textContent = 'T' + getWeekNumber(wk);
       monthsRow.appendChild(cell);
-    });
-    // Days
+      wk.setDate(wk.getDate() + 7);
+    }
+    // Bottom row: day number + Czech day-of-week abbreviation
     let d = new Date(minD);
     while (d <= maxD) {
       const cell = document.createElement('div');
-      cell.className = 'time-unit-cell';
+      cell.className = 'time-unit-cell has-dow';
       cell.style.width = cellW + 'px';
       cell.style.minWidth = cellW + 'px';
       const dow = d.getDay();
@@ -3008,7 +3022,8 @@ function renderGanttHeader(minD, maxD, totalW) {
       const dateStr = d.toISOString().split('T')[0];
       const isNonWork = (ganttOpts.wknd && !s.workDays.includes(dow)) || s.holidays.includes(dateStr);
       if (isNonWork) cell.style.background = 'rgba(255,255,255,0.05)';
-      cell.textContent = d.getDate();
+      if (dow === 1) cell.style.borderLeft = '1px solid rgba(255,255,255,0.12)'; // week boundary
+      cell.innerHTML = `<span class="day-dow">${CZ_DAY[dow]}</span><span>${d.getDate()}</span>`;
       unitsRow.appendChild(cell);
       d.setDate(d.getDate() + 1);
     }
@@ -4143,6 +4158,13 @@ function confirmAddPhase() {
 }
 
 let _insertAfter = null; // { phaseId, afterIdx } for Ctrl++ insertion
+let selectedColId = null;
+let _nextEdit = null;   // { taskId, colId } — pending cell focus after render
+
+const EDITABLE_COLS = ['name','start','end','duration','assignee','progress','budget'];
+const FIELD_TO_COL  = { startDate:'start', endDate:'end', progress:'progress', budget:'budget', assignee:'assignee' };
+const COL_TO_FIELD  = { start:'startDate', end:'endDate', progress:'progress', budget:'budget', assignee:'assignee' };
+const COL_EDIT_TYPE = { start:'date', end:'date', progress:'number', budget:'number', assignee:'text' };
 
 function addTaskAfterSelected() {
   if (!selectedTaskId) { openAddTaskModal(); return; }
@@ -4958,6 +4980,75 @@ function deleteSelectedTasks() {
   render();
 }
 
+/* ─── Column selection ─────────────────────────────── */
+function handleColHeaderClick(colId, e) {
+  if (e.target.closest('.col-resize-handle')) return;
+  selectedColId = selectedColId === colId ? null : colId;
+  if (selectedColId) { selectedTaskIds.clear(); selectedTaskId = null; }
+  document.querySelectorAll('.wbs-col-head').forEach(el => {
+    el.classList.toggle('col-selected', el.dataset.colId === selectedColId);
+  });
+  updateColumnHighlight();
+}
+
+function updateColumnHighlight() {
+  let s = document.getElementById('col-hl-style');
+  if (!s) { s = document.createElement('style'); s.id = 'col-hl-style'; document.head.appendChild(s); }
+  if (!selectedColId) { s.textContent = ''; return; }
+  const idx = visibleColumns.indexOf(selectedColId) + 1;
+  if (idx < 1) { s.textContent = ''; return; }
+  s.textContent = `#wbs-body .wbs-row-content > :nth-child(${idx}){background:rgba(143,186,110,0.07)!important;}`;
+}
+
+function clearColumnSelection() {
+  if (!selectedColId) return;
+  selectedColId = null;
+  document.querySelectorAll('.wbs-col-head').forEach(el => el.classList.remove('col-selected'));
+  updateColumnHighlight();
+}
+
+function deleteColumnData() {
+  if (!selectedColId) return;
+  const clearable = { progress: 0, budget: 0, assignee: '', predecessors: [] };
+  if (!(selectedColId in clearable)) { showToast('Tento sloupec nelze vymazat'); return; }
+  const label = COLUMN_DEFS.find(c => c.id === selectedColId)?.label || selectedColId;
+  if (!confirm(`Vymazat data sloupce „${label}" pro všechny úkoly?`)) return;
+  project.phases.forEach(ph => ph.tasks.forEach(task => { task[selectedColId] = clearable[selectedColId] instanceof Array ? [] : clearable[selectedColId]; }));
+  saveProject(true); render();
+  showToast(`Sloupec „${label}" vymazán`);
+}
+
+/* ─── Cell navigation helpers ──────────────────────── */
+function getAdjacentEditableCol(fromColId, dir) {
+  const nav = visibleColumns.filter(c => EDITABLE_COLS.includes(c));
+  const idx = nav.indexOf(fromColId);
+  if (idx < 0) return null;
+  return nav[idx + dir] ?? null;
+}
+
+function getAdjacentTaskId(taskId, dir) {
+  const all = [];
+  project.phases.forEach(ph => ph.tasks.forEach(t => all.push(t)));
+  const idx = all.findIndex(t => t.id === taskId);
+  return idx < 0 ? null : (all[idx + dir]?.id ?? null);
+}
+
+function triggerCellEdit(taskId, colId) {
+  const row = document.querySelector(`#wbs-body .wbs-row[data-task-id="${taskId}"]`);
+  if (!row) return;
+  const colIdx = visibleColumns.indexOf(colId);
+  if (colIdx < 0) return;
+  const cell = row.querySelectorAll('.wbs-row-content > *')[colIdx];
+  if (!cell) return;
+  if (colId === 'name') { const inp = cell.querySelector('.wbs-name-input'); if (inp) { inp.focus(); inp.select(); } return; }
+  if (colId === 'duration') { inlineEditDuration(cell, taskId); return; }
+  const field = COL_TO_FIELD[colId];
+  const type  = COL_EDIT_TYPE[colId] || 'text';
+  if (!field) return;
+  const span = cell.classList.contains('cell-editable') ? cell : cell.querySelector('.cell-editable');
+  if (span) inlineEdit(span, taskId, field, type);
+}
+
 function togglePhase(phaseId) {
   const ph = project.phases.find(p => p.id === phaseId);
   if (ph) { ph.collapsed = !ph.collapsed; render(); }
@@ -5244,12 +5335,16 @@ function groupWeeksByMonth(start, end) {
    KEYBOARD SHORTCUTS
 ═══════════════════════════════════════════════════ */
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') closeModal();
+  if (e.key === 'Escape') { closeModal(); clearColumnSelection(); }
   if (e.key === 'n' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); openAddTaskModal(); }
   if (e.key === 'p' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); openAddPhaseModal(); }
   if (e.key === 's' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveProject(); }
   if ((e.key === '+' || e.key === '=') && (e.ctrlKey || e.metaKey)) { e.preventDefault(); addTaskAfterSelected(); }
-  if (e.key === 'Delete' && !e.target.matches('input,textarea,[contenteditable]')) { e.preventDefault(); deleteSelectedTasks(); }
+  if (e.key === 'Delete' && !e.target.matches('input,textarea,[contenteditable]')) {
+    e.preventDefault();
+    if (selectedColId && selectedTaskIds.size === 0 && !selectedTaskId) deleteColumnData();
+    else deleteSelectedTasks();
+  }
   if (e.key === '-' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); deleteSelectedTasks(); }
 });
 
@@ -5371,18 +5466,36 @@ function inlineEdit(span, taskId, field, type) {
   input.focus();
   if (type === 'date') input.showPicker?.();
 
+  let committed = false;
   function commit() {
+    if (committed) return; committed = true;
     let val = input.value;
     if (type === 'number') val = parseFloat(val) || 0;
     task[field] = val;
     if (field === 'startDate' || field === 'endDate') { enforceConstraints(task); cascadeSuccessors(task.id); }
+    const pending = _nextEdit ? { ..._nextEdit } : null; _nextEdit = null;
     saveProject(true); render();
+    if (pending) setTimeout(() => triggerCellEdit(pending.taskId, pending.colId), 0);
   }
   input.addEventListener('blur', commit);
   input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); commit(); }
-    if (e.key === 'Escape') { input.value = origVal; input.blur(); }
-    if (e.key === 'Tab') { e.preventDefault(); commit(); }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const nextId = getAdjacentTaskId(taskId, 1);
+      if (nextId) _nextEdit = { taskId: nextId, colId: FIELD_TO_COL[field] || field };
+      commit();
+    }
+    if (e.key === 'Escape') {
+      committed = true;
+      input.replaceWith(span);
+    }
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const colId = FIELD_TO_COL[field] || field;
+      const nextCol = getAdjacentEditableCol(colId, e.shiftKey ? -1 : 1);
+      if (nextCol) _nextEdit = { taskId, colId: nextCol };
+      commit();
+    }
   });
 }
 
@@ -5396,15 +5509,30 @@ function inlineEditDuration(span, taskId) {
   input.value = dur;
   span.replaceWith(input); input.focus(); input.select();
 
+  let committed = false;
   function commit() {
+    if (committed) return; committed = true;
     const d = Math.max(1, parseInt(input.value) || 1);
     task.endDate = addDays(task.startDate, d);
+    const pending = _nextEdit ? { ..._nextEdit } : null; _nextEdit = null;
     saveProject(true); render();
+    if (pending) setTimeout(() => triggerCellEdit(pending.taskId, pending.colId), 0);
   }
   input.addEventListener('blur', commit);
   input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); commit(); }
-    if (e.key === 'Escape') { render(); }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const nextId = getAdjacentTaskId(taskId, 1);
+      if (nextId) _nextEdit = { taskId: nextId, colId: 'duration' };
+      commit();
+    }
+    if (e.key === 'Escape') { committed = true; render(); }
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const nextCol = getAdjacentEditableCol('duration', e.shiftKey ? -1 : 1);
+      if (nextCol) _nextEdit = { taskId, colId: nextCol };
+      commit();
+    }
   });
 }
 
