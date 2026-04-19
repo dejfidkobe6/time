@@ -496,6 +496,8 @@ html, body {
 .wbs-row:hover { background: var(--bg-hover); }
 .wbs-row.selected { background: rgba(74,83,64,0.08); border-left: 2px solid var(--olive); padding-left: 12px; }
 .wbs-row.multi-selected { background: rgba(74,83,64,0.1) !important; outline: 1px solid rgba(74,83,64,0.3); outline-offset: -1px; }
+.wbs-row.row-dragging { opacity: 0.35; pointer-events: none; }
+.row-drop-indicator { position: fixed; left: 0; right: 0; height: 2px; background: var(--olive); pointer-events: none; z-index: 1000; border-radius: 1px; box-shadow: 0 0 4px rgba(143,186,110,0.6); }
 .row-selector {
   position: absolute; left: 0; top: 0; bottom: 0; width: 14px;
   display: flex; align-items: center; justify-content: center;
@@ -2895,7 +2897,7 @@ function createTaskRow(task, phase, pi, ti) {
   }).join('');
 
   row.innerHTML = `
-    <div class="row-selector" onclick="handleRowSelect('${task.id}',event)"></div>
+    <div class="row-selector" onclick="event.stopPropagation()"></div>
     <div class="wbs-row-content" style="grid-template-columns:${getColTemplate()};">
       ${cells}
     </div>
@@ -5633,10 +5635,102 @@ function collectPreds(taskId) {
 }
 
 /* ═══════════════════════════════════════════════════
+   ROW DRAG-TO-REORDER
+═══════════════════════════════════════════════════ */
+function initRowDrag() {
+  const body = document.getElementById('wbs-body');
+  let state = null;
+
+  body.addEventListener('mousedown', (e) => {
+    const handle = e.target.closest('.row-selector');
+    if (!handle) return;
+    const row = handle.closest('.wbs-row[data-task-id]');
+    if (!row) return;
+    e.preventDefault();
+    state = { taskId: row.dataset.taskId, startX: e.clientX, startY: e.clientY,
+              dragging: false, row, indicator: null, dropPos: null };
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!state) return;
+    if (!state.dragging) {
+      if (Math.abs(e.clientY - state.startY) < 5 && Math.abs(e.clientX - state.startX) < 5) return;
+      state.dragging = true;
+      state.row.classList.add('row-dragging');
+      state.indicator = document.createElement('div');
+      state.indicator.className = 'row-drop-indicator';
+      document.body.appendChild(state.indicator);
+    }
+
+    const allRows = [...document.querySelectorAll('#wbs-body .wbs-row[data-task-id]')];
+    state.dropPos = null;
+    let lastAbove = null;
+
+    for (let i = 0; i < allRows.length; i++) {
+      const r = allRows[i];
+      if (r === state.row) continue;
+      const rect = r.getBoundingClientRect();
+      if (e.clientY < rect.top + rect.height / 2) {
+        state.dropPos = { taskId: r.dataset.taskId, before: true };
+        state.indicator.style.top = (rect.top - 1) + 'px';
+        break;
+      }
+      lastAbove = r;
+    }
+    if (!state.dropPos && lastAbove) {
+      const rect = lastAbove.getBoundingClientRect();
+      state.dropPos = { taskId: lastAbove.dataset.taskId, before: false };
+      state.indicator.style.top = (rect.bottom - 1) + 'px';
+    }
+  });
+
+  document.addEventListener('mouseup', (e) => {
+    if (!state) return;
+    if (state.indicator) { state.indicator.remove(); state.indicator = null; }
+
+    if (!state.dragging) {
+      handleRowSelect(state.taskId, e);
+      state = null;
+      return;
+    }
+
+    state.row.classList.remove('row-dragging');
+
+    if (state.dropPos && state.dropPos.taskId !== state.taskId) {
+      const { taskId: fromId } = state;
+      const { taskId: refId, before } = state.dropPos;
+
+      let srcTask = null, srcPhase = null;
+      project.phases.forEach(ph => {
+        const i = ph.tasks.findIndex(t => t.id === fromId);
+        if (i >= 0) { [srcTask] = ph.tasks.splice(i, 1); srcPhase = ph; }
+      });
+
+      if (srcTask) {
+        let inserted = false;
+        project.phases.forEach(ph => {
+          const i = ph.tasks.findIndex(t => t.id === refId);
+          if (i >= 0) {
+            ph.tasks.splice(before ? i : i + 1, 0, srcTask);
+            inserted = true;
+          }
+        });
+        if (!inserted) srcPhase.tasks.push(srcTask);
+        saveProject(true);
+        render();
+      }
+    }
+
+    state = null;
+  });
+}
+
+/* ═══════════════════════════════════════════════════
    START
 ═══════════════════════════════════════════════════ */
 initDepDraw();
 initFillHandle();
+initRowDrag();
 initSplitter();
 init();
 </script>
