@@ -2884,7 +2884,7 @@ function createTaskRow(task, phase, pi, ti) {
       }
       case 'start': return `<span class="cell-editable wbs-date-cell" onclick="inlineEdit(this,'${task.id}','startDate','date');event.stopPropagation();">${formatDateShort(task.startDate)}</span>`;
       case 'end': return `<span class="cell-editable wbs-date-cell" onclick="inlineEdit(this,'${task.id}','endDate','date');event.stopPropagation();">${formatDateShort(task.endDate)}</span>`;
-      case 'duration': return `<span class="cell-editable wbs-date-cell" onclick="inlineEditDuration(this,'${task.id}');event.stopPropagation();">${dur > 0 ? dur + 'd' : '—'}</span>`;
+      case 'duration': return `<span class="cell-editable wbs-date-cell" onclick="inlineEditDuration(this,'${task.id}');event.stopPropagation();">${dur + 'd'}</span>`;
       case 'assignee': return `<span class="cell-editable wbs-date-cell" onclick="inlineEdit(this,'${task.id}','assignee','text');event.stopPropagation();" title="${escHtml(task.assignee||'')}">${escHtml((task.assignee||'').substring(0,10) + ((task.assignee||'').length>10?'…':''))}</span>`;
       case 'progress': return isMilestone
         ? `<span style="font-size:9px;color:var(--warning);font-weight:700;padding:2px 4px;">MILNÍK</span>`
@@ -5525,7 +5525,15 @@ function inlineEdit(span, taskId, field, type) {
     let val = input.value;
     if (type === 'number') val = parseFloat(val) || 0;
     task[field] = val;
-    if (field === 'startDate' || field === 'endDate') { enforceConstraints(task); cascadeSuccessors(task.id); }
+    if (field === 'startDate' || field === 'endDate') {
+      if (task.startDate && task.endDate && task.startDate >= task.endDate) {
+        task.endDate = task.startDate;
+        task.type = 'milestone';
+      } else if (task.type === 'milestone' && task.startDate !== task.endDate) {
+        delete task.type;
+      }
+      enforceConstraints(task); cascadeSuccessors(task.id);
+    }
     const pending = _nextEdit ? { ..._nextEdit } : null; _nextEdit = null;
     saveProject(true); render();
     if (pending) setTimeout(() => triggerCellEdit(pending.taskId, pending.colId), 0);
@@ -5558,15 +5566,21 @@ function inlineEditDuration(span, taskId) {
   const dur = task.endDate ? daysBetween(task.startDate, task.endDate) : 0;
   const input = document.createElement('input');
   input.type = 'number'; input.className = 'cell-edit-input';
-  input.min = '1'; input.style.width = '54px';
+  input.min = '0'; input.style.width = '54px';
   input.value = dur;
   span.replaceWith(input); input.focus(); input.select();
 
   let committed = false;
   function commit() {
     if (committed) return; committed = true;
-    const d = Math.max(1, parseInt(input.value) || 1);
-    task.endDate = addDays(task.startDate, d);
+    const d = Math.max(0, parseInt(input.value) || 0);
+    if (d === 0) {
+      task.endDate = task.startDate;
+      task.type = 'milestone';
+    } else {
+      task.endDate = addDays(task.startDate, d);
+      if (task.type === 'milestone') delete task.type;
+    }
     const pending = _nextEdit ? { ..._nextEdit } : null; _nextEdit = null;
     saveProject(true); render();
     if (pending) setTimeout(() => triggerCellEdit(pending.taskId, pending.colId), 0);
