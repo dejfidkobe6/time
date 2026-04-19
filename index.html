@@ -3314,38 +3314,35 @@ function cascadeSuccessors(changedTaskId) {
 }
 
 function makeDraggableBar(barWrap, task, minD) {
-  let isDragging = false, startX = 0, origLeft = 0;
-
   barWrap.addEventListener('mousedown', (e) => {
     if (e.button !== 0) return;
     if (e.target.classList.contains('bar-resize-l') || e.target.classList.contains('bar-resize-r')) return;
     if (e.target.classList.contains('bar-connect-dot')) return;
-    isDragging = true;
-    startX = e.clientX;
-    origLeft = parseInt(barWrap.style.left) || 0;
+    e.preventDefault();
+    const startX  = e.clientX;
+    const origLeft = parseInt(barWrap.style.left) || 0;
     barWrap.style.cursor = 'grabbing';
     barWrap.style.zIndex = '10';
-    e.preventDefault();
-  });
 
-  document.addEventListener('mousemove', (e) => {
-    if (!isDragging) return;
-    barWrap.style.left = (origLeft + e.clientX - startX) + 'px';
-  });
-
-  document.addEventListener('mouseup', (e) => {
-    if (!isDragging) return;
-    isDragging = false;
-    barWrap.style.cursor = 'grab';
-    barWrap.style.zIndex = '';
-    const newX = parseInt(barWrap.style.left);
-    const dur = daysBetween(task.startDate, task.endDate);
-    const newStart = new Date(minD); newStart.setDate(newStart.getDate() + Math.round(xToDays(newX)));
-    task.startDate = newStart.toISOString().split('T')[0];
-    task.endDate = addDays(task.startDate, dur);
-    enforceConstraints(task);
-    cascadeSuccessors(task.id);
-    saveProject(true); render();
+    function onMove(ev) {
+      barWrap.style.left = (origLeft + ev.clientX - startX) + 'px';
+    }
+    function onUp() {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      barWrap.style.cursor = 'grab';
+      barWrap.style.zIndex = '';
+      const newX = parseInt(barWrap.style.left);
+      const dur = daysBetween(task.startDate, task.endDate);
+      const newStart = new Date(minD); newStart.setDate(newStart.getDate() + Math.round(xToDays(newX)));
+      task.startDate = newStart.toISOString().split('T')[0];
+      task.endDate   = addDays(task.startDate, dur);
+      enforceConstraints(task);
+      cascadeSuccessors(task.id);
+      saveProject(true); render();
+    }
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
   });
 }
 
