@@ -3609,19 +3609,19 @@ function renderDependencies(minD) {
         if (type === 'FS') {
           if (!predTask.endDate || !task.startDate) return;
           x1 = dateToX(new Date(predTask.endDate), minD) + GAP;
-          x2 = dateToX(new Date(task.startDate), minD) + lag * pxPerDay - GAP;
+          x2 = dateToX(new Date(task.startDate), minD) - GAP;
         } else if (type === 'FF') {
           if (!predTask.endDate || !task.endDate) return;
           x1 = dateToX(new Date(predTask.endDate), minD) + GAP;
-          x2 = dateToX(new Date(task.endDate), minD) + lag * pxPerDay + GAP;
+          x2 = dateToX(new Date(task.endDate), minD) + GAP;
         } else if (type === 'SS') {
           if (!predTask.startDate || !task.startDate) return;
           x1 = dateToX(new Date(predTask.startDate), minD) - GAP;
-          x2 = dateToX(new Date(task.startDate), minD) + lag * pxPerDay - GAP;
+          x2 = dateToX(new Date(task.startDate), minD) - GAP;
         } else if (type === 'SF') {
           if (!predTask.startDate || !task.endDate) return;
           x1 = dateToX(new Date(predTask.startDate), minD) - GAP;
-          x2 = dateToX(new Date(task.endDate), minD) + lag * pxPerDay + GAP;
+          x2 = dateToX(new Date(task.endDate), minD) + GAP;
         } else return;
 
         const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
