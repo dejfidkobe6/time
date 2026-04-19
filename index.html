@@ -490,6 +490,19 @@ html, body {
 
 .wbs-row:hover { background: var(--bg-hover); }
 .wbs-row.selected { background: rgba(74,83,64,0.08); border-left: 2px solid var(--olive); padding-left: 12px; }
+.wbs-row.multi-selected { background: rgba(74,83,64,0.1) !important; outline: 1px solid rgba(74,83,64,0.3); outline-offset: -1px; }
+.row-selector {
+  position: absolute; left: 0; top: 0; bottom: 0; width: 14px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; z-index: 3; user-select: none;
+}
+.row-selector::after {
+  content: ''; width: 7px; height: 7px; border-radius: 50%;
+  border: 1.5px solid transparent; background: transparent;
+  transition: border-color 0.12s, background 0.12s;
+}
+.wbs-row:hover .row-selector::after { border-color: #b0b0b8; }
+.wbs-row.multi-selected .row-selector::after { background: var(--olive); border-color: var(--olive); }
 .wbs-row.is-phase { background: var(--bg); height: 44px; }
 .wbs-row.is-phase:hover { background: var(--bg-hover); }
 
@@ -1984,6 +1997,8 @@ let project = {
 let timescale = 'weeks';
 let cellW = 28; // px per unit
 let selectedTaskId = null;
+let selectedTaskIds = new Set();
+let lastSelectedTaskId = null;
 let currentMainView = 'gantt';
 let cfUnit = 'czk';
 let bottomUnit = 'czk';
@@ -2809,9 +2824,14 @@ function createPhaseRow(phase, pi) {
 
 function createTaskRow(task, phase, pi, ti) {
   const row = document.createElement('div');
-  row.className = 'wbs-row' + (selectedTaskId === task.id ? ' selected' : '');
+  row.className = 'wbs-row'
+    + (selectedTaskId === task.id ? ' selected' : '')
+    + (selectedTaskIds.has(task.id) ? ' multi-selected' : '');
   row.dataset.taskId = task.id;
-  row.onclick = () => selectTask(task.id);
+  row.onclick = (e) => {
+    if (e.ctrlKey || e.metaKey || e.shiftKey) handleRowSelect(task.id, e);
+    else selectTask(task.id);
+  };
   const color = PHASE_COLORS[pi % PHASE_COLORS.length];
   const isMilestone = task.type === 'milestone';
   const dur = (task.startDate && task.endDate) ? daysBetween(task.startDate, task.endDate) : 0;
@@ -2869,6 +2889,7 @@ function createTaskRow(task, phase, pi, ti) {
   }).join('');
 
   row.innerHTML = `
+    <div class="row-selector" onclick="handleRowSelect('${task.id}',event)"></div>
     <div class="wbs-row-content" style="grid-template-columns:${getColTemplate()};">
       ${cells}
     </div>
@@ -4890,8 +4911,51 @@ function findTask(taskId) {
 
 function selectTask(taskId) {
   selectedTaskId = taskId;
+  selectedTaskIds.clear();
+  if (taskId) { selectedTaskIds.add(taskId); lastSelectedTaskId = taskId; }
   renderWBS();
   renderGantt();
+}
+
+function handleRowSelect(taskId, e) {
+  e.stopPropagation();
+  if (e.ctrlKey || e.metaKey) {
+    if (selectedTaskIds.has(taskId)) {
+      selectedTaskIds.delete(taskId);
+    } else {
+      selectedTaskIds.add(taskId);
+      lastSelectedTaskId = taskId;
+    }
+    selectedTaskId = [...selectedTaskIds].at(-1) ?? null;
+  } else if (e.shiftKey && lastSelectedTaskId) {
+    const rows = [...document.querySelectorAll('#wbs-body .wbs-row[data-task-id]')];
+    const ids = rows.map(r => r.dataset.taskId);
+    const fromIdx = ids.indexOf(lastSelectedTaskId);
+    const toIdx   = ids.indexOf(taskId);
+    const [lo, hi] = fromIdx <= toIdx ? [fromIdx, toIdx] : [toIdx, fromIdx];
+    for (let i = lo; i <= hi; i++) selectedTaskIds.add(ids[i]);
+    selectedTaskId = taskId;
+  } else {
+    selectedTaskIds.clear();
+    selectedTaskIds.add(taskId);
+    selectedTaskId = taskId;
+    lastSelectedTaskId = taskId;
+  }
+  renderWBS();
+  renderGantt();
+}
+
+function deleteSelectedTasks() {
+  const ids = selectedTaskIds.size > 0 ? [...selectedTaskIds] : (selectedTaskId ? [selectedTaskId] : []);
+  if (!ids.length) return;
+  const msg = ids.length === 1 ? 'Smazat tento úkol?' : `Smazat ${ids.length} úkolů?`;
+  if (!confirm(msg)) return;
+  ids.forEach(id => { project.phases.forEach(ph => { ph.tasks = ph.tasks.filter(t => t.id !== id); }); });
+  selectedTaskIds.clear();
+  selectedTaskId = null;
+  lastSelectedTaskId = null;
+  saveProject(true);
+  render();
 }
 
 function togglePhase(phaseId) {
@@ -5185,6 +5249,8 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'p' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); openAddPhaseModal(); }
   if (e.key === 's' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveProject(); }
   if ((e.key === '+' || e.key === '=') && (e.ctrlKey || e.metaKey)) { e.preventDefault(); addTaskAfterSelected(); }
+  if (e.key === 'Delete' && !e.target.matches('input,textarea,[contenteditable]')) { e.preventDefault(); deleteSelectedTasks(); }
+  if (e.key === '-' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); deleteSelectedTasks(); }
 });
 
 /* ═══════════════════════════════════════════════════
