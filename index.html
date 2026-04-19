@@ -480,7 +480,7 @@ html, body {
   display: flex;
   align-items: center;
   padding: 0 14px;
-  height: 40px;
+  height: var(--row-h, 40px);
   border-bottom: 1px solid var(--border-light);
   transition: background 0.1s;
   cursor: pointer;
@@ -510,7 +510,7 @@ html, body {
 }
 .wbs-row:hover .row-selector::after { border-color: #b0b0b8; }
 .wbs-row.multi-selected .row-selector::after { background: var(--olive); border-color: var(--olive); }
-.wbs-row.is-phase { background: var(--bg); height: 44px; }
+.wbs-row.is-phase { background: var(--bg); height: calc(var(--row-h, 40px) + 4px); }
 .wbs-row.is-phase:hover { background: var(--bg-hover); }
 
 .wbs-row-content {
@@ -1624,10 +1624,10 @@ html, body {
 
 /* Row height control */
 :root { --row-h: 40px; }
-#wbs-body .wbs-row { min-height: var(--row-h); }
-#gantt-rows .gantt-row { height: var(--row-h); }
+#wbs-body .wbs-row        { height: var(--row-h); overflow: hidden; }
+#gantt-rows .gantt-row    { height: var(--row-h); }
 #gantt-rows .gantt-row.is-phase { height: calc(var(--row-h) + 4px); }
-#wbs-body .wbs-row.is-phase { min-height: calc(var(--row-h) + 4px); height: calc(var(--row-h) + 4px); }
+#wbs-body .wbs-row.is-phase     { height: calc(var(--row-h) + 4px); overflow: visible; }
 </style>
 </head>
 <body>
