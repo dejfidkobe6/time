@@ -1513,7 +1513,7 @@ html, body {
 /* ═══════════════════════════════════════
    PREDECESSOR CHIPS
 ═══════════════════════════════════════ */
-.pred-chips { display: flex; gap: 2px; flex-wrap: wrap; align-items: center; overflow: hidden; }
+.pred-chips { display: flex; gap: 2px; flex-wrap: nowrap; align-items: center; overflow: hidden; }
 .pred-chip {
   font-size: 8px; font-weight: 700;
   background: var(--bg); border: 1px solid var(--border);
@@ -1623,11 +1623,43 @@ html, body {
 .wbs-row-content { align-items: center; }
 
 /* Row height control */
-:root { --row-h: 40px; }
+:root { --row-h: 40px; --toolbar-h: 45px; --colhdr-h: 44px; }
+#wbs-toolbar, #gantt-toolbar   { height: var(--toolbar-h); box-sizing: border-box; }
+.wbs-header-cols               { height: var(--colhdr-h);  box-sizing: border-box; }
+#gantt-time-header             { height: var(--colhdr-h);  box-sizing: border-box; }
 #wbs-body .wbs-row        { height: var(--row-h); overflow: hidden; }
 #gantt-rows .gantt-row    { height: var(--row-h); }
 #gantt-rows .gantt-row.is-phase { height: calc(var(--row-h) + 4px); }
 #wbs-body .wbs-row.is-phase     { height: calc(var(--row-h) + 4px); overflow: visible; }
+
+/* ── PRINT / PDF ─────────────────────────────── */
+@media print {
+  @page { size: A3 landscape; margin: 8mm; }
+  *, *::before, *::after {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  #sidebar, #app-header, #wbs-toolbar, #gantt-toolbar,
+  .row-actions, .wbs-add-bar, .row-selector,
+  .bar-resize-handle, .bar-connect-handle,
+  .row-fill-handle, #gantt-dep-svg { display: none !important; }
+
+  body, html { background: white !important; overflow: visible !important; }
+  #content, #gantt-view, #gantt-main {
+    display: flex !important; overflow: visible !important;
+    height: auto !important; max-height: none !important;
+  }
+  #wbs-panel { flex-shrink: 0; overflow: visible !important; }
+  #wbs-body  { overflow: visible !important; height: auto !important; max-height: none !important; }
+  #gantt-panel { overflow: visible !important; flex: 1; }
+  #gantt-time-header { overflow: visible !important; }
+  #gantt-scroll-wrap { overflow: visible !important; height: auto !important; }
+  #gantt-canvas-wrap { overflow: visible !important; height: auto !important; }
+  #gantt-rows { overflow: visible !important; }
+  #wbs-splitter { display: none !important; }
+  .wbs-row, .gantt-row { break-inside: avoid; }
+  .pred-chip { border: 1px solid #999 !important; }
+}
 </style>
 </head>
 <body>
@@ -1856,6 +1888,9 @@ html, body {
               </button>
               <button class="btn btn-ghost btn-icon" onclick="scrollToToday()" title="Dnes">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+              </button>
+              <button class="btn btn-ghost btn-icon" onclick="exportPDF()" title="Exportovat do PDF">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/><line x1="9" y1="9" x2="10" y2="9"/></svg>
               </button>
             </div>
           </div>
@@ -4109,6 +4144,20 @@ function setTimescale(ts) {
 function zoomGantt(dir) {
   cellW = Math.max(8, Math.min(120, cellW + dir * 8));
   renderGantt();
+}
+
+function exportPDF() {
+  // Reset horizontal scroll so gantt-time-header aligns with rows
+  const gs = document.getElementById('gantt-scroll-wrap');
+  const th = document.getElementById('gantt-time-header');
+  const prevLeft = gs ? gs.scrollLeft : 0;
+  if (gs) gs.scrollLeft = 0;
+  if (th) th.scrollLeft = 0;
+  setTimeout(() => {
+    window.print();
+    // restore scroll after dialog opens
+    setTimeout(() => { if (gs) gs.scrollLeft = prevLeft; if (th) th.scrollLeft = prevLeft; }, 500);
+  }, 50);
 }
 
 function scrollToToday() {
