@@ -28,6 +28,51 @@ $pdo->exec("CREATE TABLE IF NOT EXISTS remember_tokens (
   KEY idx_user (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
+// Auto-create apps table and register 'time' app
+$pdo->exec("CREATE TABLE IF NOT EXISTS apps (
+  id       INT AUTO_INCREMENT PRIMARY KEY,
+  app_key  VARCHAR(64) NOT NULL,
+  app_name VARCHAR(128) NOT NULL,
+  UNIQUE KEY uq_app_key (app_key)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+$pdo->exec("INSERT IGNORE INTO apps (app_key, app_name) VALUES ('time', 'BeSix Time — Harmonogram')");
+
+// Auto-create projects table
+$pdo->exec("CREATE TABLE IF NOT EXISTS projects (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  app_id      INT NOT NULL,
+  name        VARCHAR(255) NOT NULL,
+  description TEXT DEFAULT NULL,
+  bg_color    VARCHAR(32) DEFAULT NULL,
+  invite_code VARCHAR(32) DEFAULT NULL,
+  created_by  INT DEFAULT NULL,
+  created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_invite (invite_code),
+  KEY idx_app (app_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+// Auto-create project_members table
+$pdo->exec("CREATE TABLE IF NOT EXISTS project_members (
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  project_id INT NOT NULL,
+  user_id    INT NOT NULL,
+  role       ENUM('owner','admin','member','viewer') NOT NULL DEFAULT 'member',
+  joined_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_member (project_id, user_id),
+  KEY idx_user (user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+// Auto-create time_schedules table
+$pdo->exec("CREATE TABLE IF NOT EXISTS time_schedules (
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  project_id INT NOT NULL,
+  data       LONGTEXT NOT NULL,
+  updated_by INT DEFAULT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_project (project_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
 // Sdílená session cookie přes celé besix.cz
 session_name('BESIX_SESS');
 ini_set('session.cookie_domain',   '.besix.cz');

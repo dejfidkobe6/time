@@ -1642,7 +1642,7 @@ html, body {
   #sidebar, #app-header, #wbs-toolbar, #gantt-toolbar,
   .row-actions, .wbs-add-bar, .row-selector,
   .bar-resize-handle, .bar-connect-handle,
-  .row-fill-handle, #gantt-dep-svg { display: none !important; }
+  .row-fill-handle, .gantt-opts-panel { display: none !important; }
 
   body, html { background: white !important; overflow: visible !important; }
   #content, #gantt-view, #gantt-main {
@@ -1651,14 +1651,17 @@ html, body {
   }
   #wbs-panel { flex-shrink: 0; overflow: visible !important; }
   #wbs-body  { overflow: visible !important; height: auto !important; max-height: none !important; }
-  #gantt-panel { overflow: visible !important; flex: 1; }
-  #gantt-time-header { overflow: visible !important; }
-  #gantt-scroll-wrap { overflow: visible !important; height: auto !important; }
-  #gantt-canvas-wrap { overflow: visible !important; height: auto !important; }
+  #gantt-panel { overflow: visible !important; flex: 1; display: flex !important; flex-direction: column !important; }
+  #gantt-time-header { overflow: visible !important; flex-shrink: 0; }
+  #gantt-scroll-wrap { overflow: visible !important; height: auto !important; flex: 1; }
+  #gantt-canvas-wrap { overflow: visible !important; position: relative; }
   #gantt-rows { overflow: visible !important; }
+  #gantt-dep-svg { display: block !important; position: absolute !important; pointer-events: none; }
   #wbs-splitter { display: none !important; }
+  #today-line { display: none !important; }
   .wbs-row, .gantt-row { break-inside: avoid; }
-  .pred-chip { border: 1px solid #999 !important; }
+  .pred-chip { border: 1px solid #aaa !important; }
+  .row-fill-handle, .bar-connect-handle { display: none !important; }
 }
 </style>
 </head>
@@ -4147,17 +4150,44 @@ function zoomGantt(dir) {
 }
 
 function exportPDF() {
-  // Reset horizontal scroll so gantt-time-header aligns with rows
-  const gs = document.getElementById('gantt-scroll-wrap');
-  const th = document.getElementById('gantt-time-header');
+  const gs   = document.getElementById('gantt-scroll-wrap');
+  const th   = document.getElementById('gantt-time-header');
+  const cw   = document.getElementById('gantt-canvas-wrap');
+  const rows = document.getElementById('gantt-rows');
+  const svg  = document.getElementById('gantt-dep-svg');
+  const wb   = document.getElementById('wbs-body');
+
   const prevLeft = gs ? gs.scrollLeft : 0;
-  if (gs) gs.scrollLeft = 0;
+  const prevTop  = gs ? gs.scrollTop  : 0;
+
+  // Reset all scrolls to 0,0 so everything aligns in print
+  if (gs) { gs.scrollLeft = 0; gs.scrollTop = 0; }
   if (th) th.scrollLeft = 0;
-  setTimeout(() => {
-    window.print();
-    // restore scroll after dialog opens
-    setTimeout(() => { if (gs) gs.scrollLeft = prevLeft; if (th) th.scrollLeft = prevLeft; }, 500);
-  }, 50);
+  if (wb) wb.scrollTop = 0;
+
+  // Give the browser a frame to apply the scroll before measuring
+  requestAnimationFrame(() => {
+    // Set explicit height on canvas wrap = full row content height,
+    // so the SVG (position:absolute, height:100%) covers all rows
+    const contentH = rows ? rows.scrollHeight : 0;
+    if (cw && contentH) cw.style.height = contentH + 'px';
+    if (svg && contentH) {
+      svg.style.height = contentH + 'px';
+      svg.style.top    = '0px';
+    }
+
+    setTimeout(() => {
+      window.print();
+      // Restore after print dialog closes
+      setTimeout(() => {
+        if (cw)  cw.style.height  = '';
+        if (svg) { svg.style.height = ''; svg.style.top = '0px'; }
+        if (gs)  { gs.scrollLeft = prevLeft; gs.scrollTop = prevTop; }
+        if (th)  th.scrollLeft = prevLeft;
+        if (wb)  wb.scrollTop  = prevTop;
+      }, 800);
+    }, 100);
+  });
 }
 
 function scrollToToday() {
