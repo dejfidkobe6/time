@@ -1,8 +1,8 @@
 <?php
 /**
  * Migrace dat do time_ tabulek.
- * Prohledá plans_projects, projects i time_schedules.
- * Bezpečné spustit opakovaně — INSERT IGNORE.
+ * Z plans_projects bere POUZE projekty jejichž ID je v time_schedules.
+ * Tím se plans.besix.cz vůbec nedotýká.
  *
  * Spustit: https://time.besix.cz/api/migrate.php
  */
@@ -35,20 +35,27 @@ if ($errors) {
     exit;
 }
 
-// ── Zjisti IDs projektů v time_schedules ─────────────────────────────────────
+// ── IDs projektů které Time zná (z harmonogramů) ─────────────────────────────
 $scheduleIds = array_column(
-    $pdo->query("SELECT DISTINCT project_id FROM time_schedules")->fetchAll(), 'project_id'
+    $pdo->query("SELECT DISTINCT project_id FROM time_schedules")->fetchAll(),
+    'project_id'
 );
-$log[] = 'time_schedules obsahuje project_ids: [' . implode(', ', $scheduleIds) . ']';
 
-// ── Funkce pro migraci jednoho projektu ──────────────────────────────────────
-function migrateProject(PDO $pdo, array $p, array &$log, array &$errors): void {
+if (empty($scheduleIds)) {
+    echo json_encode(['ok'=>true,'log'=>['time_schedules je prázdná — nic k migraci.']], JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+$log[] = 'Harmonogramy existují pro project_ids: [' . implode(', ', $scheduleIds) . ']';
+$ph    = implode(',', array_fill(0, count($scheduleIds), '?'));
+
+// ── Pomocné funkce ───────────────────────────────────────────────────────────
+function insertProject(PDO $pdo, array $p, array &$log): void {
     $id   = (int)$p['id'];
     $name = $p['name'] ?? ('Projekt #' . $id);
-
     $stmt = $pdo->prepare(
         "INSERT IGNORE INTO time_projects (id, name, description, bg_color, invite_code, created_by, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)"
+         VALUES (?,?,?,?,?,?,?)"
     );
     $stmt->execute([
         $id, $name,
@@ -59,107 +66,99 @@ function migrateProject(PDO $pdo, array $p, array &$log, array &$errors): void {
         $p['created_at']  ?? date('Y-m-d H:i:s'),
     ]);
     $log[] = $stmt->rowCount()
-        ? "time_projects ← vložen #$id \"$name\""
-        : "time_projects: #$id \"$name\" již existuje";
+        ? "✓ time_projects ← #$id \"$name\""
+        : "— time_projects: #$id \"$name\" již existuje";
 }
 
-function migrateMembers(PDO $pdo, int $projectId, array $members, array &$log): void {
+function insertMembers(PDO $pdo, int $pid, array $members, array &$log): void {
     foreach ($members as $m) {
         $role = in_array($m['role']??'', ['owner','admin','member','viewer']) ? $m['role'] : 'member';
         $stmt = $pdo->prepare(
             "INSERT IGNORE INTO time_project_members (project_id, user_id, role, joined_at)
-             VALUES (?, ?, ?, ?)"
+             VALUES (?,?,?,?)"
         );
         $stmt->execute([
-            $projectId, (int)$m['user_id'], $role,
+            $pid, (int)$m['user_id'], $role,
             $m['joined_at'] ?? $m['created_at'] ?? date('Y-m-d H:i:s'),
         ]);
         if ($stmt->rowCount())
-            $log[] = "time_project_members ← user #{$m['user_id']} jako $role → projekt #$projectId";
+            $log[] = "  ✓ člen user#{$m['user_id']} ($role) → projekt #$pid";
     }
 }
 
-// ── 1. Migrace z plans_projects ───────────────────────────────────────────────
+// ── 1. plans_projects — POUZE projekty jejichž ID je v time_schedules ────────
 if (tblExists($pdo, 'plans_projects')) {
-    $log[] = '--- Zdroj: plans_projects ---';
-    $cols  = array_column($pdo->query("SHOW COLUMNS FROM plans_projects")->fetchAll(), 'Field');
-
-    // Vezmi VŠECHNY projekty z plans_projects (uživatel si vybere co je jeho)
-    $rows = $pdo->query("SELECT * FROM plans_projects")->fetchAll();
-    $log[] = 'Nalezeno ' . count($rows) . ' projektů v plans_projects.';
-
-    foreach ($rows as $row) {
-        migrateProject($pdo, $row, $log, $errors);
-
-        // Členové z plans_project_members
-        if (tblExists($pdo, 'plans_project_members')) {
-            $mems = $pdo->prepare("SELECT * FROM plans_project_members WHERE project_id = ?");
-            $mems->execute([$row['id']]);
-            migrateMembers($pdo, (int)$row['id'], $mems->fetchAll(), $log);
-        }
-
-        // Pokud projekt nemá harmonogram v time_schedules, založ prázdný záznam
-        if (!in_array((int)$row['id'], $scheduleIds)) {
-            $log[] = "Poznámka: projekt #{$row['id']} nemá harmonogram v time_schedules.";
-        }
-    }
-} else {
-    $log[] = 'Tabulka plans_projects neexistuje — přeskočeno.';
-}
-
-// ── 2. Migrace z projects (starý společný název) ──────────────────────────────
-if (tblExists($pdo, 'projects')) {
-    $log[] = '--- Zdroj: projects ---';
-    $rows  = $pdo->query("SELECT * FROM projects")->fetchAll();
-    $log[] = 'Nalezeno ' . count($rows) . ' projektů v projects.';
-    foreach ($rows as $row) {
-        migrateProject($pdo, $row, $log, $errors);
-        if (tblExists($pdo, 'project_members')) {
-            $mems = $pdo->prepare("SELECT * FROM project_members WHERE project_id = ?");
-            $mems->execute([$row['id']]);
-            migrateMembers($pdo, (int)$row['id'], $mems->fetchAll(), $log);
-        }
-    }
-} else {
-    $log[] = 'Tabulka projects neexistuje — přeskočeno.';
-}
-
-// ── 3. Záloha: projekty z time_schedules bez záznamu v time_projects ─────────
-if ($scheduleIds) {
-    $ph   = implode(',', array_fill(0, count($scheduleIds), '?'));
-    $rows = $pdo->prepare("SELECT id FROM time_projects WHERE id IN ($ph)");
+    $rows = $pdo->prepare("SELECT * FROM plans_projects WHERE id IN ($ph)");
     $rows->execute($scheduleIds);
-    $existing = array_column($rows->fetchAll(), 'id');
-    $missing  = array_diff($scheduleIds, $existing);
+    $found = $rows->fetchAll();
+    $log[] = '--- plans_projects: nalezeno ' . count($found) . ' projektů patřících Time ---';
 
-    foreach ($missing as $pid) {
-        $sched = $pdo->prepare("SELECT data, updated_by, created_at FROM time_schedules WHERE project_id = ?");
-        $sched->execute([$pid]);
-        $s     = $sched->fetch();
-        $json  = json_decode($s['data'] ?? '{}', true);
-        $name  = trim($json['name'] ?? '') ?: ('Projekt #' . $pid);
+    foreach ($found as $row) {
+        insertProject($pdo, $row, $log);
 
-        $pdo->prepare(
-            "INSERT IGNORE INTO time_projects (id, name, created_by, created_at) VALUES (?,?,?,?)"
-        )->execute([$pid, $name, $s['updated_by'] ?? null, $s['created_at'] ?? date('Y-m-d H:i:s')]);
-
-        if ($s['updated_by']) {
-            $pdo->prepare(
-                "INSERT IGNORE INTO time_project_members (project_id, user_id, role) VALUES (?,?,'owner')"
-            )->execute([$pid, $s['updated_by']]);
+        // Členové
+        $memTbl = tblExists($pdo, 'plans_project_members') ? 'plans_project_members' : null;
+        if ($memTbl) {
+            $mems = $pdo->prepare("SELECT * FROM $memTbl WHERE project_id = ?");
+            $mems->execute([$row['id']]);
+            insertMembers($pdo, (int)$row['id'], $mems->fetchAll(), $log);
         }
-        $log[] = "Záloha: projekt #$pid \"$name\" obnoven z time_schedules.";
+    }
+
+    // Které IDs z time_schedules nebyly v plans_projects?
+    $foundIds = array_column($found, 'id');
+    $missing  = array_diff($scheduleIds, $foundIds);
+    if ($missing) $log[] = 'Poznámka: IDs ' . implode(', ', $missing) . ' nejsou v plans_projects.';
+} else {
+    $log[] = 'Tabulka plans_projects neexistuje.';
+}
+
+// ── 2. projects (starý název) — POUZE IDs z time_schedules ───────────────────
+if (tblExists($pdo, 'projects')) {
+    $rows = $pdo->prepare("SELECT * FROM projects WHERE id IN ($ph)");
+    $rows->execute($scheduleIds);
+    $found = $rows->fetchAll();
+    if ($found) {
+        $log[] = '--- projects: nalezeno ' . count($found) . ' projektů ---';
+        foreach ($found as $row) {
+            insertProject($pdo, $row, $log);
+            if (tblExists($pdo, 'project_members')) {
+                $mems = $pdo->prepare("SELECT * FROM project_members WHERE project_id = ?");
+                $mems->execute([$row['id']]);
+                insertMembers($pdo, (int)$row['id'], $mems->fetchAll(), $log);
+            }
+        }
     }
 }
 
-// ── Výsledek ──────────────────────────────────────────────────────────────────
+// ── 3. Záloha: projekty stále chybějící → rekonstrukce z JSON ────────────────
+$existRows = $pdo->prepare("SELECT id FROM time_projects WHERE id IN ($ph)");
+$existRows->execute($scheduleIds);
+$stillMissing = array_diff($scheduleIds, array_column($existRows->fetchAll(), 'id'));
+
+foreach ($stillMissing as $pid) {
+    $s    = $pdo->prepare("SELECT data, updated_by, created_at FROM time_schedules WHERE project_id = ?");
+    $s->execute([$pid]);
+    $row  = $s->fetch();
+    $json = json_decode($row['data'] ?? '{}', true);
+    $name = trim($json['name'] ?? '') ?: ('Projekt #' . $pid);
+
+    $pdo->prepare(
+        "INSERT IGNORE INTO time_projects (id, name, created_by, created_at) VALUES (?,?,?,?)"
+    )->execute([$pid, $name, $row['updated_by'] ?? null, $row['created_at'] ?? date('Y-m-d H:i:s')]);
+
+    if ($row['updated_by']) {
+        $pdo->prepare(
+            "INSERT IGNORE INTO time_project_members (project_id, user_id, role) VALUES (?,?,'owner')"
+        )->execute([$pid, $row['updated_by']]);
+    }
+    $log[] = "✓ Záloha: #$pid \"$name\" rekonstruován z time_schedules JSON";
+}
+
+// ── Souhrn ────────────────────────────────────────────────────────────────────
 $cntP = $pdo->query("SELECT COUNT(*) AS c FROM time_projects")->fetch()['c'];
 $cntM = $pdo->query("SELECT COUNT(*) AS c FROM time_project_members")->fetch()['c'];
-$cntS = $pdo->query("SELECT COUNT(*) AS c FROM time_schedules")->fetch()['c'];
-$log[] = "=== Stav tabulek: time_projects=$cntP, time_project_members=$cntM, time_schedules=$cntS ===";
+$log[] = "=== Výsledek: time_projects=$cntP, time_project_members=$cntM, time_schedules=" . count($scheduleIds) . " ===";
 
-echo json_encode([
-    'ok'     => empty($errors),
-    'log'    => $log,
-    'errors' => $errors,
-], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+echo json_encode(['ok'=>empty($errors),'log'=>$log,'errors'=>$errors],
+    JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
