@@ -17,7 +17,9 @@ $pdo = new PDO(
     ]
 );
 
-// Auto-create remember_tokens table if missing
+// Auto-create / migrate all required tables
+// Each block uses IF NOT EXISTS or SHOW COLUMNS so it's safe to run on every request.
+
 $pdo->exec("CREATE TABLE IF NOT EXISTS remember_tokens (
   id         INT AUTO_INCREMENT PRIMARY KEY,
   user_id    INT NOT NULL,
@@ -28,7 +30,6 @@ $pdo->exec("CREATE TABLE IF NOT EXISTS remember_tokens (
   KEY idx_user (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
-// Auto-create apps table and register 'time' app
 $pdo->exec("CREATE TABLE IF NOT EXISTS apps (
   id       INT AUTO_INCREMENT PRIMARY KEY,
   app_key  VARCHAR(64) NOT NULL,
@@ -37,21 +38,36 @@ $pdo->exec("CREATE TABLE IF NOT EXISTS apps (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 $pdo->exec("INSERT IGNORE INTO apps (app_key, app_name) VALUES ('time', 'BeSix Time — Harmonogram')");
 
-// Auto-create projects table
 $pdo->exec("CREATE TABLE IF NOT EXISTS projects (
   id          INT AUTO_INCREMENT PRIMARY KEY,
-  app_id      INT NOT NULL,
+  app_id      INT NOT NULL DEFAULT 1,
   name        VARCHAR(255) NOT NULL,
   description TEXT DEFAULT NULL,
   bg_color    VARCHAR(32) DEFAULT NULL,
   invite_code VARCHAR(32) DEFAULT NULL,
   created_by  INT DEFAULT NULL,
   created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE KEY uq_invite (invite_code),
   KEY idx_app (app_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
-// Auto-create project_members table
+// Add missing columns to projects if table pre-existed without them
+$_cols = array_column($pdo->query("SHOW COLUMNS FROM projects")->fetchAll(), 'Field');
+if (!in_array('app_id', $_cols))
+    $pdo->exec("ALTER TABLE projects ADD COLUMN app_id INT NOT NULL DEFAULT 1");
+if (!in_array('bg_color', $_cols))
+    $pdo->exec("ALTER TABLE projects ADD COLUMN bg_color VARCHAR(32) DEFAULT NULL");
+if (!in_array('invite_code', $_cols))
+    $pdo->exec("ALTER TABLE projects ADD COLUMN invite_code VARCHAR(32) DEFAULT NULL");
+if (!in_array('description', $_cols))
+    $pdo->exec("ALTER TABLE projects ADD COLUMN description TEXT DEFAULT NULL");
+if (!in_array('created_by', $_cols))
+    $pdo->exec("ALTER TABLE projects ADD COLUMN created_by INT DEFAULT NULL");
+unset($_cols);
+
+// Ensure the 'time' app_id is set on all projects that have app_id=0 / NULL
+$pdo->exec("UPDATE projects SET app_id = (SELECT id FROM apps WHERE app_key='time' LIMIT 1)
+            WHERE app_id = 0 OR app_id IS NULL");
+
 $pdo->exec("CREATE TABLE IF NOT EXISTS project_members (
   id         INT AUTO_INCREMENT PRIMARY KEY,
   project_id INT NOT NULL,
@@ -62,7 +78,6 @@ $pdo->exec("CREATE TABLE IF NOT EXISTS project_members (
   KEY idx_user (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
-// Auto-create time_schedules table
 $pdo->exec("CREATE TABLE IF NOT EXISTS time_schedules (
   id         INT AUTO_INCREMENT PRIMARY KEY,
   project_id INT NOT NULL,
@@ -72,6 +87,12 @@ $pdo->exec("CREATE TABLE IF NOT EXISTS time_schedules (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY uq_project (project_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+// Add google_id to users if missing (needed by auth_google.php)
+$_ucols = array_column($pdo->query("SHOW COLUMNS FROM users")->fetchAll(), 'Field');
+if (!in_array('google_id', $_ucols))
+    $pdo->exec("ALTER TABLE users ADD COLUMN google_id VARCHAR(64) DEFAULT NULL, ADD KEY idx_google_id (google_id)");
+unset($_ucols);
 
 // Sdílená session cookie přes celé besix.cz
 session_name('BESIX_SESS');
