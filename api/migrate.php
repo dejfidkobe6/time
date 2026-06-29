@@ -1,12 +1,7 @@
 <?php
 /**
- * Jednorázová migrace dat z původních sdílených tabulek do time_ tabulek.
- * Bezpečné spustit opakovaně — používá INSERT IGNORE.
- *
- * BEZPEČNOST: Migrují se POUZE projekty prokazatelně patřící aplikaci Time:
- *   1. Primárně: projects.app_id = (id z apps WHERE app_key='time')
- *   2. Záloha:   project_id existující v time_schedules
- *   → Pokud nelze jednoznačně identifikovat, skript SELŽE (nevezme vše).
+ * Migrace / obnova projektů z time_schedules JSON dat.
+ * Bezpečné spustit opakovaně — INSERT IGNORE nepřepisuje existující záznamy.
  *
  * Spustit: https://time.besix.cz/api/migrate.php
  */
@@ -27,15 +22,11 @@ $errors = [];
 function tableExists(PDO $pdo, string $table): bool {
     return (bool) $pdo->query("SHOW TABLES LIKE '$table'")->fetch();
 }
-function columnExists(PDO $pdo, string $table, string $col): bool {
-    $cols = array_column($pdo->query("SHOW COLUMNS FROM `$table`")->fetchAll(), 'Field');
-    return in_array($col, $cols);
-}
 
-// ── 0. Ověření cílových tabulek ─────────────────────────────────────────────
+// ── Ověření cílových tabulek ────────────────────────────────────────────────
 foreach (['time_projects', 'time_project_members', 'time_schedules'] as $t) {
     if (!tableExists($pdo, $t)) {
-        $errors[] = "Cílová tabulka $t neexistuje — nejprve načti aplikaci (provede CREATE TABLE IF NOT EXISTS).";
+        $errors[] = "Tabulka $t neexistuje.";
     }
 }
 if ($errors) {
@@ -43,111 +34,61 @@ if ($errors) {
     exit;
 }
 
-// ── 1. Zjisti ID projektů patřících Time aplikaci ───────────────────────────
-$timeProjectIds = [];
-$idSource       = null;
+// ── Načti všechny harmonogramy ───────────────────────────────────────────────
+$schedules = $pdo->query("SELECT project_id, data, updated_by, created_at FROM time_schedules")->fetchAll();
 
-// Metoda A: přes apps.app_key = 'time'
-if (tableExists($pdo, 'apps') && tableExists($pdo, 'projects') && columnExists($pdo, 'projects', 'app_id')) {
-    $appRow = $pdo->query("SELECT id FROM apps WHERE app_key = 'time' LIMIT 1")->fetch();
-    if ($appRow) {
-        $rows = $pdo->prepare("SELECT id FROM projects WHERE app_id = ?");
-        $rows->execute([$appRow['id']]);
-        $timeProjectIds = array_column($rows->fetchAll(), 'id');
-        $idSource = "apps.app_key='time' (app_id=" . $appRow['id'] . ")";
-    }
-}
-
-// Metoda B: záloha přes time_schedules (harmonogramy nemůžou patřit plans)
-if (empty($timeProjectIds) && tableExists($pdo, 'time_schedules')) {
-    $rows = $pdo->query("SELECT DISTINCT project_id FROM time_schedules")->fetchAll();
-    $timeProjectIds = array_column($rows, 'project_id');
-    $idSource = 'time_schedules.project_id';
-}
-
-// Žádná metoda nefungovala — BEZPEČNĚ SELŽI, nevezmi nic
-if (empty($timeProjectIds)) {
-    echo json_encode([
-        'ok'     => false,
-        'errors' => [
-            'Nelze jednoznačně identifikovat projekty aplikace Time.',
-            'Tabulka `apps` nebo sloupec `projects.app_id` neexistuje a `time_schedules` je prázdná.',
-            'Migrace přerušena — žádná data nebyla změněna.',
-        ],
-    ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+if (empty($schedules)) {
+    echo json_encode(['ok' => true, 'log' => ['time_schedules je prázdná — nic k migraci.']], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
     exit;
 }
 
-$log[] = "Identifikováno " . count($timeProjectIds) . " projektů Time přes: $idSource.";
-$log[] = "Project IDs: [" . implode(', ', $timeProjectIds) . "]";
+$countP = 0;
+$countM = 0;
 
-// ── 2. Migrace projects → time_projects ─────────────────────────────────────
-if (!tableExists($pdo, 'projects')) {
-    $log[] = 'Tabulka `projects` neexistuje — přeskočeno.';
-} else {
-    $placeholders = implode(',', array_fill(0, count($timeProjectIds), '?'));
-    $srcRows = $pdo->prepare("SELECT * FROM projects WHERE id IN ($placeholders)");
-    $srcRows->execute($timeProjectIds);
-    $projects = $srcRows->fetchAll();
+foreach ($schedules as $s) {
+    $projectId = (int)$s['project_id'];
+    $updatedBy = $s['updated_by'] ? (int)$s['updated_by'] : null;
+    $createdAt = $s['created_at'] ?? date('Y-m-d H:i:s');
 
-    $countP = 0;
-    foreach ($projects as $p) {
-        $stmt = $pdo->prepare(
-            "INSERT IGNORE INTO time_projects
-               (id, name, description, bg_color, invite_code, created_by, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?)"
-        );
-        $stmt->execute([
-            $p['id'],
-            $p['name'],
-            $p['description'] ?? null,
-            $p['bg_color']    ?? null,
-            $p['invite_code'] ?? null,
-            $p['created_by']  ?? null,
-            $p['created_at']  ?? date('Y-m-d H:i:s'),
-        ]);
-        if ($stmt->rowCount()) $countP++;
-    }
-    $log[] = "time_projects: vloženo $countP nových záznamů (z " . count($projects) . " zdrojových).";
-}
+    // Název projektu z JSON dat harmonogramu
+    $json = json_decode($s['data'], true);
+    $name = trim($json['name'] ?? '') ?: ('Projekt #' . $projectId);
 
-// ── 3. Migrace project_members → time_project_members ───────────────────────
-if (!tableExists($pdo, 'project_members')) {
-    $log[] = 'Tabulka `project_members` neexistuje — přeskočeno.';
-} else {
-    $placeholders = implode(',', array_fill(0, count($timeProjectIds), '?'));
-    $members = $pdo->prepare(
-        "SELECT * FROM project_members WHERE project_id IN ($placeholders)"
+    // Vlož projekt se zachovaným ID (INSERT IGNORE — nepřepíše pokud už existuje)
+    $stmt = $pdo->prepare(
+        "INSERT IGNORE INTO time_projects (id, name, created_by, created_at)
+         VALUES (?, ?, ?, ?)"
     );
-    $members->execute($timeProjectIds);
-    $members = $members->fetchAll();
-
-    $countM = 0;
-    foreach ($members as $m) {
-        $role = in_array($m['role'], ['owner','admin','member','viewer']) ? $m['role'] : 'member';
-        $stmt = $pdo->prepare(
-            "INSERT IGNORE INTO time_project_members
-               (project_id, user_id, role, joined_at)
-             VALUES (?, ?, ?, ?)"
-        );
-        $stmt->execute([
-            $m['project_id'],
-            $m['user_id'],
-            $role,
-            $m['joined_at'] ?? $m['created_at'] ?? date('Y-m-d H:i:s'),
-        ]);
-        if ($stmt->rowCount()) $countM++;
+    $stmt->execute([$projectId, $name, $updatedBy, $createdAt]);
+    if ($stmt->rowCount()) {
+        $countP++;
+        $log[] = "time_projects: vložen projekt #$projectId \"$name\".";
+    } else {
+        $log[] = "time_projects: projekt #$projectId \"$name\" již existuje — přeskočen.";
     }
-    $log[] = "time_project_members: vloženo $countM nových záznamů (z " . count($members) . " zdrojových).";
+
+    // Vlož vlastníka (updated_by = poslední editor = de facto owner)
+    if ($updatedBy) {
+        $stmt2 = $pdo->prepare(
+            "INSERT IGNORE INTO time_project_members (project_id, user_id, role)
+             VALUES (?, ?, 'owner')"
+        );
+        $stmt2->execute([$projectId, $updatedBy]);
+        if ($stmt2->rowCount()) {
+            $countM++;
+            $log[] = "time_project_members: uživatel #$updatedBy přidán jako owner projektu #$projectId.";
+        } else {
+            $log[] = "time_project_members: uživatel #$updatedBy → projekt #$projectId již existuje — přeskočen.";
+        }
+    } else {
+        $errors[] = "Projekt #$projectId nemá updated_by — vlastník neznámý, přidej ho ručně.";
+    }
 }
 
-// ── 4. time_schedules — beze změny ──────────────────────────────────────────
-$cnt = $pdo->query("SELECT COUNT(*) AS c FROM time_schedules")->fetch()['c'];
-$log[] = "time_schedules: $cnt záznamů (nebeze změny — data jsou již zde).";
+$log[] = "Hotovo: $countP projektů obnoveno, $countM vlastníků přidáno.";
 
-// ── Výsledek ─────────────────────────────────────────────────────────────────
 echo json_encode([
-    'ok'     => true,
+    'ok'     => empty($errors),
     'log'    => $log,
     'errors' => $errors,
 ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
