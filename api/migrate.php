@@ -1,10 +1,14 @@
 <?php
 /**
  * Jednorázová migrace dat z původních sdílených tabulek do time_ tabulek.
- * Bezpečné spustit opakovaně — používá INSERT IGNORE, takže nepřepisuje existující záznamy.
+ * Bezpečné spustit opakovaně — používá INSERT IGNORE.
  *
- * Spustit v prohlížeči: https://time.besix.cz/api/migrate.php
- * (nebo z příkazové řádky: php api/migrate.php)
+ * BEZPEČNOST: Migrují se POUZE projekty prokazatelně patřící aplikaci Time:
+ *   1. Primárně: projects.app_id = (id z apps WHERE app_key='time')
+ *   2. Záloha:   project_id existující v time_schedules
+ *   → Pokud nelze jednoznačně identifikovat, skript SELŽE (nevezme vše).
+ *
+ * Spustit: https://time.besix.cz/api/migrate.php
  */
 header('Content-Type: application/json; charset=utf-8');
 
@@ -23,16 +27,15 @@ $errors = [];
 function tableExists(PDO $pdo, string $table): bool {
     return (bool) $pdo->query("SHOW TABLES LIKE '$table'")->fetch();
 }
-
 function columnExists(PDO $pdo, string $table, string $col): bool {
     $cols = array_column($pdo->query("SHOW COLUMNS FROM `$table`")->fetchAll(), 'Field');
     return in_array($col, $cols);
 }
 
-// ── 1. Ujisti se, že cílové tabulky existují ────────────────────────────────
+// ── 0. Ověření cílových tabulek ─────────────────────────────────────────────
 foreach (['time_projects', 'time_project_members', 'time_schedules'] as $t) {
     if (!tableExists($pdo, $t)) {
-        $errors[] = "Cílová tabulka $t neexistuje — nejprve načti aplikaci, aby se vytvořila.";
+        $errors[] = "Cílová tabulka $t neexistuje — nejprve načti aplikaci (provede CREATE TABLE IF NOT EXISTS).";
     }
 }
 if ($errors) {
@@ -40,27 +43,52 @@ if ($errors) {
     exit;
 }
 
+// ── 1. Zjisti ID projektů patřících Time aplikaci ───────────────────────────
+$timeProjectIds = [];
+$idSource       = null;
+
+// Metoda A: přes apps.app_key = 'time'
+if (tableExists($pdo, 'apps') && tableExists($pdo, 'projects') && columnExists($pdo, 'projects', 'app_id')) {
+    $appRow = $pdo->query("SELECT id FROM apps WHERE app_key = 'time' LIMIT 1")->fetch();
+    if ($appRow) {
+        $rows = $pdo->prepare("SELECT id FROM projects WHERE app_id = ?");
+        $rows->execute([$appRow['id']]);
+        $timeProjectIds = array_column($rows->fetchAll(), 'id');
+        $idSource = "apps.app_key='time' (app_id=" . $appRow['id'] . ")";
+    }
+}
+
+// Metoda B: záloha přes time_schedules (harmonogramy nemůžou patřit plans)
+if (empty($timeProjectIds) && tableExists($pdo, 'time_schedules')) {
+    $rows = $pdo->query("SELECT DISTINCT project_id FROM time_schedules")->fetchAll();
+    $timeProjectIds = array_column($rows, 'project_id');
+    $idSource = 'time_schedules.project_id';
+}
+
+// Žádná metoda nefungovala — BEZPEČNĚ SELŽI, nevezmi nic
+if (empty($timeProjectIds)) {
+    echo json_encode([
+        'ok'     => false,
+        'errors' => [
+            'Nelze jednoznačně identifikovat projekty aplikace Time.',
+            'Tabulka `apps` nebo sloupec `projects.app_id` neexistuje a `time_schedules` je prázdná.',
+            'Migrace přerušena — žádná data nebyla změněna.',
+        ],
+    ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+$log[] = "Identifikováno " . count($timeProjectIds) . " projektů Time přes: $idSource.";
+$log[] = "Project IDs: [" . implode(', ', $timeProjectIds) . "]";
+
 // ── 2. Migrace projects → time_projects ─────────────────────────────────────
 if (!tableExists($pdo, 'projects')) {
     $log[] = 'Tabulka `projects` neexistuje — přeskočeno.';
 } else {
-    // Zjisti app_id pro 'time' (pokud apps tabulka existuje)
-    $appId = null;
-    if (tableExists($pdo, 'apps')) {
-        $row   = $pdo->query("SELECT id FROM apps WHERE app_key = 'time' LIMIT 1")->fetch();
-        $appId = $row ? (int)$row['id'] : null;
-    }
-
-    // Vyber projekty patřící aplikaci time
-    $hasAppId = columnExists($pdo, 'projects', 'app_id');
-    if ($hasAppId && $appId !== null) {
-        $srcProjects = $pdo->prepare("SELECT * FROM projects WHERE app_id = ?");
-        $srcProjects->execute([$appId]);
-    } else {
-        // Pokud app_id sloupec nebo apps tabulka chybí, vezmi všechny projekty
-        $srcProjects = $pdo->query("SELECT * FROM projects");
-    }
-    $projects = $srcProjects->fetchAll();
+    $placeholders = implode(',', array_fill(0, count($timeProjectIds), '?'));
+    $srcRows = $pdo->prepare("SELECT * FROM projects WHERE id IN ($placeholders)");
+    $srcRows->execute($timeProjectIds);
+    $projects = $srcRows->fetchAll();
 
     $countP = 0;
     foreach ($projects as $p) {
@@ -87,11 +115,12 @@ if (!tableExists($pdo, 'projects')) {
 if (!tableExists($pdo, 'project_members')) {
     $log[] = 'Tabulka `project_members` neexistuje — přeskočeno.';
 } else {
-    // Vezmi jen členy projektů, které jsou teď v time_projects
-    $members = $pdo->query(
-        "SELECT pm.* FROM project_members pm
-         WHERE pm.project_id IN (SELECT id FROM time_projects)"
-    )->fetchAll();
+    $placeholders = implode(',', array_fill(0, count($timeProjectIds), '?'));
+    $members = $pdo->prepare(
+        "SELECT * FROM project_members WHERE project_id IN ($placeholders)"
+    );
+    $members->execute($timeProjectIds);
+    $members = $members->fetchAll();
 
     $countM = 0;
     foreach ($members as $m) {
@@ -114,9 +143,9 @@ if (!tableExists($pdo, 'project_members')) {
 
 // ── 4. time_schedules — beze změny ──────────────────────────────────────────
 $cnt = $pdo->query("SELECT COUNT(*) AS c FROM time_schedules")->fetch()['c'];
-$log[] = "time_schedules: $cnt záznamů (tabulka se nemění — data jsou already here).";
+$log[] = "time_schedules: $cnt záznamů (nebeze změny — data jsou již zde).";
 
-// ── 5. Souhrn ────────────────────────────────────────────────────────────────
+// ── Výsledek ─────────────────────────────────────────────────────────────────
 echo json_encode([
     'ok'     => true,
     'log'    => $log,
