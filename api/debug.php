@@ -2,14 +2,14 @@
 header('Content-Type: application/json');
 
 $result = [
-  'secrets_exists' => file_exists(__DIR__ . '/secrets.php'),
-  'php_version'    => PHP_VERSION,
-  'db_test'        => null,
-  'session_id'     => null,
-  'user_id'        => null,
-  'user'           => null,
-  'apps_time'      => null,
-  'error'          => null,
+  'secrets_exists'       => file_exists(__DIR__ . '/secrets.php'),
+  'php_version'          => PHP_VERSION,
+  'db_test'              => null,
+  'session_id'           => null,
+  'user_id'              => null,
+  'user'                 => null,
+  'tables'               => [],
+  'error'                => null,
 ];
 
 if ($result['secrets_exists']) {
@@ -23,7 +23,6 @@ if ($result['secrets_exists']) {
     );
     $result['db_test'] = 'OK';
 
-    // Session test
     session_name('BESIX_SESS');
     if (session_status() === PHP_SESSION_NONE) session_start();
     $result['session_id'] = session_id();
@@ -35,10 +34,11 @@ if ($result['secrets_exists']) {
       $result['user'] = $s->fetch();
     }
 
-    // Check apps table
-    $s = $pdo->prepare("SELECT id, app_key FROM apps WHERE app_key = 'time'");
-    $s->execute();
-    $result['apps_time'] = $s->fetch();
+    // Check which time_ tables exist
+    foreach (['time_projects','time_project_members','time_schedules','remember_tokens'] as $t) {
+      $r = $pdo->query("SHOW TABLES LIKE '$t'")->fetch();
+      $result['tables'][$t] = $r ? 'exists' : 'MISSING';
+    }
 
   } catch (Exception $e) {
     $result['db_test'] = 'FAIL';

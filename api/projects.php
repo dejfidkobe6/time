@@ -14,10 +14,9 @@ $action = $_GET['action'] ?? '';
 if ($action === 'list') {
     $stmt = $pdo->prepare(
         "SELECT p.id, p.name, p.description, p.bg_color, pm.role
-         FROM projects p
-         JOIN project_members pm ON pm.project_id = p.id
-         JOIN apps a ON a.id = p.app_id
-         WHERE pm.user_id = ? AND a.app_key = 'time'
+         FROM time_projects p
+         JOIN time_project_members pm ON pm.project_id = p.id
+         WHERE pm.user_id = ?
          ORDER BY p.name"
     );
     $stmt->execute([$userId]);
@@ -35,28 +34,17 @@ if ($action === 'create' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
-    $stmt = $pdo->prepare("SELECT id FROM apps WHERE app_key = 'time'");
-    $stmt->execute();
-    $app = $stmt->fetch();
-    if (!$app) {
-        http_response_code(500);
-        echo json_encode(['ok' => false, 'error' => 'Aplikace time není registrována v DB (spusťte setup.sql)']);
-        exit;
-    }
-
     try {
         $pdo->beginTransaction();
         $inviteCode = bin2hex(random_bytes(6));
-        $stmt = $pdo->prepare(
-            "INSERT INTO projects (app_id, name, description, invite_code, created_by) VALUES (?, ?, ?, ?, ?)"
-        );
-        $stmt->execute([$app['id'], $name, trim($body['description'] ?? ''), $inviteCode, $userId]);
+        $pdo->prepare(
+            "INSERT INTO time_projects (name, description, invite_code, created_by) VALUES (?, ?, ?, ?)"
+        )->execute([$name, trim($body['description'] ?? ''), $inviteCode, $userId]);
         $projectId = (int)$pdo->lastInsertId();
 
-        $stmt = $pdo->prepare(
-            "INSERT INTO project_members (project_id, user_id, role) VALUES (?, ?, 'owner')"
-        );
-        $stmt->execute([$projectId, $userId]);
+        $pdo->prepare(
+            "INSERT INTO time_project_members (project_id, user_id, role) VALUES (?, ?, 'owner')"
+        )->execute([$projectId, $userId]);
         $pdo->commit();
 
         echo json_encode([
@@ -77,7 +65,7 @@ if ($action === 'members') {
     requireProjectRole($projectId, 'viewer');
     $stmt = $pdo->prepare(
         "SELECT u.id, u.name, u.email, u.avatar_color, pm.role
-         FROM project_members pm
+         FROM time_project_members pm
          JOIN users u ON u.id = pm.user_id
          WHERE pm.project_id = ?
          ORDER BY FIELD(pm.role,'owner','admin','member','viewer'), u.name"
@@ -89,7 +77,7 @@ if ($action === 'members') {
 
 // --- INVITE (by email) ---
 if ($action === 'invite' && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    $body = json_decode(file_get_contents('php://input'), true) ?? [];
+    $body      = json_decode(file_get_contents('php://input'), true) ?? [];
     $projectId = (int)($body['project_id'] ?? 0);
     $email     = trim($body['email'] ?? '');
     $role      = in_array($body['role'] ?? '', ['admin','member','viewer']) ? $body['role'] : 'member';
@@ -102,8 +90,7 @@ if ($action === 'invite' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
-    // Load project name + invite_code for emails
-    $stmtP = $pdo->prepare("SELECT name, invite_code FROM projects WHERE id = ?");
+    $stmtP = $pdo->prepare("SELECT name, invite_code FROM time_projects WHERE id = ?");
     $stmtP->execute([$projectId]);
     $project = $stmtP->fetch();
     if (!$project) {
@@ -112,43 +99,37 @@ if ($action === 'invite' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
-    // Load inviter name
     $stmtI = $pdo->prepare("SELECT name FROM users WHERE id = ?");
     $stmtI->execute([$userId]);
-    $inviter = $stmtI->fetch();
+    $inviter     = $stmtI->fetch();
     $inviterName = $inviter['name'] ?? 'BeSix';
 
-    // Find invitee by email
     $stmt = $pdo->prepare("SELECT id, name FROM users WHERE email = ?");
     $stmt->execute([$email]);
     $user = $stmt->fetch();
 
     if (!$user) {
-        // Not registered — send invite-link email so they can register & join
         $inviteUrl = 'https://time.besix.cz/invite.php?code=' . urlencode($project['invite_code']);
         $html = buildInviteEmail($inviterName, $project['name'], $inviteUrl);
         $sent = sendBrevoEmail($email, $email, 'Pozvánka do projektu ' . $project['name'] . ' – BeSix Time', $html);
         echo json_encode([
             'ok'      => true,
-            'message' => 'Pozvánka odeslána na ' . $email . ($sent ? '' : ' (e-mail se nepodařilo odeslat, zkontrolujte API klíč)'),
+            'message' => 'Pozvánka odeslána na ' . $email . ($sent ? '' : ' (e-mail se nepodařilo odeslat)'),
             'invited' => false,
         ]);
         exit;
     }
 
-    // Check if already member
-    $stmt = $pdo->prepare("SELECT id FROM project_members WHERE project_id = ? AND user_id = ?");
+    $stmt = $pdo->prepare("SELECT id FROM time_project_members WHERE project_id = ? AND user_id = ?");
     $stmt->execute([$projectId, $user['id']]);
     if ($stmt->fetch()) {
         echo json_encode(['ok' => false, 'error' => 'Tento uživatel je již členem projektu']);
         exit;
     }
 
-    // Add to project
-    $stmt = $pdo->prepare("INSERT INTO project_members (project_id, user_id, role) VALUES (?, ?, ?)");
-    $stmt->execute([$projectId, $user['id'], $role]);
+    $pdo->prepare("INSERT INTO time_project_members (project_id, user_id, role) VALUES (?, ?, ?)")
+        ->execute([$projectId, $user['id'], $role]);
 
-    // Send notification email to the added user
     $projectUrl = 'https://time.besix.cz/';
     $html = buildAddedToProjectEmail($inviterName, $project['name'], $projectUrl);
     sendBrevoEmail($email, $user['name'], 'Byli jste přidáni do projektu ' . $project['name'] . ' – BeSix Time', $html);
@@ -172,8 +153,7 @@ if ($action === 'change_role' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
-    // Cannot change owner's role
-    $stmt = $pdo->prepare("SELECT role FROM project_members WHERE project_id = ? AND user_id = ?");
+    $stmt = $pdo->prepare("SELECT role FROM time_project_members WHERE project_id = ? AND user_id = ?");
     $stmt->execute([$projectId, $memberId]);
     $existing = $stmt->fetch();
     if (!$existing) {
@@ -187,8 +167,8 @@ if ($action === 'change_role' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
-    $stmt = $pdo->prepare("UPDATE project_members SET role = ? WHERE project_id = ? AND user_id = ?");
-    $stmt->execute([$newRole, $projectId, $memberId]);
+    $pdo->prepare("UPDATE time_project_members SET role = ? WHERE project_id = ? AND user_id = ?")
+        ->execute([$newRole, $projectId, $memberId]);
     echo json_encode(['ok' => true]);
     exit;
 }
@@ -201,8 +181,7 @@ if ($action === 'remove_member' && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
     requireProjectRole($projectId, 'admin');
 
-    // Cannot remove owner
-    $stmt = $pdo->prepare("SELECT role FROM project_members WHERE project_id = ? AND user_id = ?");
+    $stmt = $pdo->prepare("SELECT role FROM time_project_members WHERE project_id = ? AND user_id = ?");
     $stmt->execute([$projectId, $memberId]);
     $existing = $stmt->fetch();
     if (!$existing) {
@@ -216,18 +195,18 @@ if ($action === 'remove_member' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
-    $stmt = $pdo->prepare("DELETE FROM project_members WHERE project_id = ? AND user_id = ?");
-    $stmt->execute([$projectId, $memberId]);
+    $pdo->prepare("DELETE FROM time_project_members WHERE project_id = ? AND user_id = ?")
+        ->execute([$projectId, $memberId]);
     echo json_encode(['ok' => true]);
     exit;
 }
 
-// --- INVITE LINK (get project invite code) ---
+// --- INVITE LINK ---
 if ($action === 'invite_link') {
     $projectId = (int)($_GET['project_id'] ?? 0);
     requireProjectRole($projectId, 'admin');
 
-    $stmt = $pdo->prepare("SELECT invite_code FROM projects WHERE id = ?");
+    $stmt = $pdo->prepare("SELECT invite_code FROM time_projects WHERE id = ?");
     $stmt->execute([$projectId]);
     $row = $stmt->fetch();
     if (!$row) {
@@ -241,10 +220,9 @@ if ($action === 'invite_link') {
 
 // --- RENAME ---
 if ($action === 'rename' && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    $body      = json_decode(file_get_contents('php://input'), true) ?? [];
-    $projectId = (int)($body['project_id'] ?? 0);
-    $name      = trim($body['name'] ?? '');
-    $code      = trim($body['code'] ?? '');
+    $body        = json_decode(file_get_contents('php://input'), true) ?? [];
+    $projectId   = (int)($body['project_id'] ?? 0);
+    $name        = trim($body['name'] ?? '');
     $description = trim($body['description'] ?? '');
 
     requireProjectRole($projectId, 'admin');
@@ -255,8 +233,8 @@ if ($action === 'rename' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
-    $stmt = $pdo->prepare("UPDATE projects SET name = ?, description = ? WHERE id = ?");
-    $stmt->execute([$name, $description ?: null, $projectId]);
+    $pdo->prepare("UPDATE time_projects SET name = ?, description = ? WHERE id = ?")
+        ->execute([$name, $description ?: null, $projectId]);
     echo json_encode(['ok' => true, 'name' => $name]);
     exit;
 }
@@ -270,12 +248,9 @@ if ($action === 'delete' && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
     try {
         $pdo->beginTransaction();
-        // Delete schedule data
         $pdo->prepare("DELETE FROM time_schedules WHERE project_id = ?")->execute([$projectId]);
-        // Delete members
-        $pdo->prepare("DELETE FROM project_members WHERE project_id = ?")->execute([$projectId]);
-        // Delete project
-        $pdo->prepare("DELETE FROM projects WHERE id = ?")->execute([$projectId]);
+        $pdo->prepare("DELETE FROM time_project_members WHERE project_id = ?")->execute([$projectId]);
+        $pdo->prepare("DELETE FROM time_projects WHERE id = ?")->execute([$projectId]);
         $pdo->commit();
         echo json_encode(['ok' => true]);
     } catch (Exception $e) {
