@@ -10,6 +10,7 @@ $action = $_GET['action'] ?? '';
 session_start();
 
 if ($action === 'me') {
+    if (empty($_SESSION['user_id'])) tryRememberLogin();
     if (empty($_SESSION['user_id'])) {
         echo json_encode(['user' => null]);
         exit;

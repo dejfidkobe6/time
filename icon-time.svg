@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- White rounded background -->
+  <rect width="512" height="512" rx="112" fill="#FFFFFF"/>
+  <!-- Gold BeSix snowflake logo, scaled and centered -->
+  <g transform="translate(256,220) scale(5.2)">
+    <!-- 6-spoke snowflake / BeSix asterisk -->
+    <g fill="#C8881A" stroke="none">
+      <!-- Vertical spoke -->
+      <rect x="-5.5" y="-30" width="11" height="60" rx="4"/>
+      <!-- 60-degree spoke 1 -->
+      <rect x="-5.5" y="-30" width="11" height="60" rx="4" transform="rotate(60)"/>
+      <!-- 120-degree spoke -->
+      <rect x="-5.5" y="-30" width="11" height="60" rx="4" transform="rotate(120)"/>
+    </g>
+  </g>
+  <!-- TIME label -->
+  <text x="256" y="400" text-anchor="middle" font-family="Montserrat, Arial, sans-serif" font-weight="800" font-size="72" fill="#C8881A" letter-spacing="8">TIME</text>
+</svg>
