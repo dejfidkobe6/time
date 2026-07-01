@@ -2,7 +2,14 @@
 <html lang="cs">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="BeSix Time">
+<meta name="theme-color" content="#4A5340">
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="/icon-time.svg">
 <title>BeSix Time — Harmonogram stavby</title>
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&family=Lora:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
@@ -1632,6 +1639,230 @@ html, body {
 #gantt-rows .gantt-row.is-phase { height: calc(var(--row-h) + 4px); }
 #wbs-body .wbs-row.is-phase     { height: calc(var(--row-h) + 4px); overflow: visible; }
 
+/* ═══════════════════════════════════════
+   GANTT BAR — ROUNDED CORNERS
+═══════════════════════════════════════ */
+.gantt-bar {
+  border-radius: 7px !important;
+}
+.gantt-bar-progress {
+  border-radius: 7px 0 0 7px !important;
+}
+.gantt-bar-wrap.is-critical .gantt-bar {
+  background: #c0392b !important;
+  box-shadow: 0 0 0 2px rgba(192,57,43,0.25);
+}
+.gantt-bar-wrap.is-critical {
+  filter: drop-shadow(0 2px 6px rgba(192,57,43,0.4));
+}
+
+/* ═══════════════════════════════════════
+   TASK DETAIL PANEL (slide-in mobile)
+═══════════════════════════════════════ */
+#task-detail-panel {
+  position: fixed; right: -380px; top: 0; bottom: 0;
+  width: 360px; background: var(--bg-card);
+  box-shadow: var(--shadow-lg); z-index: 250;
+  display: flex; flex-direction: column;
+  transition: right 0.28s cubic-bezier(0.4,0,0.2,1);
+  border-left: 1px solid var(--border);
+}
+#task-detail-panel.open { right: 0; }
+#task-detail-panel .tdp-header {
+  display: flex; align-items: center; gap: 10px;
+  padding: 16px 20px; border-bottom: 1px solid var(--border);
+  flex-shrink: 0; background: var(--bg-card);
+}
+#task-detail-panel .tdp-title {
+  font-size: 13px; font-weight: 800; flex: 1; color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+#task-detail-panel .tdp-close {
+  width: 28px; height: 28px; border-radius: 6px; border: none;
+  background: var(--bg); cursor: pointer; display: flex; align-items: center;
+  justify-content: center; color: var(--text-muted); flex-shrink: 0;
+}
+#task-detail-panel .tdp-close:hover { background: var(--bg-hover); color: var(--text); }
+#task-detail-panel .tdp-body {
+  flex: 1; overflow-y: auto; padding: 16px 20px;
+  display: flex; flex-direction: column; gap: 14px;
+}
+.tdp-field { display: flex; flex-direction: column; gap: 5px; }
+.tdp-label {
+  font-size: 9px; font-weight: 800; text-transform: uppercase;
+  letter-spacing: 0.7px; color: var(--text-muted);
+}
+.tdp-value {
+  font-size: 13px; font-weight: 600; color: var(--text); padding: 8px 10px;
+  background: var(--bg); border-radius: var(--radius); border: 1px solid var(--border);
+}
+.tdp-input {
+  font-size: 13px; font-weight: 600; color: var(--text); padding: 8px 10px;
+  background: var(--bg); border-radius: var(--radius); border: 1px solid var(--border);
+  font-family: var(--font-main); outline: none; width: 100%;
+}
+.tdp-input:focus { border-color: var(--olive); box-shadow: 0 0 0 2px rgba(74,83,64,0.15); }
+.tdp-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.tdp-actions {
+  padding: 14px 20px; border-top: 1px solid var(--border);
+  display: flex; gap: 8px; flex-shrink: 0;
+}
+.tdp-progress-wrap {
+  display: flex; align-items: center; gap: 10px;
+}
+.tdp-progress-slider {
+  flex: 1; accent-color: var(--olive); height: 4px;
+}
+.tdp-progress-val {
+  font-size: 11px; font-weight: 700; color: var(--olive); min-width: 32px; text-align: right;
+}
+.tdp-cp-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 10px; font-weight: 700; color: #c0392b;
+  background: #fdf0ef; border: 1px solid #f5c6c2;
+  border-radius: 4px; padding: 3px 8px; margin-top: 4px;
+}
+
+/* ═══════════════════════════════════════
+   MOBILE HAMBURGER BUTTON
+═══════════════════════════════════════ */
+#mobile-menu-btn {
+  display: none;
+  width: 40px; height: 40px; border-radius: var(--radius);
+  border: none; background: none; cursor: pointer;
+  color: var(--text); align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+#mobile-menu-btn svg { width: 20px; height: 20px; }
+
+/* ═══════════════════════════════════════
+   MOBILE OVERLAY FOR SIDEBAR
+═══════════════════════════════════════ */
+#sidebar-overlay {
+  display: none; position: fixed; inset: 0; z-index: 99;
+  background: rgba(0,0,0,0.5);
+}
+#sidebar-overlay.open { display: block; }
+
+/* ═══════════════════════════════════════
+   MOBILE BOTTOM NAV
+═══════════════════════════════════════ */
+#mobile-bottom-nav {
+  display: none;
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 200;
+  background: var(--bg-card); border-top: 1px solid var(--border);
+  height: 56px; padding-bottom: env(safe-area-inset-bottom, 0);
+  align-items: center; justify-content: space-around;
+  box-shadow: 0 -2px 12px rgba(0,0,0,0.08);
+}
+.mob-nav-btn {
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  border: none; background: none; cursor: pointer; padding: 6px 16px;
+  color: var(--text-muted); font-family: var(--font-main);
+  font-size: 9px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.4px; border-radius: var(--radius); transition: color 0.15s;
+}
+.mob-nav-btn svg { width: 20px; height: 20px; }
+.mob-nav-btn.active { color: var(--olive); }
+
+/* ═══════════════════════════════════════
+   RESPONSIVE — MOBILE (≤768px)
+═══════════════════════════════════════ */
+@media (max-width: 768px) {
+  :root {
+    --sidebar-w: 0px;
+    --row-h: 44px;
+    --toolbar-h: 44px;
+    --colhdr-h: 38px;
+  }
+
+  html, body { font-size: 14px; }
+
+  #sidebar {
+    position: fixed; left: -80px; top: 0; bottom: 0;
+    width: 72px; z-index: 100;
+    transition: left 0.28s cubic-bezier(0.4,0,0.2,1);
+  }
+  #sidebar.mobile-open { left: 0; }
+  #sidebar-overlay { display: block; opacity: 0; pointer-events: none; transition: opacity 0.28s; }
+  #sidebar-overlay.open { opacity: 1; pointer-events: auto; }
+
+  #mobile-menu-btn { display: flex; }
+  #mobile-bottom-nav { display: flex; }
+
+  #app { margin-left: 0; padding-bottom: 56px; }
+  #app-header { display: none; }
+
+  #header {
+    padding: 0 12px; gap: 10px;
+    height: 52px;
+  }
+  .project-info { flex: 1; min-width: 0; }
+  .header-stats, .header-progress, .stat-block { display: none; }
+  .header-actions .btn-secondary:not(#export-btn-mob) { display: none; }
+  #project-name { font-size: 14px; min-width: 0; }
+  .project-meta { gap: 4px; }
+  .meta-chip { font-size: 9px; padding: 1px 6px; }
+
+  #view-tabs { gap: 4px; padding: 0 8px; overflow-x: auto; }
+  .view-tab { font-size: 10px; padding: 6px 10px; white-space: nowrap; }
+  .ml-auto { display: none; }
+
+  #wbs-toolbar, #gantt-toolbar {
+    padding: 0 8px; gap: 4px; height: var(--toolbar-h);
+    overflow-x: auto; overflow-y: hidden;
+  }
+
+  /* Gantt-only view on mobile — hide WBS panel, show just Gantt */
+  #wbs-panel { display: none !important; }
+  #wbs-splitter { display: none !important; }
+  #gantt-panel { flex: 1; min-width: 0; }
+
+  /* Mobile gantt task toggle — small floating WBS toggle */
+  #mob-wbs-toggle {
+    position: fixed; left: 8px; bottom: 68px; z-index: 150;
+    background: var(--olive); color: white; border: none;
+    border-radius: 24px; padding: 8px 14px;
+    font-size: 11px; font-weight: 700; cursor: pointer;
+    box-shadow: var(--shadow-md);
+    display: flex; align-items: center; gap: 6px;
+  }
+  #mob-wbs-toggle svg { width: 14px; height: 14px; }
+
+  /* Touch-friendly bars */
+  .gantt-bar-wrap { touch-action: none; }
+  .bar-resize-l, .bar-resize-r { width: 14px; opacity: 0.6; }
+  .bar-connect-dot { width: 18px; height: 18px; }
+
+  /* Task detail panel full-screen on mobile */
+  #task-detail-panel {
+    width: 100%; right: -100%;
+    border-left: none;
+    border-top: 1px solid var(--border);
+    top: auto; bottom: 56px;
+    height: 65vh;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  }
+  #task-detail-panel.open { right: 0; }
+
+  /* Modal: full screen */
+  .modal-card { width: 95vw !important; max-height: 90vh !important; }
+
+  /* Larger touch targets */
+  .btn { padding: 9px 14px; font-size: 12px; }
+  .wbs-row { touch-action: manipulation; }
+
+  /* Gantt header fix */
+  #gantt-time-header { overflow-x: hidden; }
+}
+
+@media (max-width: 480px) {
+  #header { height: 48px; }
+  .header-actions .btn { font-size: 0; padding: 0 10px; }
+  .header-actions .btn svg { display: block; }
+  .header-actions .btn span { display: none; }
+}
+
 /* ── PRINT / PDF ─────────────────────────────── */
 @media print {
   @page { size: A3 landscape; margin: 8mm; }
@@ -1666,6 +1897,9 @@ html, body {
 </style>
 </head>
 <body>
+
+<!-- SIDEBAR OVERLAY (mobile) -->
+<div id="sidebar-overlay" onclick="closeMobileSidebar()"></div>
 
 <!-- SIDEBAR -->
 <nav id="sidebar">
@@ -1707,6 +1941,9 @@ html, body {
 
   <!-- HEADER -->
   <header id="header">
+    <button id="mobile-menu-btn" onclick="openMobileSidebar()" aria-label="Menu">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </button>
     <div class="project-info">
       <div class="project-name-wrap">
         <input type="text" id="project-name" value="Nový projekt" spellcheck="false">
@@ -2110,6 +2347,12 @@ async function init() {
   const _nameEl = document.getElementById('header-user-name');
   if (_avatarEl) { _avatarEl.textContent = _initials; _avatarEl.style.background = currentUser.avatar_color || '#4A5340'; }
   if (_nameEl) _nameEl.textContent = currentUser.name || '';
+
+  // Show mobile WBS toggle button on mobile
+  if (window.innerWidth <= 768) {
+    const mobToggle = document.getElementById('mob-wbs-toggle');
+    if (mobToggle) mobToggle.style.display = 'flex';
+  }
 
   await showProjectSelector();
 }
@@ -2956,6 +3199,10 @@ function createTaskRow(task, phase, pi, ti) {
     if (e.ctrlKey || e.metaKey || e.shiftKey) handleRowSelect(task.id, e);
     else selectTask(task.id);
   };
+  row.ondblclick = (e) => {
+    if (e.target.closest('.cell-editable,.cell-edit-input,.row-actions,.row-selector,.row-fill-handle')) return;
+    openTaskDetailPanel(task.id);
+  };
   const color = PHASE_COLORS[pi % PHASE_COLORS.length];
   const isMilestone = task.type === 'milestone';
   const dur = (task.startDate && task.endDate) ? daysBetween(task.startDate, task.endDate) : 0;
@@ -3305,15 +3552,31 @@ function renderGanttRows(minD, totalW) {
           <div class="bar-connect-dot" data-taskid="${task.id}"></div>
         `;
 
+        // Mark critical path bar
+        if (getSettings().showCriticalPath && getCriticalPath().has(task.id)) {
+          barWrap.classList.add('is-critical');
+        }
+
         barWrap.addEventListener('mouseenter', (e) => showTooltip(e, task, barColor));
         barWrap.addEventListener('mouseleave', hideTooltip);
+
+        // Single click → select; double-click → task detail panel
+        let clickTimer = null;
         barWrap.addEventListener('click', (e) => {
           if (e.target.classList.contains('bar-resize-l') || e.target.classList.contains('bar-resize-r') || e.target.classList.contains('bar-connect-dot')) return;
-          selectTask(task.id); openEditTaskModal(task.id);
+          if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; }
+          clickTimer = setTimeout(() => { selectTask(task.id); clickTimer = null; }, 220);
+        });
+        barWrap.addEventListener('dblclick', (e) => {
+          if (e.target.classList.contains('bar-resize-l') || e.target.classList.contains('bar-resize-r') || e.target.classList.contains('bar-connect-dot')) return;
+          if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; }
+          openTaskDetailPanel(task.id);
         });
 
         makeDraggableBar(barWrap, task, minD);
         makeResizableBar(barWrap, task, minD);
+        addTouchDrag(barWrap, task, minD);
+        addTouchResize(barWrap, task, minD);
         tRow.appendChild(barWrap);
 
         // Float bar (time reserve) — 50% transparent extension after bar end
@@ -5954,6 +6217,260 @@ function initRowDrag() {
 }
 
 /* ═══════════════════════════════════════════════════
+   TASK DETAIL PANEL (slide-in, double-click on bar)
+═══════════════════════════════════════════════════ */
+function openTaskDetailPanel(taskId) {
+  const task = findTask(taskId);
+  if (!task) return;
+  const phase = project.phases.find(ph => ph.tasks.some(t => t.id === taskId));
+  const pi = project.phases.indexOf(phase);
+  const color = getTaskColor(task, phase, pi);
+  const onCP = getSettings().showCriticalPath && getCriticalPath().has(taskId);
+  const dur = (task.startDate && task.endDate) ? daysBetween(task.startDate, task.endDate) : 0;
+
+  let panel = document.getElementById('task-detail-panel');
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.id = 'task-detail-panel';
+    document.body.appendChild(panel);
+  }
+
+  const preds = (task.predecessors || []).map(p => {
+    const pt = findTask(p.taskId);
+    return pt ? `${pt.name} (${p.type}${p.lag ? (p.lag>0?'+':'')+p.lag+'d' : ''})` : p.taskId;
+  }).join(', ') || '—';
+
+  panel.innerHTML = `
+    <div class="tdp-header">
+      <div style="width:10px;height:10px;border-radius:50%;background:${color};flex-shrink:0;"></div>
+      <div class="tdp-title">${escHtml(task.name)}</div>
+      ${onCP ? '<span class="tdp-cp-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:10px;height:10px;"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>Kritická cesta</span>' : ''}
+      <button class="tdp-close" onclick="closeTaskDetailPanel()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="tdp-body">
+      <div class="tdp-field">
+        <span class="tdp-label">Název úkolu</span>
+        <input class="tdp-input" id="tdp-name" value="${escHtml(task.name)}" placeholder="Název">
+      </div>
+      <div class="tdp-row">
+        <div class="tdp-field">
+          <span class="tdp-label">Začátek</span>
+          <input class="tdp-input" id="tdp-start" type="date" value="${task.startDate || ''}">
+        </div>
+        <div class="tdp-field">
+          <span class="tdp-label">Konec</span>
+          <input class="tdp-input" id="tdp-end" type="date" value="${task.endDate || ''}">
+        </div>
+      </div>
+      <div class="tdp-row">
+        <div class="tdp-field">
+          <span class="tdp-label">Trvání (dny)</span>
+          <input class="tdp-input" id="tdp-dur" type="number" min="0" value="${dur}">
+        </div>
+        <div class="tdp-field">
+          <span class="tdp-label">Typ</span>
+          <select class="tdp-input" id="tdp-type">
+            <option value="" ${!task.type||task.type==='task'?'selected':''}>Úkol</option>
+            <option value="milestone" ${task.type==='milestone'?'selected':''}>Milník</option>
+          </select>
+        </div>
+      </div>
+      <div class="tdp-field">
+        <span class="tdp-label">Postup (${task.progress||0}%)</span>
+        <div class="tdp-progress-wrap">
+          <input class="tdp-progress-slider" type="range" id="tdp-progress" min="0" max="100" value="${task.progress||0}"
+            oninput="document.getElementById('tdp-pval').textContent=this.value+'%'">
+          <span class="tdp-progress-val" id="tdp-pval">${task.progress||0}%</span>
+        </div>
+      </div>
+      <div class="tdp-field">
+        <span class="tdp-label">Poznámka</span>
+        <textarea class="tdp-input" id="tdp-note" rows="3" style="resize:vertical;">${escHtml(task.note||'')}</textarea>
+      </div>
+      <div class="tdp-field">
+        <span class="tdp-label">Předchůdci</span>
+        <div class="tdp-value" style="font-size:11px;cursor:pointer;" onclick="closeTaskDetailPanel();openEditTaskModal('${taskId}')">${escHtml(preds)} <span style="color:var(--olive);font-size:10px;">Upravit →</span></div>
+      </div>
+      <div class="tdp-field">
+        <span class="tdp-label">Fáze</span>
+        <div class="tdp-value" style="font-size:11px;">${escHtml(phase ? phase.name : '—')}</div>
+      </div>
+    </div>
+    <div class="tdp-actions">
+      <button class="btn btn-primary" style="flex:1;" onclick="saveTaskDetailPanel('${taskId}')">Uložit</button>
+      <button class="btn btn-secondary" onclick="closeTaskDetailPanel();openEditTaskModal('${taskId}')">Plný editor</button>
+    </div>
+  `;
+  panel.classList.add('open');
+  selectTask(taskId);
+}
+
+function closeTaskDetailPanel() {
+  const panel = document.getElementById('task-detail-panel');
+  if (panel) panel.classList.remove('open');
+}
+
+function saveTaskDetailPanel(taskId) {
+  const task = findTask(taskId);
+  if (!task) return;
+  const nameEl = document.getElementById('tdp-name');
+  const startEl = document.getElementById('tdp-start');
+  const endEl = document.getElementById('tdp-end');
+  const durEl = document.getElementById('tdp-dur');
+  const progressEl = document.getElementById('tdp-progress');
+  const noteEl = document.getElementById('tdp-note');
+  const typeEl = document.getElementById('tdp-type');
+
+  if (nameEl) task.name = nameEl.value.trim() || task.name;
+  if (startEl && startEl.value) task.startDate = startEl.value;
+  if (endEl && endEl.value) task.endDate = endEl.value;
+  if (durEl && durEl.value !== '') {
+    const d = Math.max(0, parseInt(durEl.value) || 0);
+    task.endDate = addDays(task.startDate, d);
+    if (d === 0) task.type = 'milestone';
+  }
+  if (progressEl) task.progress = parseInt(progressEl.value) || 0;
+  if (noteEl) task.note = noteEl.value;
+  if (typeEl) {
+    if (typeEl.value === 'milestone') task.type = 'milestone';
+    else if (task.type === 'milestone') delete task.type;
+  }
+  cascadeSuccessors(taskId);
+  saveProject(true);
+  render();
+  showToast('Úkol uložen');
+}
+
+/* ═══════════════════════════════════════════════════
+   MOBILE SIDEBAR
+═══════════════════════════════════════════════════ */
+function setMobNav(active) {
+  ['gantt','cashflow','add','save','menu'].forEach(id => {
+    const el = document.getElementById('mobnav-' + id);
+    if (el) el.classList.toggle('active', id === active);
+  });
+}
+
+function openMobileSidebar() {
+  document.getElementById('sidebar').classList.add('mobile-open');
+  document.getElementById('sidebar-overlay').classList.add('open');
+}
+function closeMobileSidebar() {
+  document.getElementById('sidebar').classList.remove('mobile-open');
+  document.getElementById('sidebar-overlay').classList.remove('open');
+}
+
+/* ═══════════════════════════════════════════════════
+   MOBILE WBS TOGGLE
+═══════════════════════════════════════════════════ */
+let mobileShowWBS = false;
+function toggleMobileWBS() {
+  mobileShowWBS = !mobileShowWBS;
+  const wbs = document.getElementById('wbs-panel');
+  const btn = document.getElementById('mob-wbs-toggle');
+  if (wbs) wbs.style.display = mobileShowWBS ? 'flex' : '';
+  if (btn) btn.innerHTML = mobileShowWBS
+    ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> Skrýt úkoly`
+    : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><rect x="3" y="4" width="18" height="3" rx="1"/><rect x="3" y="10.5" width="12" height="3" rx="1"/><rect x="3" y="17" width="15" height="3" rx="1"/></svg> Zobrazit úkoly`;
+}
+
+/* ═══════════════════════════════════════════════════
+   TOUCH SUPPORT FOR GANTT BARS
+═══════════════════════════════════════════════════ */
+function addTouchDrag(barWrap, task, minD) {
+  let startX = 0, origLeft = 0, moved = false;
+
+  barWrap.addEventListener('touchstart', (e) => {
+    if (e.target.classList.contains('bar-resize-l') || e.target.classList.contains('bar-resize-r')) return;
+    if (e.target.classList.contains('bar-connect-dot')) return;
+    const t = e.touches[0];
+    startX = t.clientX;
+    origLeft = parseInt(barWrap.style.left) || 0;
+    moved = false;
+    e.stopPropagation();
+  }, { passive: true });
+
+  barWrap.addEventListener('touchmove', (e) => {
+    const t = e.touches[0];
+    const dx = t.clientX - startX;
+    if (Math.abs(dx) > 5) {
+      moved = true;
+      barWrap.style.left = (origLeft + dx) + 'px';
+      e.preventDefault();
+    }
+  }, { passive: false });
+
+  barWrap.addEventListener('touchend', (e) => {
+    if (!moved) return;
+    const newX = parseInt(barWrap.style.left);
+    const dur = daysBetween(task.startDate, task.endDate);
+    const newStart = new Date(minD); newStart.setDate(newStart.getDate() + Math.round(xToDays(newX)));
+    task.startDate = newStart.toISOString().split('T')[0];
+    task.endDate = addDays(task.startDate, dur);
+    enforceConstraints(task);
+    cascadeSuccessors(task.id);
+    saveProject(true); render();
+  });
+}
+
+function addTouchResize(barWrap, task, minD) {
+  const handleL = barWrap.querySelector('.bar-resize-l');
+  const handleR = barWrap.querySelector('.bar-resize-r');
+
+  function startTouchResize(handle, edge) {
+    if (!handle) return;
+    let startX = 0, origLeft = 0, origWidth = 0;
+
+    handle.addEventListener('touchstart', (e) => {
+      const t = e.touches[0];
+      startX = t.clientX;
+      origLeft = parseInt(barWrap.style.left) || 0;
+      origWidth = parseInt(barWrap.style.width) || 0;
+      e.stopPropagation();
+    }, { passive: true });
+
+    handle.addEventListener('touchmove', (e) => {
+      const dx = e.touches[0].clientX - startX;
+      if (edge === 'right') {
+        barWrap.style.width = Math.max(cellW, origWidth + dx) + 'px';
+      } else {
+        barWrap.style.left = (origLeft + dx) + 'px';
+        barWrap.style.width = Math.max(cellW, origWidth - dx) + 'px';
+      }
+      e.preventDefault();
+    }, { passive: false });
+
+    handle.addEventListener('touchend', () => {
+      if (edge === 'right') {
+        task.endDate = addDays(task.startDate, xToDays(parseInt(barWrap.style.width)));
+      } else {
+        const newLeft = parseInt(barWrap.style.left);
+        const newStart = new Date(minD); newStart.setDate(newStart.getDate() + Math.round(xToDays(newLeft)));
+        task.startDate = newStart.toISOString().split('T')[0];
+        task.endDate = addDays(task.startDate, xToDays(parseInt(barWrap.style.width)));
+        enforceConstraints(task);
+      }
+      cascadeSuccessors(task.id);
+      saveProject(true); render();
+    });
+  }
+
+  startTouchResize(handleL, 'left');
+  startTouchResize(handleR, 'right');
+}
+
+/* ═══════════════════════════════════════════════════
+   PWA SERVICE WORKER REGISTRATION
+═══════════════════════════════════════════════════ */
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  });
+}
+
+/* ═══════════════════════════════════════════════════
    START
 ═══════════════════════════════════════════════════ */
 initDepDraw();
@@ -5962,5 +6479,46 @@ initRowDrag();
 initSplitter();
 init();
 </script>
+
+<!-- TASK DETAIL PANEL -->
+<div id="task-detail-panel">
+  <div class="tdp-header">
+    <div class="tdp-title">Vyberte úkol</div>
+    <button class="tdp-close" onclick="closeTaskDetailPanel()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>
+</div>
+
+<!-- MOBILE WBS TOGGLE -->
+<button id="mob-wbs-toggle" onclick="toggleMobileWBS()" style="display:none;">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><rect x="3" y="4" width="18" height="3" rx="1"/><rect x="3" y="10.5" width="12" height="3" rx="1"/><rect x="3" y="17" width="15" height="3" rx="1"/></svg>
+  Zobrazit úkoly
+</button>
+
+<!-- MOBILE BOTTOM NAV -->
+<nav id="mobile-bottom-nav">
+  <button class="mob-nav-btn active" id="mobnav-gantt" onclick="switchMainView('gantt');setMobNav('gantt')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="3" rx="1"/><rect x="3" y="10.5" width="12" height="3" rx="1"/><rect x="3" y="17" width="15" height="3" rx="1"/></svg>
+    Plán
+  </button>
+  <button class="mob-nav-btn" id="mobnav-cashflow" onclick="switchMainView('cashflow');setMobNav('cashflow')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+    Cashflow
+  </button>
+  <button class="mob-nav-btn" id="mobnav-add" onclick="openAddTaskModal()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+    Přidat
+  </button>
+  <button class="mob-nav-btn" id="mobnav-save" onclick="saveProject();showToast('Uloženo')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+    Uložit
+  </button>
+  <button class="mob-nav-btn" id="mobnav-menu" onclick="openMobileSidebar()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+    Více
+  </button>
+</nav>
+
 </body>
 </html>

@@ -1,0 +1,28 @@
+{
+  "name": "BeSix Time",
+  "short_name": "Time",
+  "description": "BeSix harmonogram stavby",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#FFFFFF",
+  "theme_color": "#4A5340",
+  "lang": "cs",
+  "icons": [
+    {
+      "src": "/icon-time.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [],
+  "categories": ["productivity", "business"],
+  "shortcuts": [
+    {
+      "name": "Harmonogram",
+      "url": "/?view=gantt",
+      "description": "Ganttův diagram"
+    }
+  ]
+}
