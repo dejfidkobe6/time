@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="BeSix Time">
-<meta name="theme-color" content="#4A5340">
+<meta name="theme-color" content="#606857">
 <link rel="manifest" href="/manifest.json">
 <link rel="apple-touch-icon" href="/icon-time.svg">
 <title>BeSix Time — Harmonogram stavby</title>
@@ -17,7 +17,7 @@
 <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
 <style>
 :root {
-  --olive: #4A5340;
+  --olive: rgba(74, 83, 64, 0.88);
   --olive-light: #8B9E7A;
   --olive-pale: #C8D4B8;
   --charcoal: #1C1E1A;
@@ -33,9 +33,9 @@
   --border-light: #EEECEA;
   --danger: #C0392B;
   --danger-light: #F5C6C2;
-  --warning: #D4862A;
-  --warning-light: #F5E0C2;
-  --success: #4A5340;
+  --warning: #C9A84C;
+  --warning-light: #F4EEDB;
+  --success: rgba(74, 83, 64, 0.88);
   --success-light: #C8D4B8;
   --cash-in: #5B8A5E;
   --cash-out: #C0392B;
@@ -2448,7 +2448,7 @@ async function init() {
   const _initials = (currentUser.name || '?').split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
   const _avatarEl = document.getElementById('header-user-avatar');
   const _nameEl = document.getElementById('header-user-name');
-  if (_avatarEl) { _avatarEl.textContent = _initials; _avatarEl.style.background = currentUser.avatar_color || '#4A5340'; }
+  if (_avatarEl) { _avatarEl.textContent = _initials; _avatarEl.style.background = currentUser.avatar_color || '#606857'; }
   if (_nameEl) _nameEl.textContent = currentUser.name || '';
 
   // Show mobile WBS toggle button on mobile
@@ -2476,7 +2476,7 @@ async function showProjectSelector() {
     const userEl = document.getElementById('proj-sel-user');
     const name = (currentUser && currentUser.name) ? currentUser.name : '';
     const initials = name.split(' ').filter(Boolean).map(w => w[0]).join('').slice(0,2).toUpperCase() || '?';
-    const color = (currentUser && currentUser.avatar_color) ? currentUser.avatar_color : '#4A5340';
+    const color = (currentUser && currentUser.avatar_color) ? currentUser.avatar_color : '#606857';
     userEl.innerHTML =
       '<div class="proj-sel-avatar" style="background:' + color + '">' + initials + '</div>' +
       'Přihlášen jako <strong>' + _esc(name) + '</strong>' +
@@ -3214,7 +3214,7 @@ function getTaskColor(task, phase, pi) {
   if (ganttColorMode === 'status') {
     if ((task.progress || 0) >= 100) return '#5B8A5E';
     if (isOverdue(task)) return '#C0392B';
-    if ((task.progress || 0) > 0) return '#D4862A';
+    if ((task.progress || 0) > 0) return '#C9A84C';
     return '#9A9A8E';
   }
   if (ganttColorMode === 'progress') {
