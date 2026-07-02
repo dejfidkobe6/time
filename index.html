@@ -882,40 +882,7 @@ html, body {
 }
 
 /* Tooltip */
-#gantt-tooltip {
-  position: fixed;
-  background: var(--charcoal);
-  color: white;
-  border-radius: var(--radius);
-  padding: 10px 14px;
-  font-size: 11px;
-  pointer-events: none;
-  z-index: 1000;
-  opacity: 0;
-  transition: opacity 0.15s;
-  box-shadow: var(--shadow-lg);
-  min-width: 180px;
-  border: 1px solid var(--charcoal-soft);
-}
-
-#gantt-tooltip.visible { opacity: 1; }
-
-.tooltip-title {
-  font-weight: 800;
-  font-size: 12px;
-  margin-bottom: 6px;
-  color: white;
-}
-
-.tooltip-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 3px;
-  color: rgba(255,255,255,0.7);
-}
-
-.tooltip-val { color: white; font-weight: 600; }
+/* gantt-tooltip removed — info shown in top task-detail-panel strip */
 
 /* ═══════════════════════════════════════
    CASHFLOW PANEL
@@ -1779,7 +1746,7 @@ html, body {
   position: relative;
 }
 #mob-task-panel-header {
-  height: var(--colhdr-h);
+  height: var(--toolbar-h);
   display: flex; align-items: center;
   padding: 0 8px;
   background: var(--bg-card);
@@ -1787,6 +1754,12 @@ html, body {
   font-size: 9px; font-weight: 800; text-transform: uppercase;
   letter-spacing: 0.6px; color: var(--text-muted);
   gap: 6px; flex-shrink: 0;
+}
+#mob-task-panel-subheader {
+  height: var(--colhdr-h);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  background: var(--bg);
 }
 #mob-task-panel-body {
   overflow-y: auto;
@@ -1903,7 +1876,7 @@ html, body {
     position: fixed;
     width: 100%; left: 0; right: 0;
     top: var(--header-h); bottom: auto;
-    height: auto; max-height: 72px; overflow: hidden;
+    height: auto; max-height: 160px; overflow: hidden;
     border-left: none; border-radius: 0 0 12px 12px;
     border-top: none; border-bottom: 1px solid var(--border);
     transform: translateY(-110%);
@@ -1911,10 +1884,35 @@ html, body {
     z-index: 300;
   }
   #task-detail-panel.open { transform: translateY(0); }
-  /* Hide full body + actions on mobile — use compact header only */
+  /* Hide full body + actions on mobile — use compact header + mob-info */
   #task-detail-panel .tdp-body { display: none !important; }
   #task-detail-panel .tdp-actions { display: none !important; }
-  #task-detail-panel .tdp-header { padding: 10px 14px; }
+  #task-detail-panel .tdp-header { padding: 8px 12px; border-bottom: none; }
+  #task-detail-panel .tdp-mob-info { display: grid !important; }
+
+  /* Mobile info grid */
+  .tdp-mob-info {
+    display: none;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+    padding: 0 12px 8px;
+    font-size: 10px;
+  }
+  .tdp-mob-cell {
+    display: flex; flex-direction: column;
+    padding: 3px 0;
+  }
+  .tdp-mob-cell-lbl {
+    font-size: 8px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.5px; color: var(--text-muted);
+    line-height: 1.2;
+  }
+  .tdp-mob-cell-val {
+    font-size: 11px; font-weight: 600; color: var(--text);
+    line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  /* Phase cell spans full width */
+  .tdp-mob-cell.full { grid-column: span 2; }
 
   /* Modal: full screen */
   .modal-card { width: 96vw !important; max-height: 88vh !important; }
@@ -2148,6 +2146,7 @@ html, body {
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
             </button>
           </div>
+          <div id="mob-task-panel-subheader"></div>
           <div id="mob-task-panel-body"></div>
         </div>
 
@@ -2339,7 +2338,6 @@ html, body {
 </div>
 
 <!-- TOOLTIP -->
-<div id="gantt-tooltip"></div>
 
 <!-- PROJECT SELECTOR OVERLAY -->
 <div id="project-overlay">
@@ -3211,10 +3209,25 @@ function getCriticalPath() {
   return _criticalPathCache;
 }
 
+function getPhaseColor(phase, pi) {
+  return phase.bg_color || PHASE_COLORS[pi % PHASE_COLORS.length];
+}
+
+function lightenColor(hex, factor) {
+  if (!hex || hex[0] !== '#' || hex.length < 7) return hex;
+  const r = parseInt(hex.slice(1,3), 16);
+  const g = parseInt(hex.slice(3,5), 16);
+  const b = parseInt(hex.slice(5,7), 16);
+  const lr = Math.round(r + (255-r) * factor);
+  const lg = Math.round(g + (255-g) * factor);
+  const lb = Math.round(b + (255-b) * factor);
+  return '#' + [lr,lg,lb].map(v => v.toString(16).padStart(2,'0')).join('');
+}
+
 function getTaskColor(task, phase, pi) {
   if (getSettings().showCriticalPath && getCriticalPath().has(task.id)) return '#c0392b';
-  const baseColor = PHASE_COLORS[pi % PHASE_COLORS.length];
-  if (ganttColorMode === 'phase') return baseColor;
+  const baseColor = getPhaseColor(phase, pi);
+  if (ganttColorMode === 'phase') return lightenColor(baseColor, 0.42);
   if (ganttColorMode === 'status') {
     if ((task.progress || 0) >= 100) return '#5B8A5E';
     if (isOverdue(task)) return '#C0392B';
@@ -3474,17 +3487,29 @@ function renderMobTaskPanel() {
   const cp = getSettings().showCriticalPath ? getCriticalPath() : new Set();
 
   project.phases.forEach((phase, pi) => {
-    const color = PHASE_COLORS[pi % PHASE_COLORS.length];
+    const color = getPhaseColor(phase, pi);
+    const taskColor = lightenColor(color, 0.42);
 
-    // Phase row
+    // Phase row — click collapses, dblclick edits
     const phRow = document.createElement('div');
     phRow.className = 'mob-task-row is-phase';
     phRow.innerHTML = `
-      <div class="mob-task-color" style="background:${color};opacity:0.5;"></div>
+      <div class="mob-task-color" style="background:${color};opacity:0.75;"></div>
       <div class="mob-task-info">
         <div class="mob-task-phase-name">${escHtml(phase.name || 'Fáze')}</div>
       </div>`;
-    phRow.addEventListener('click', () => { phase.collapsed = !phase.collapsed; saveProject(true); render(); });
+    let phClickTimer = null;
+    phRow.addEventListener('click', () => {
+      if (phClickTimer) return; // part of dblclick, ignore
+      phClickTimer = setTimeout(() => {
+        phase.collapsed = !phase.collapsed; saveProject(true); render();
+        phClickTimer = null;
+      }, 250);
+    });
+    phRow.addEventListener('dblclick', () => {
+      clearTimeout(phClickTimer); phClickTimer = null;
+      openEditPhaseModal(phase.id);
+    });
     body.appendChild(phRow);
 
     if (phase.collapsed) return;
@@ -3499,7 +3524,7 @@ function renderMobTaskPanel() {
       const dur = (task.startDate && task.endDate) ? daysBetween(task.startDate, task.endDate) : 0;
 
       row.innerHTML = `
-        <div class="mob-task-color" style="background:${cp.has(task.id) ? '#c0392b' : color};${isMilestone?'clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%)':'border-radius:2px;'}"></div>
+        <div class="mob-task-color" style="background:${cp.has(task.id) ? '#c0392b' : taskColor};${isMilestone?'clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%)':'border-radius:2px;'}"></div>
         <div class="mob-task-info">
           <div class="mob-task-name">${escHtml(task.name)}</div>
           <div class="mob-task-dates">${fmtDate(task.startDate)} — ${dur}d</div>
@@ -3779,15 +3804,18 @@ function renderGanttRows(minD, totalW) {
 
   let rowOffset = 0;
   project.phases.forEach((phase, pi) => {
-    const color = PHASE_COLORS[pi % PHASE_COLORS.length];
+    const color = getPhaseColor(phase, pi);
 
     // Phase row
     const phRow = document.createElement('div');
     phRow.className = 'gantt-row is-phase';
     phRow.style.width = totalW + 'px';
+    phRow.style.cursor = 'default';
+    phRow.title = 'Dvojklik = upravit fázi';
+    phRow.addEventListener('dblclick', () => openEditPhaseModal(phase.id));
     container.appendChild(phRow);
 
-    // Phase bar (spans all tasks)
+    // Phase bar (spans all tasks) — full phase color
     const pd = getPhaseDatesRaw(phase);
     if (pd.start && pd.end) {
       const x = dateToX(pd.start, minD);
@@ -3795,7 +3823,7 @@ function renderGanttRows(minD, totalW) {
       const bar = document.createElement('div');
       bar.className = 'gantt-bar-wrap';
       bar.style.cssText = `left:${x}px;width:${w}px;height:10px;`;
-      bar.innerHTML = `<div class="gantt-bar" style="background:${color};opacity:0.4;border-radius:2px;"></div>`;
+      bar.innerHTML = `<div class="gantt-bar" style="background:${color};opacity:0.55;border-radius:2px;"></div>`;
       phRow.appendChild(bar);
     }
 
@@ -3817,8 +3845,6 @@ function renderGanttRows(minD, totalW) {
           diamond.className = 'gantt-milestone';
           diamond.style.left = x + 'px';
           diamond.title = task.name;
-          diamond.addEventListener('mouseenter', (e) => showTooltip(e, task));
-          diamond.addEventListener('mouseleave', hideTooltip);
           tRow.appendChild(diamond);
         }
       } else if (task.startDate && task.endDate) {
@@ -3849,8 +3875,6 @@ function renderGanttRows(minD, totalW) {
           barWrap.classList.add('is-critical');
         }
 
-        barWrap.addEventListener('mouseenter', (e) => showTooltip(e, task, barColor));
-        barWrap.addEventListener('mouseleave', hideTooltip);
 
         // Single click → select; double-click → task detail panel
         let clickTimer = null;
@@ -4408,38 +4432,9 @@ function getTaskRowY(taskId) {
 /* ═══════════════════════════════════════════════════
    TOOLTIP
 ═══════════════════════════════════════════════════ */
-function showTooltip(e, task, color) {
-  const tt = document.getElementById('gantt-tooltip');
-  const dur = task.startDate && task.endDate ? daysBetween(task.startDate, task.endDate) : 0;
-  tt.innerHTML = `
-    <div class="tooltip-title">${escHtml(task.name)}</div>
-    <div class="tooltip-row"><span>Zahájení</span><span class="tooltip-val">${formatDateShort(task.startDate)}</span></div>
-    <div class="tooltip-row"><span>Dokončení</span><span class="tooltip-val">${formatDateShort(task.endDate)}</span></div>
-    <div class="tooltip-row"><span>Délka</span><span class="tooltip-val">${dur} dní</span></div>
-    <div class="tooltip-row"><span>Postup</span><span class="tooltip-val">${task.progress||0}%</span></div>
-    <div class="tooltip-row"><span>Rozpočet</span><span class="tooltip-val">${formatCZK(task.budget||0)}</span></div>
-    ${task.assignee ? `<div class="tooltip-row"><span>Zodpovídá</span><span class="tooltip-val">${escHtml(task.assignee)}</span></div>` : ''}
-  `;
-  tt.classList.add('visible');
-  positionTooltip(e);
-}
-
-function hideTooltip() {
-  document.getElementById('gantt-tooltip').classList.remove('visible');
-}
-
-function positionTooltip(e) {
-  const tt = document.getElementById('gantt-tooltip');
-  let x = e.clientX + 14, y = e.clientY - 10;
-  if (x + 200 > window.innerWidth) x = e.clientX - 210;
-  tt.style.left = x + 'px';
-  tt.style.top = y + 'px';
-}
-
-document.addEventListener('mousemove', (e) => {
-  const tt = document.getElementById('gantt-tooltip');
-  if (tt.classList.contains('visible')) positionTooltip(e);
-});
+function showTooltip() {} // removed — info shown in top task-detail-panel strip
+function hideTooltip() {}
+function positionTooltip() {}
 
 /* ═══════════════════════════════════════════════════
    CASHFLOW ENGINE
@@ -4890,7 +4885,7 @@ function openAddPhaseModal() {
         <div class="form-field">
           <label class="form-label">Barva</label>
           <div class="color-swatches" id="phase-color-swatches">
-            ${PHASE_COLORS.map((c,i) => `<div class="color-swatch${i===project.phases.length%PHASE_COLORS.length?' selected':''}" style="background:${c}" onclick="selectSwatch(this,'${c}')"></div>`).join('')}
+            ${PHASE_COLORS.map((c,i) => `<div class="color-swatch${i===project.phases.length%PHASE_COLORS.length?' selected':''}" data-color="${c}" style="background:${c}" onclick="selectSwatch(this,'${c}')"></div>`).join('')}
           </div>
         </div>
       </div>
@@ -4911,13 +4906,65 @@ function selectSwatch(el, color) {
 function confirmAddPhase() {
   const name = document.getElementById('m-phase-name').value.trim();
   if (!name) return;
+  const selSwatch = document.querySelector('#active-modal .color-swatch.selected');
   const phase = {
     id: 'ph_' + (project.nextId++),
     name,
     collapsed: false,
     tasks: []
   };
+  if (selSwatch) phase.bg_color = selSwatch.dataset.color;
   project.phases.push(phase);
+  closeModal();
+  saveProject(true);
+  render();
+}
+
+function openEditPhaseModal(phaseId) {
+  const phase = project.phases.find(ph => ph.id === phaseId);
+  if (!phase) return;
+  const pi = project.phases.indexOf(phase);
+  const currentColor = getPhaseColor(phase, pi);
+  openModal(`
+    <div class="modal">
+      <div class="modal-header">
+        <span class="modal-title">Upravit fázi</span>
+        <button class="modal-close" onclick="closeModal()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="form-row single">
+          <div class="form-field">
+            <label class="form-label">Název fáze</label>
+            <input class="form-input" id="m-edit-phase-name" value="${escHtml(phase.name || '')}" autofocus>
+          </div>
+        </div>
+        <div class="form-field">
+          <label class="form-label">Barva</label>
+          <div class="color-swatches" id="edit-phase-color-swatches">
+            ${PHASE_COLORS.map(c => `<div class="color-swatch${c === currentColor ? ' selected' : ''}" data-color="${c}" style="background:${c}" onclick="selectSwatch(this,'${c}')"></div>`).join('')}
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal()">Zrušit</button>
+        <button class="btn btn-primary" onclick="confirmEditPhase('${phaseId}')">Uložit</button>
+      </div>
+    </div>
+  `);
+  document.getElementById('m-edit-phase-name').addEventListener('keydown', e => { if (e.key === 'Enter') confirmEditPhase(phaseId); });
+}
+
+function confirmEditPhase(phaseId) {
+  const phase = project.phases.find(ph => ph.id === phaseId);
+  if (!phase) return;
+  const nameEl = document.getElementById('m-edit-phase-name');
+  const name = nameEl ? nameEl.value.trim() : '';
+  if (name) phase.name = name;
+  const selSwatch = document.querySelector('#active-modal .color-swatch.selected');
+  if (selSwatch) phase.bg_color = selSwatch.dataset.color;
+  else delete phase.bg_color;
   closeModal();
   saveProject(true);
   render();
@@ -6546,6 +6593,28 @@ function openTaskDetailPanel(taskId) {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
+    <div class="tdp-mob-info">
+      <div class="tdp-mob-cell">
+        <span class="tdp-mob-cell-lbl">Začátek</span>
+        <span class="tdp-mob-cell-val" id="tdp-mob-start">${task.startDate ? task.startDate.slice(5).replace('-','.') : '—'}</span>
+      </div>
+      <div class="tdp-mob-cell">
+        <span class="tdp-mob-cell-lbl">Konec</span>
+        <span class="tdp-mob-cell-val" id="tdp-mob-end">${task.endDate ? task.endDate.slice(5).replace('-','.') : '—'}</span>
+      </div>
+      <div class="tdp-mob-cell">
+        <span class="tdp-mob-cell-lbl">Trvání</span>
+        <span class="tdp-mob-cell-val" id="tdp-mob-dur">${dur ? dur + ' d' : '—'}</span>
+      </div>
+      <div class="tdp-mob-cell">
+        <span class="tdp-mob-cell-lbl">Postup</span>
+        <span class="tdp-mob-cell-val" id="tdp-mob-prog">${task.progress || 0} %</span>
+      </div>
+      <div class="tdp-mob-cell full">
+        <span class="tdp-mob-cell-lbl">Fáze</span>
+        <span class="tdp-mob-cell-val">${escHtml(phase ? phase.name : '—')}</span>
+      </div>
+    </div>
     <div class="tdp-body">
       <div class="tdp-field">
         <span class="tdp-label">Název úkolu</span>
@@ -6613,13 +6682,20 @@ function updateTaskPanelLive(startDateStr, endDateStr) {
   const de = document.getElementById('tdp-dur');
   if (se) se.value = startDateStr;
   if (ee) ee.value = endDateStr;
-  if (de && startDateStr && endDateStr) de.value = daysBetween(startDateStr, endDateStr);
+  const d = (startDateStr && endDateStr) ? daysBetween(startDateStr, endDateStr) : 0;
+  if (de && d) de.value = d;
+  const fmt = s => s ? s.slice(5).replace('-', '.') : '—';
   const li = document.getElementById('tdp-live-info');
   if (li && startDateStr && endDateStr) {
-    const d = daysBetween(startDateStr, endDateStr);
-    const fmt = s => s.slice(5).replace('-', '.');
     li.textContent = `${fmt(startDateStr)} – ${fmt(endDateStr)} · ${d}d`;
   }
+  // Update mobile info cells
+  const ms = document.getElementById('tdp-mob-start');
+  const me = document.getElementById('tdp-mob-end');
+  const md = document.getElementById('tdp-mob-dur');
+  if (ms) ms.textContent = fmt(startDateStr);
+  if (me) me.textContent = fmt(endDateStr);
+  if (md && d) md.textContent = d + ' d';
 }
 
 function closeTaskDetailPanel() {
