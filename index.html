@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-title" content="BeSix Time">
 <meta name="theme-color" content="#606857">
 <link rel="manifest" href="/manifest.json">
-<link rel="apple-touch-icon" href="/icon-time.svg">
+<link rel="apple-touch-icon" href="/icon-time.png">
 <title>BeSix Time — Harmonogram stavby</title>
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&family=Lora:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
@@ -1898,19 +1898,23 @@ html, body {
   /* Gantt bar height bigger on mobile */
   .gantt-bar-wrap { height: 28px !important; top: 50% !important; transform: translateY(-50%) !important; }
 
-  /* Task detail panel — slides up from bottom */
+  /* Task detail panel — compact strip at TOP on mobile, never covers bars */
   #task-detail-panel {
     position: fixed;
-    width: 100%; right: 0;
-    left: 0; bottom: -70vh;
-    height: 70vh;
-    border-left: none;
-    border-top: 1px solid var(--border);
-    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-    top: auto;
-    transition: bottom 0.3s cubic-bezier(0.4,0,0.2,1) !important;
+    width: 100%; left: 0; right: 0;
+    top: var(--header-h); bottom: auto;
+    height: auto; max-height: 72px; overflow: hidden;
+    border-left: none; border-radius: 0 0 12px 12px;
+    border-top: none; border-bottom: 1px solid var(--border);
+    transform: translateY(-110%);
+    transition: transform 0.28s cubic-bezier(0.4,0,0.2,1) !important;
+    z-index: 300;
   }
-  #task-detail-panel.open { bottom: 56px; right: 0; }
+  #task-detail-panel.open { transform: translateY(0); }
+  /* Hide full body + actions on mobile — use compact header only */
+  #task-detail-panel .tdp-body { display: none !important; }
+  #task-detail-panel .tdp-actions { display: none !important; }
+  #task-detail-panel .tdp-header { padding: 10px 14px; }
 
   /* Modal: full screen */
   .modal-card { width: 96vw !important; max-height: 88vh !important; }
@@ -3574,14 +3578,14 @@ function initPinchZoom() {
   if (!wrap || !canvas) return;
 
   let startDist = 0, startCellW = cellW, pinching = false;
-  let startScrollLeft = 0, startMidX = 0;
+  let startScrollLeft = 0, startViewportMidX = 0, startContentMidX = 0;
 
   function getTouchDist(e) {
     const dx = e.touches[0].clientX - e.touches[1].clientX;
     const dy = e.touches[0].clientY - e.touches[1].clientY;
     return Math.sqrt(dx*dx + dy*dy);
   }
-  function getTouchMidX(e) {
+  function getTouchMidClientX(e) {
     return (e.touches[0].clientX + e.touches[1].clientX) / 2;
   }
 
@@ -3591,7 +3595,10 @@ function initPinchZoom() {
     startDist = getTouchDist(e);
     startCellW = cellW;
     startScrollLeft = wrap.scrollLeft;
-    startMidX = getTouchMidX(e) + startScrollLeft;
+    // startViewportMidX: pinch midpoint in wrap-element coordinates (relative to wrap left edge)
+    startViewportMidX = getTouchMidClientX(e) - wrap.getBoundingClientRect().left;
+    // startContentMidX: the content coordinate (column pixel) under the pinch centre
+    startContentMidX = startViewportMidX + startScrollLeft;
     e.preventDefault();
   }, { passive: false });
 
@@ -3600,27 +3607,28 @@ function initPinchZoom() {
     const dist = getTouchDist(e);
     if (startDist < 5) return;
     const ratio = dist / startDist;
-    // Apply visual scale transform (fast, no re-render)
-    canvas.style.transformOrigin = `${startMidX}px 0`;
+    // Transform origin is the content-coordinate of the pinch centre
+    canvas.style.transformOrigin = `${startContentMidX}px 0`;
     canvas.style.transform = `scaleX(${ratio})`;
     e.preventDefault();
   }, { passive: false });
 
-  wrap.addEventListener('touchend', (e) => {
+  wrap.addEventListener('touchend', () => {
     if (!pinching) return;
     pinching = false;
     const scale = canvas.style.transform
-      ? parseFloat(canvas.style.transform.replace('scaleX(','')) || 1
+      ? parseFloat(canvas.style.transform.replace('scaleX(', '')) || 1
       : 1;
     canvas.style.transform = '';
     canvas.style.transformOrigin = '';
-    // Compute new cellW — snap to nice increments
+    // Snap cellW to even-pixel grid
     const raw = startCellW * scale;
-    const stepped = Math.round(raw / 2) * 2;   // round to even pixels
+    const stepped = Math.round(raw / 2) * 2;
     cellW = Math.max(6, Math.min(140, stepped));
-    // Keep scroll position centred on pinch midpoint
-    const newMidX = startMidX * scale;
-    wrap.scrollLeft = newMidX - (getTouchMidX(e) - wrap.getBoundingClientRect().left);
+    const actualScale = cellW / startCellW;
+    // After render, the content point that was under the pinch centre must stay there:
+    //   newScrollLeft = (contentMidX in new scale) − viewportMidX
+    wrap.scrollLeft = startContentMidX * actualScale - startViewportMidX;
     renderGantt();
   }, { passive: false });
 
@@ -6524,11 +6532,16 @@ function openTaskDetailPanel(taskId) {
     return pt ? `${pt.name} (${p.type}${p.lag ? (p.lag>0?'+':'')+p.lag+'d' : ''})` : p.taskId;
   }).join(', ') || '—';
 
+  const liveInfo = (task.startDate && task.endDate)
+    ? `${task.startDate.slice(5).replace('-','.')} – ${task.endDate.slice(5).replace('-','.')} · ${dur}d`
+    : '';
   panel.innerHTML = `
     <div class="tdp-header">
       <div style="width:10px;height:10px;border-radius:50%;background:${color};flex-shrink:0;"></div>
       <div class="tdp-title">${escHtml(task.name)}</div>
+      <span id="tdp-live-info" style="font-size:10px;font-weight:700;color:var(--text-muted);white-space:nowrap;margin-left:4px;">${liveInfo}</span>
       ${onCP ? '<span class="tdp-cp-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:10px;height:10px;"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>Kritická cesta</span>' : ''}
+      <button onclick="closeTaskDetailPanel();openEditTaskModal('${taskId}')" style="display:none;font-size:10px;font-weight:700;padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);cursor:pointer;white-space:nowrap;color:var(--text);" id="tdp-mob-edit">Upravit</button>
       <button class="tdp-close" onclick="closeTaskDetailPanel()">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
@@ -6589,6 +6602,24 @@ function openTaskDetailPanel(taskId) {
   `;
   panel.classList.add('open');
   selectTask(taskId);
+  // Show compact "Upravit" button only on mobile (where body is hidden)
+  const mobEditBtn = document.getElementById('tdp-mob-edit');
+  if (mobEditBtn && window.innerWidth <= 768) mobEditBtn.style.display = 'block';
+}
+
+function updateTaskPanelLive(startDateStr, endDateStr) {
+  const se = document.getElementById('tdp-start');
+  const ee = document.getElementById('tdp-end');
+  const de = document.getElementById('tdp-dur');
+  if (se) se.value = startDateStr;
+  if (ee) ee.value = endDateStr;
+  if (de && startDateStr && endDateStr) de.value = daysBetween(startDateStr, endDateStr);
+  const li = document.getElementById('tdp-live-info');
+  if (li && startDateStr && endDateStr) {
+    const d = daysBetween(startDateStr, endDateStr);
+    const fmt = s => s.slice(5).replace('-', '.');
+    li.textContent = `${fmt(startDateStr)} – ${fmt(endDateStr)} · ${d}d`;
+  }
 }
 
 function closeTaskDetailPanel() {
@@ -6682,7 +6713,14 @@ function addTouchDrag(barWrap, task, minD) {
     const dx = e.touches[0].clientX - startX;
     if (Math.abs(dx) > 8) {
       moved = true;
-      barWrap.style.left = (origLeft + dx) + 'px';
+      const newLeft = origLeft + dx;
+      barWrap.style.left = newLeft + 'px';
+      // Live-update task detail panel
+      const origDur = daysBetween(task.startDate, task.endDate);
+      const ns = new Date(minD);
+      ns.setDate(ns.getDate() + Math.round(xToDays(newLeft)));
+      const newStart = ns.toISOString().split('T')[0];
+      updateTaskPanelLive(newStart, addDays(newStart, origDur));
     }
     e.preventDefault();
   }, { passive: false });
@@ -6728,10 +6766,21 @@ function addTouchResize(barWrap, task, minD) {
       if (!active) return;
       const dx = e.touches[0].clientX - startX;
       if (edge === 'right') {
-        barWrap.style.width = Math.max(cellW, origWidth + dx) + 'px';
+        const newW = Math.max(cellW, origWidth + dx);
+        barWrap.style.width = newW + 'px';
+        // Live update
+        const newEnd = addDays(task.startDate, Math.round(xToDays(newW)));
+        updateTaskPanelLive(task.startDate, newEnd);
       } else {
-        barWrap.style.left = (origLeft + dx) + 'px';
-        barWrap.style.width = Math.max(cellW, origWidth - dx) + 'px';
+        const newL = origLeft + dx;
+        const newW = Math.max(cellW, origWidth - dx);
+        barWrap.style.left = newL + 'px';
+        barWrap.style.width = newW + 'px';
+        // Live update
+        const ns = new Date(minD);
+        ns.setDate(ns.getDate() + Math.round(xToDays(newL)));
+        const newStart = ns.toISOString().split('T')[0];
+        updateTaskPanelLive(newStart, addDays(newStart, Math.round(xToDays(newW))));
       }
       e.preventDefault();
     }, { passive: false });
