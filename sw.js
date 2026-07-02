@@ -1,8 +1,9 @@
-const CACHE = 'besixtime-v1';
+const CACHE = 'besixtime-v3';
 const STATIC = [
   '/',
   '/index.html',
   '/login.php',
+  '/icon-time.png',
   '/icon-time.svg',
   '/manifest.json',
 ];

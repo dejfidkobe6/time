@@ -10,10 +10,16 @@
   "lang": "cs",
   "icons": [
     {
+      "src": "/icon-time.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
       "src": "/icon-time.svg",
       "sizes": "any",
       "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "purpose": "any"
     }
   ],
   "screenshots": [],
