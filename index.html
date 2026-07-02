@@ -3604,6 +3604,7 @@ function initPinchZoom() {
 
   let startDist = 0, startCellW = cellW, pinching = false;
   let startScrollLeft = 0, startViewportMidX = 0, startContentMidX = 0;
+  let startRowH = 40;
 
   function getTouchDist(e) {
     const dx = e.touches[0].clientX - e.touches[1].clientX;
@@ -3624,6 +3625,8 @@ function initPinchZoom() {
     startViewportMidX = getTouchMidClientX(e) - wrap.getBoundingClientRect().left;
     // startContentMidX: the content coordinate (column pixel) under the pinch centre
     startContentMidX = startViewportMidX + startScrollLeft;
+    // Save row height for proportional scaling
+    startRowH = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--row-h')) || 40;
     e.preventDefault();
   }, { passive: false });
 
@@ -3654,7 +3657,11 @@ function initPinchZoom() {
     // After render, the content point that was under the pinch centre must stay there:
     //   newScrollLeft = (contentMidX in new scale) − viewportMidX
     wrap.scrollLeft = startContentMidX * actualScale - startViewportMidX;
+    // Scale row height proportionally with zoom so more tasks are visible when zoomed out
+    const newRowH = Math.max(20, Math.min(72, Math.round(startRowH * actualScale)));
+    document.documentElement.style.setProperty('--row-h', newRowH + 'px');
     renderGantt();
+    renderMobTaskPanel();
   }, { passive: false });
 
   wrap.addEventListener('touchcancel', () => {
