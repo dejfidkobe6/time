@@ -1887,7 +1887,17 @@ html, body {
   /* Hide full body + actions on mobile — use compact header + mob-info */
   #task-detail-panel .tdp-body { display: none !important; }
   #task-detail-panel .tdp-actions { display: none !important; }
-  #task-detail-panel .tdp-header { padding: 8px 12px; border-bottom: none; }
+  #task-detail-panel .tdp-header {
+    padding: 8px 12px 4px; border-bottom: none;
+    flex-wrap: wrap; align-items: flex-start;
+  }
+  #task-detail-panel .tdp-title {
+    flex: 1; white-space: normal; overflow: visible; text-overflow: unset;
+    font-size: 12px; line-height: 1.3;
+  }
+  #task-detail-panel #tdp-live-info { display: none !important; }
+  #task-detail-panel #tdp-mob-edit { display: none !important; }
+  #task-detail-panel .tdp-cp-badge { order: 3; }
   #task-detail-panel .tdp-mob-info { display: grid !important; }
 
   /* Mobile info grid */
@@ -3576,16 +3586,9 @@ function toggleMobTaskPanel() {
   if (showTab) showTab.style.display = mobPanelVisible ? 'none' : 'flex';
 }
 
-// Close task detail panel when tapping outside of it
-document.addEventListener('touchstart', (e) => {
-  const panel = document.getElementById('task-detail-panel');
-  if (!panel || !panel.classList.contains('open')) return;
-  if (panel.contains(e.target)) return;
-  if (e.target.closest('.gantt-bar-wrap,.mob-task-row,.gantt-milestone')) return;
-  closeTaskDetailPanel();
-}, { passive: true });
-
+// Close task detail panel when clicking outside — desktop only (on mobile user closes via X button)
 document.addEventListener('mousedown', (e) => {
+  if (window.innerWidth <= 768) return;
   const panel = document.getElementById('task-detail-panel');
   if (!panel || !panel.classList.contains('open')) return;
   if (panel.contains(e.target)) return;
@@ -3883,10 +3886,11 @@ function renderGanttRows(minD, totalW) {
         }
 
 
-        // Single click → select; double-click → task detail panel
+        // Mobile: single click → open detail panel; Desktop: single click → select, double-click → open panel
         let clickTimer = null;
         barWrap.addEventListener('click', (e) => {
           if (e.target.classList.contains('bar-resize-l') || e.target.classList.contains('bar-resize-r') || e.target.classList.contains('bar-connect-dot')) return;
+          if (window.innerWidth <= 768) { openTaskDetailPanel(task.id); return; }
           if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; }
           clickTimer = setTimeout(() => { selectTask(task.id); clickTimer = null; }, 220);
         });
@@ -6591,11 +6595,10 @@ function openTaskDetailPanel(taskId) {
     : '';
   panel.innerHTML = `
     <div class="tdp-header">
-      <div style="width:10px;height:10px;border-radius:50%;background:${color};flex-shrink:0;"></div>
+      <div style="width:10px;height:10px;border-radius:50%;background:${color};flex-shrink:0;margin-top:2px;"></div>
       <div class="tdp-title">${escHtml(task.name)}</div>
-      <span id="tdp-live-info" style="font-size:10px;font-weight:700;color:var(--text-muted);white-space:nowrap;margin-left:4px;">${liveInfo}</span>
       ${onCP ? '<span class="tdp-cp-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:10px;height:10px;"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>Kritická cesta</span>' : ''}
-      <button onclick="closeTaskDetailPanel();openEditTaskModal('${taskId}')" style="display:none;font-size:10px;font-weight:700;padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);cursor:pointer;white-space:nowrap;color:var(--text);" id="tdp-mob-edit">Upravit</button>
+      <span id="tdp-live-info" style="font-size:10px;font-weight:700;color:var(--text-muted);white-space:nowrap;">${liveInfo}</span>
       <button class="tdp-close" onclick="closeTaskDetailPanel()">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
@@ -6620,6 +6623,9 @@ function openTaskDetailPanel(taskId) {
       <div class="tdp-mob-cell full">
         <span class="tdp-mob-cell-lbl">Fáze</span>
         <span class="tdp-mob-cell-val">${escHtml(phase ? phase.name : '—')}</span>
+      </div>
+      <div class="tdp-mob-cell full" style="padding-top:6px;">
+        <button onclick="closeTaskDetailPanel();openEditTaskModal('${taskId}')" style="width:100%;font-size:11px;font-weight:700;padding:6px 0;border:1px solid var(--border);border-radius:6px;background:var(--bg);cursor:pointer;color:var(--text);">Upravit úkol →</button>
       </div>
     </div>
     <div class="tdp-body">
@@ -6678,9 +6684,6 @@ function openTaskDetailPanel(taskId) {
   `;
   panel.classList.add('open');
   selectTask(taskId);
-  // Show compact "Upravit" button only on mobile (where body is hidden)
-  const mobEditBtn = document.getElementById('tdp-mob-edit');
-  if (mobEditBtn && window.innerWidth <= 768) mobEditBtn.style.display = 'block';
 }
 
 function updateTaskPanelLive(startDateStr, endDateStr) {
