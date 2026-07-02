@@ -1928,6 +1928,30 @@ html, body {
     cursor: pointer; color: var(--olive); flex-shrink: 0;
   }
   #mob-panel-toggle svg { width: 14px; height: 14px; }
+
+  /* Floating tab to restore panel when hidden */
+  #mob-panel-show-tab {
+    position: fixed; left: 0; top: 50%; transform: translateY(-50%);
+    z-index: 160; display: none;
+    background: var(--olive); color: white; border: none;
+    border-radius: 0 8px 8px 0;
+    padding: 12px 6px; cursor: pointer;
+    box-shadow: var(--shadow-md); flex-direction: column;
+    align-items: center; gap: 4px; writing-mode: vertical-rl;
+    font-size: 10px; font-weight: 700;
+  }
+  #mob-panel-show-tab svg { width: 14px; height: 14px; }
+
+  /* Ensure detail panel has white background */
+  #task-detail-panel {
+    background: #fff !important;
+  }
+
+  /* Make resize handles much wider for touch */
+  .bar-resize-l, .bar-resize-r {
+    width: 24px !important;
+    opacity: 0.8 !important;
+  }
 }
 
 @media (max-width: 480px) {
@@ -3516,47 +3540,96 @@ function renderMobTaskPanel() {
 let mobPanelVisible = true;
 function toggleMobTaskPanel() {
   const panel = document.getElementById('mob-task-panel');
-  const btn = document.getElementById('mob-panel-toggle');
+  const showTab = document.getElementById('mob-panel-show-tab');
   if (!panel) return;
   mobPanelVisible = !mobPanelVisible;
-  panel.style.width = mobPanelVisible ? '' : '0';
-  panel.style.overflow = mobPanelVisible ? '' : 'hidden';
-  if (btn) btn.querySelector('svg polyline').setAttribute('points',
-    mobPanelVisible ? '15 18 9 12 15 6' : '9 18 15 12 9 6');
+  panel.style.display = mobPanelVisible ? 'flex' : 'none';
+  if (showTab) showTab.style.display = mobPanelVisible ? 'none' : 'flex';
 }
+
+// Close task detail panel when tapping outside of it
+document.addEventListener('touchstart', (e) => {
+  const panel = document.getElementById('task-detail-panel');
+  if (!panel || !panel.classList.contains('open')) return;
+  if (panel.contains(e.target)) return;
+  if (e.target.closest('.gantt-bar-wrap,.mob-task-row,.gantt-milestone')) return;
+  closeTaskDetailPanel();
+}, { passive: true });
+
+document.addEventListener('mousedown', (e) => {
+  const panel = document.getElementById('task-detail-panel');
+  if (!panel || !panel.classList.contains('open')) return;
+  if (panel.contains(e.target)) return;
+  if (e.target.closest('.gantt-bar-wrap,.mob-task-row,.gantt-milestone')) return;
+  closeTaskDetailPanel();
+});
 
 /* ═══════════════════════════════════════════════════
    PINCH-TO-ZOOM ON GANTT
+   — scale CSS transform during gesture, snap cellW on end
 ═══════════════════════════════════════════════════ */
 function initPinchZoom() {
-  const el = document.getElementById('gantt-scroll-wrap');
-  if (!el) return;
-  let startDist = 0, startCellW = cellW;
+  const wrap = document.getElementById('gantt-scroll-wrap');
+  const canvas = document.getElementById('gantt-canvas-wrap');
+  if (!wrap || !canvas) return;
 
-  el.addEventListener('touchstart', (e) => {
-    if (e.touches.length === 2) {
-      const dx = e.touches[0].clientX - e.touches[1].clientX;
-      const dy = e.touches[0].clientY - e.touches[1].clientY;
-      startDist = Math.sqrt(dx*dx + dy*dy);
-      startCellW = cellW;
-      e.preventDefault();
-    }
-  }, { passive: false });
+  let startDist = 0, startCellW = cellW, pinching = false;
+  let startScrollLeft = 0, startMidX = 0;
 
-  el.addEventListener('touchmove', (e) => {
-    if (e.touches.length !== 2) return;
+  function getTouchDist(e) {
     const dx = e.touches[0].clientX - e.touches[1].clientX;
     const dy = e.touches[0].clientY - e.touches[1].clientY;
-    const dist = Math.sqrt(dx*dx + dy*dy);
-    if (startDist < 10) return;
-    const ratio = dist / startDist;
-    const newW = Math.round(Math.max(8, Math.min(120, startCellW * ratio)));
-    if (newW !== cellW) {
-      cellW = newW;
-      renderGantt();
-    }
+    return Math.sqrt(dx*dx + dy*dy);
+  }
+  function getTouchMidX(e) {
+    return (e.touches[0].clientX + e.touches[1].clientX) / 2;
+  }
+
+  wrap.addEventListener('touchstart', (e) => {
+    if (e.touches.length !== 2) return;
+    pinching = true;
+    startDist = getTouchDist(e);
+    startCellW = cellW;
+    startScrollLeft = wrap.scrollLeft;
+    startMidX = getTouchMidX(e) + startScrollLeft;
     e.preventDefault();
   }, { passive: false });
+
+  wrap.addEventListener('touchmove', (e) => {
+    if (!pinching || e.touches.length !== 2) return;
+    const dist = getTouchDist(e);
+    if (startDist < 5) return;
+    const ratio = dist / startDist;
+    // Apply visual scale transform (fast, no re-render)
+    canvas.style.transformOrigin = `${startMidX}px 0`;
+    canvas.style.transform = `scaleX(${ratio})`;
+    e.preventDefault();
+  }, { passive: false });
+
+  wrap.addEventListener('touchend', (e) => {
+    if (!pinching) return;
+    pinching = false;
+    const scale = canvas.style.transform
+      ? parseFloat(canvas.style.transform.replace('scaleX(','')) || 1
+      : 1;
+    canvas.style.transform = '';
+    canvas.style.transformOrigin = '';
+    // Compute new cellW — snap to nice increments
+    const raw = startCellW * scale;
+    const stepped = Math.round(raw / 2) * 2;   // round to even pixels
+    cellW = Math.max(6, Math.min(140, stepped));
+    // Keep scroll position centred on pinch midpoint
+    const newMidX = startMidX * scale;
+    wrap.scrollLeft = newMidX - (getTouchMidX(e) - wrap.getBoundingClientRect().left);
+    renderGantt();
+  }, { passive: false });
+
+  wrap.addEventListener('touchcancel', () => {
+    if (!pinching) return;
+    pinching = false;
+    canvas.style.transform = '';
+    canvas.style.transformOrigin = '';
+  });
 }
 
 function renderGanttHeader(minD, maxD, totalW) {
@@ -6591,58 +6664,68 @@ function toggleMobileWBS() {
    TOUCH SUPPORT FOR GANTT BARS
 ═══════════════════════════════════════════════════ */
 function addTouchDrag(barWrap, task, minD) {
-  let startX = 0, origLeft = 0, moved = false;
+  let startX = 0, origLeft = 0, moved = false, active = false;
 
   barWrap.addEventListener('touchstart', (e) => {
-    if (e.target.classList.contains('bar-resize-l') || e.target.classList.contains('bar-resize-r')) return;
-    if (e.target.classList.contains('bar-connect-dot')) return;
+    // Bail if touch is on a resize handle (use closest for wider hit area)
+    if (e.target.closest('.bar-resize-l,.bar-resize-r,.bar-connect-dot')) return;
+    if (e.touches.length !== 1) return;
+    active = true;
     const t = e.touches[0];
     startX = t.clientX;
     origLeft = parseInt(barWrap.style.left) || 0;
     moved = false;
-    e.stopPropagation();
   }, { passive: true });
 
   barWrap.addEventListener('touchmove', (e) => {
-    const t = e.touches[0];
-    const dx = t.clientX - startX;
-    if (Math.abs(dx) > 5) {
+    if (!active || e.touches.length !== 1) return;
+    const dx = e.touches[0].clientX - startX;
+    if (Math.abs(dx) > 8) {
       moved = true;
       barWrap.style.left = (origLeft + dx) + 'px';
-      e.preventDefault();
     }
+    e.preventDefault();
   }, { passive: false });
 
-  barWrap.addEventListener('touchend', (e) => {
+  barWrap.addEventListener('touchend', () => {
+    if (!active) return;
+    active = false;
     if (!moved) return;
     const newX = parseInt(barWrap.style.left);
     const dur = daysBetween(task.startDate, task.endDate);
-    const newStart = new Date(minD); newStart.setDate(newStart.getDate() + Math.round(xToDays(newX)));
+    const newStart = new Date(minD);
+    newStart.setDate(newStart.getDate() + Math.round(xToDays(newX)));
     task.startDate = newStart.toISOString().split('T')[0];
     task.endDate = addDays(task.startDate, dur);
     enforceConstraints(task);
     cascadeSuccessors(task.id);
     saveProject(true); render();
   });
+
+  barWrap.addEventListener('touchcancel', () => { active = false; });
 }
 
 function addTouchResize(barWrap, task, minD) {
   const handleL = barWrap.querySelector('.bar-resize-l');
   const handleR = barWrap.querySelector('.bar-resize-r');
 
-  function startTouchResize(handle, edge) {
+  function bindResize(handle, edge) {
     if (!handle) return;
-    let startX = 0, origLeft = 0, origWidth = 0;
+    let startX = 0, origLeft = 0, origWidth = 0, active = false;
 
     handle.addEventListener('touchstart', (e) => {
+      if (e.touches.length !== 1) return;
+      active = true;
       const t = e.touches[0];
       startX = t.clientX;
       origLeft = parseInt(barWrap.style.left) || 0;
       origWidth = parseInt(barWrap.style.width) || 0;
-      e.stopPropagation();
-    }, { passive: true });
+      e.stopPropagation();          // prevent barWrap drag
+      e.preventDefault();
+    }, { passive: false });
 
     handle.addEventListener('touchmove', (e) => {
+      if (!active) return;
       const dx = e.touches[0].clientX - startX;
       if (edge === 'right') {
         barWrap.style.width = Math.max(cellW, origWidth + dx) + 'px';
@@ -6654,22 +6737,27 @@ function addTouchResize(barWrap, task, minD) {
     }, { passive: false });
 
     handle.addEventListener('touchend', () => {
+      if (!active) return;
+      active = false;
       if (edge === 'right') {
         task.endDate = addDays(task.startDate, xToDays(parseInt(barWrap.style.width)));
       } else {
         const newLeft = parseInt(barWrap.style.left);
-        const newStart = new Date(minD); newStart.setDate(newStart.getDate() + Math.round(xToDays(newLeft)));
-        task.startDate = newStart.toISOString().split('T')[0];
+        const ns = new Date(minD);
+        ns.setDate(ns.getDate() + Math.round(xToDays(newLeft)));
+        task.startDate = ns.toISOString().split('T')[0];
         task.endDate = addDays(task.startDate, xToDays(parseInt(barWrap.style.width)));
         enforceConstraints(task);
       }
       cascadeSuccessors(task.id);
       saveProject(true); render();
     });
+
+    handle.addEventListener('touchcancel', () => { active = false; });
   }
 
-  startTouchResize(handleL, 'left');
-  startTouchResize(handleR, 'right');
+  bindResize(handleL, 'left');
+  bindResize(handleR, 'right');
 }
 
 /* ═══════════════════════════════════════════════════
@@ -6691,6 +6779,12 @@ initSplitter();
 initPinchZoom();
 init();
 </script>
+
+<!-- MOBILE PANEL RESTORE TAB -->
+<button id="mob-panel-show-tab" onclick="toggleMobTaskPanel()" style="display:none;">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+  Úkoly
+</button>
 
 <!-- TASK DETAIL PANEL -->
 <div id="task-detail-panel">
