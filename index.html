@@ -1623,6 +1623,33 @@ html, body {
   filter: drop-shadow(0 2px 6px rgba(192,57,43,0.4));
 }
 
+/* Baseline bar — shown below task bar in Gantt */
+.gantt-baseline-bar {
+  position: absolute;
+  height: 4px;
+  bottom: 3px;
+  border-radius: 2px;
+  background: var(--charcoal);
+  opacity: 0.55;
+  pointer-events: none;
+}
+@media (prefers-color-scheme: dark) {
+  .gantt-baseline-bar { background: rgba(255,255,255,0.45); opacity: 1; }
+}
+:root[data-theme="dark"] .gantt-baseline-bar { background: rgba(255,255,255,0.45); opacity: 1; }
+/* Delay cell colors */
+.delay-pos { color: #c0392b; font-weight: 700; }  /* late */
+.delay-neg { color: #27ae60; font-weight: 700; }  /* early */
+.delay-zero { color: var(--text-muted); }
+/* Active baseline chip in toolbar */
+.baseline-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+  padding: 3px 7px; border-radius: 10px;
+  background: rgba(201,168,76,0.15); color: var(--warning); border: 1px solid var(--warning);
+  cursor: pointer; white-space: nowrap;
+}
+
 /* ═══════════════════════════════════════
    TASK DETAIL PANEL (slide-in mobile)
 ═══════════════════════════════════════ */
@@ -2167,6 +2194,12 @@ html, body {
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             </button>
             <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-muted);">Přidat fázi</span>
+            <div style="width:1px;height:16px;background:var(--border);margin:0 4px;flex-shrink:0;"></div>
+            <button class="btn btn-ghost btn-icon" onclick="openBaselinePanel()" title="Směrný plán" style="gap:5px;padding:4px 8px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;display:flex;align-items:center;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;flex-shrink:0;"><path d="M3 3h18v4H3z"/><path d="M3 10h18v4H3z"/><path d="M3 17h18v4H3z"/></svg>
+              Směrný plán
+            </button>
+            <div id="baseline-active-chip" style="display:none;" onclick="openBaselinePanel()"></div>
             <div class="ml-auto" style="display:flex;gap:6px;align-items:center;">
               <div class="col-picker-wrap">
                 <button class="btn btn-ghost btn-icon" onclick="toggleColumnPicker(event)" title="Sloupce">
@@ -2425,6 +2458,7 @@ const COLUMN_DEFS = [
   { id: 'assignee',     label: 'Přiřazení',    w: '78px'  },
   { id: 'progress',     label: 'Postup',       w: '62px'  },
   { id: 'budget',       label: 'Rozpočet',     w: '74px'  },
+  { id: 'delay',        label: 'Zpoždění',     w: '64px'  },
 ];
 let visibleColumns = (() => { try { const saved = JSON.parse(localStorage.getItem('bt_cols') || 'null'); if (saved && saved[0] === 'wbs') return saved; return ['wbs','name','predecessors','successors','schedule','start','end','duration','progress','budget']; } catch(e) { return ['wbs','name','predecessors','successors','schedule','start','end','duration','progress','budget']; } })();
 // Persisted custom column widths (overrides COLUMN_DEFS.w)
@@ -2994,6 +3028,7 @@ function render() {
   renderGantt();
   if (currentMainView === 'cashflow') renderCashflow();
   if (showBottomCF) renderBottomCashflow();
+  updateBaselineChip();
 }
 
 /* ═══════════════════════════════════════════════════
@@ -3240,6 +3275,164 @@ function computeCriticalPath() {
   return onCP;
 }
 
+/* ═══════════════════════════════════════════════════
+   BASELINE (SMĚRNÝ PLÁN)
+═══════════════════════════════════════════════════ */
+function getActiveBaseline() {
+  if (!project.baselines || !project.activeBaselineId) return null;
+  return project.baselines.find(b => b.id === project.activeBaselineId) || null;
+}
+
+function findBaselineTask(baseline, taskId) {
+  for (const ph of baseline.phases || []) {
+    for (const t of ph.tasks || []) {
+      if (t.id === taskId) return t;
+    }
+  }
+  return null;
+}
+
+function getTaskDelay(task, baseline) {
+  const bt = findBaselineTask(baseline, task.id);
+  if (!bt || !bt.endDate || !task.endDate) return null;
+  const da = new Date(bt.endDate);
+  const db = new Date(task.endDate);
+  return Math.round((db - da) / 86400000); // positive = late, negative = early
+}
+
+function updateBaselineChip() {
+  const chip = document.getElementById('baseline-active-chip');
+  if (!chip) return;
+  const bl = getActiveBaseline();
+  if (bl) {
+    chip.style.display = 'inline-flex';
+    chip.className = 'baseline-chip';
+    chip.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:10px;height:10px;"><path d="M3 3h18v4H3z"/><path d="M3 10h18v4H3z"/><path d="M3 17h18v4H3z"/></svg>${escHtml(bl.name)}`;
+  } else {
+    chip.style.display = 'none';
+  }
+}
+
+function openBaselinePanel() {
+  const baselines = project.baselines || [];
+  const activeId  = project.activeBaselineId || null;
+
+  const rows = baselines.length === 0
+    ? '<p style="color:var(--text-muted);font-size:12px;text-align:center;padding:12px 0;">Žádný směrný plán zatím nebyl uložen.</p>'
+    : baselines.map(bl => {
+        const isActive = bl.id === activeId;
+        const taskCount = (bl.phases || []).reduce((s, ph) => s + (ph.tasks || []).length, 0);
+        return `
+          <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);">
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:12px;font-weight:700;color:var(--text);">${escHtml(bl.name)}</div>
+              <div style="font-size:10px;color:var(--text-muted);">${bl.savedAt || ''} · ${taskCount} úkolů</div>
+            </div>
+            ${isActive
+              ? `<span class="baseline-chip">Aktivní</span>`
+              : `<button class="btn btn-secondary" style="font-size:10px;padding:3px 8px;" onclick="activateBaseline('${bl.id}')">Zobrazit</button>`
+            }
+            <button class="btn btn-ghost" style="font-size:10px;padding:3px 6px;color:var(--text-muted);" onclick="deleteBaseline('${bl.id}')">✕</button>
+          </div>`;
+      }).join('');
+
+  openModal(`
+    <div class="modal" style="max-width:460px;">
+      <div class="modal-header">
+        <span class="modal-title">Směrné plány</span>
+        <button class="modal-close" onclick="closeModal()">×</button>
+      </div>
+      <div class="modal-body" style="display:flex;flex-direction:column;gap:0;">
+        <div style="margin-bottom:12px;">
+          <button class="btn btn-primary" style="width:100%;" onclick="saveBaselinePrompt()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Uložit aktuální stav jako nový směrný plán
+          </button>
+        </div>
+        ${rows}
+        ${activeId ? `<div style="margin-top:12px;"><button class="btn btn-secondary" style="width:100%;font-size:11px;" onclick="activateBaseline(null)">Skrýt porovnání</button></div>` : ''}
+      </div>
+    </div>
+  `);
+}
+
+function saveBaselinePrompt() {
+  const num = (project.baselines || []).length + 1;
+  const defaultName = 'Smluvní ' + String(num).padStart(2, '0');
+  closeModal();
+  openModal(`
+    <div class="modal" style="max-width:380px;">
+      <div class="modal-header">
+        <span class="modal-title">Uložit směrný plán</span>
+        <button class="modal-close" onclick="closeModal()">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-field">
+          <label class="form-label">Název</label>
+          <input class="form-input" id="bl-name-input" value="${escHtml(defaultName)}" autofocus>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal();openBaselinePanel()">Zpět</button>
+        <button class="btn btn-primary" onclick="confirmSaveBaseline()">Uložit</button>
+      </div>
+    </div>
+  `);
+  const inp = document.getElementById('bl-name-input');
+  if (inp) { inp.select(); inp.addEventListener('keydown', e => { if (e.key === 'Enter') confirmSaveBaseline(); }); }
+}
+
+function confirmSaveBaseline() {
+  const inp = document.getElementById('bl-name-input');
+  const name = inp ? inp.value.trim() : '';
+  if (!name) return;
+
+  if (!project.baselines) project.baselines = [];
+  const id = 'bl_' + (project.nextId++);
+  const today = new Date().toISOString().split('T')[0];
+
+  // Deep copy current phases+tasks (only fields needed for comparison)
+  const snapshot = project.phases.map(ph => ({
+    id: ph.id,
+    name: ph.name,
+    tasks: (ph.tasks || []).map(t => ({
+      id: t.id,
+      name: t.name,
+      startDate: t.startDate,
+      endDate: t.endDate,
+      type: t.type,
+    })),
+  }));
+
+  project.baselines.push({ id, name, savedAt: today, phases: snapshot });
+  project.activeBaselineId = id;
+
+  closeModal();
+  saveProject(true);
+  updateBaselineChip();
+  render();
+  showToast(`Směrný plán „${name}" uložen`);
+}
+
+function activateBaseline(id) {
+  project.activeBaselineId = id || null;
+  closeModal();
+  saveProject(true);
+  updateBaselineChip();
+  render();
+}
+
+function deleteBaseline(id) {
+  if (!confirm('Smazat tento směrný plán?')) return;
+  project.baselines = (project.baselines || []).filter(b => b.id !== id);
+  if (project.activeBaselineId === id) project.activeBaselineId = null;
+  closeModal();
+  saveProject(true);
+  updateBaselineChip();
+  render();
+  openBaselinePanel();
+}
+
 let _criticalPathCache = null;
 function getCriticalPath() {
   if (!getSettings().showCriticalPath) return new Set();
@@ -3328,6 +3521,7 @@ function createPhaseRow(phase, pi) {
           <span class="wbs-pct-num">${getPhaseProgress(phase)}%</span>
         </div>`;
       case 'budget': return `<span class="wbs-budget-cell">${formatCZK(getPhaseBudget(phase))}</span>`;
+      case 'delay': return '<span></span>';
       default: return '<span></span>';
     }
   }).join('');
@@ -3413,6 +3607,15 @@ function createTaskRow(task, phase, pi, ti) {
             <div class="mini-progress" style="flex:1;"><div class="mini-progress-fill" style="width:${task.progress||0}%;background:${color};"></div></div>
             <span>${task.progress||0}%</span></span>`;
       case 'budget': return `<span class="cell-editable wbs-budget-cell" onclick="inlineEdit(this,'${task.id}','budget','number');event.stopPropagation();">${isMilestone?'—':formatCZK(task.budget||0)}</span>`;
+      case 'delay': {
+        const bl = getActiveBaseline();
+        if (!bl || isMilestone) return '<span class="wbs-date-cell" style="color:var(--text-muted);">—</span>';
+        const d = getTaskDelay(task, bl);
+        if (d === null) return '<span class="wbs-date-cell" style="color:var(--text-muted);">—</span>';
+        if (d === 0) return '<span class="wbs-date-cell delay-zero">0 d</span>';
+        if (d > 0) return `<span class="wbs-date-cell delay-pos">+${d} d</span>`;
+        return `<span class="wbs-date-cell delay-neg">${d} d</span>`;
+      }
       default: return '<span></span>';
     }
   }).join('');
@@ -3933,6 +4136,22 @@ function renderGanttRows(minD, totalW) {
         addTouchDrag(barWrap, task, minD);
         addTouchResize(barWrap, task, minD);
         tRow.appendChild(barWrap);
+
+        // Baseline bar — shows original planned position
+        const activeBaseline = getActiveBaseline();
+        if (activeBaseline) {
+          const blTask = findBaselineTask(activeBaseline, task.id);
+          if (blTask && blTask.startDate && blTask.endDate) {
+            const blX = Math.round(dateToX(new Date(blTask.startDate), minD));
+            const blX2 = Math.round(dateToX(new Date(blTask.endDate), minD));
+            const blW = Math.max(4, blX2 - blX);
+            const blBar = document.createElement('div');
+            blBar.className = 'gantt-baseline-bar';
+            blBar.style.cssText = `left:${blX}px;width:${blW}px;`;
+            blBar.title = `Směrný plán: ${blTask.startDate} – ${blTask.endDate}`;
+            tRow.appendChild(blBar);
+          }
+        }
 
         // Float bar (time reserve) — 50% transparent extension after bar end
         if (getSettings().showFloat && task.endDate) {
