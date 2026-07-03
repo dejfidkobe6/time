@@ -520,6 +520,36 @@ html, body {
 .wbs-row.is-phase { background: var(--bg); height: calc(var(--row-h, 40px) + 4px); }
 .wbs-row.is-phase:hover { background: var(--bg-hover); }
 
+/* Summary task rows */
+.wbs-row.is-summary { background: var(--bg); font-weight: 600; }
+.wbs-row.is-summary:hover { background: var(--bg-hover); }
+
+/* Nesting indentation via CSS variable --indent set on each row */
+.wbs-row .wbs-name-cell { padding-left: calc(var(--indent, 0) * 16px); }
+
+/* Drag-to-reorder handle (dots icon in name cell) */
+.row-drag-handle {
+  width: 14px; height: 100%; display: flex; align-items: center; justify-content: center;
+  cursor: grab; color: var(--text-muted); opacity: 0; flex-shrink: 0;
+  font-size: 10px; padding: 0 2px; user-select: none; letter-spacing: -1px;
+}
+.wbs-row:hover .row-drag-handle { opacity: 0.5; }
+.row-drag-handle:active { cursor: grabbing; }
+.row-drag-handle:hover { opacity: 1 !important; }
+
+/* Gantt summary bar */
+.gantt-row.is-summary { background: var(--bg); }
+.gantt-bar.summary-bar {
+  height: 8px; border-radius: 2px; opacity: 0.75;
+  position: absolute; top: 50%; transform: translateY(-50%);
+}
+
+/* Context menu items */
+.ctx-item { padding: 8px 16px; cursor: pointer; color: var(--text); transition: background 0.1s; }
+.ctx-item:hover { background: var(--bg-hover); }
+.ctx-item.ctx-danger { color: #c0392b; }
+.ctx-separator { height: 1px; background: var(--border); margin: 4px 0; }
+
 .wbs-row-content {
   display: grid;
   gap: 4px;
@@ -2405,6 +2435,9 @@ html, body {
   </div>
 </div>
 
+<!-- CONTEXT MENU -->
+<div id="ctx-menu" style="position:fixed;display:none;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;box-shadow:var(--shadow-lg);z-index:2000;min-width:200px;padding:4px 0;font-size:12px;"></div>
+
 <!-- MODALS injected by JS -->
 <div id="modal-container"></div>
 <input type="file" id="json-file-input" accept=".json" style="display:none" onchange="handleJSONImport(event)">
@@ -2712,13 +2745,13 @@ async function logoutUser() {
 function openProjectOverview() {
   let totalBudget = 0, taskCount = 0, doneCount = 0;
   let allDates = [];
-  project.phases.forEach(ph => ph.tasks.forEach(t => {
+  getAllTasks().forEach(t => {
     totalBudget += (t.budget || 0);
     taskCount++;
     if ((t.progress || 0) >= 100) doneCount++;
     if (t.startDate) allDates.push(new Date(t.startDate));
     if (t.endDate)   allDates.push(new Date(t.endDate));
-  }));
+  });
   const fmt = d => d.toLocaleDateString('cs-CZ', {day:'numeric', month:'long', year:'numeric'});
   const start = allDates.length ? fmt(new Date(Math.min(...allDates))) : '—';
   const end   = allDates.length ? fmt(new Date(Math.max(...allDates))) : '—';
@@ -3023,6 +3056,10 @@ function copyInviteLink(url, btn) {
    RENDER DISPATCHER
 ═══════════════════════════════════════════════════ */
 function render() {
+  // Pre-compute summary task dates before any rendering
+  project.phases.forEach(ph => {
+    (ph.tasks || []).forEach(t => { if (t.type === 'summary') computeSummaryDates(t); });
+  });
   renderHeader();
   renderWBS();
   renderGantt();
@@ -3048,20 +3085,17 @@ function renderHeader() {
   chip.textContent = s.label;
   chip.className = 'meta-chip ' + s.cls;
 
-  // Calculate stats
+  // Calculate stats (using leaf tasks only)
   let totalBudget = 0, totalDays = 0, totalProgress = 0, taskCount = 0;
   let allDates = [];
-  
-  project.phases.forEach(ph => {
-    ph.tasks.forEach(t => {
-      totalBudget += (t.budget || 0);
-      totalProgress += (t.progress || 0);
-      taskCount++;
-      if (t.startDate && t.endDate) {
-        const d = daysBetween(t.startDate, t.endDate);
-        allDates.push(new Date(t.startDate), new Date(t.endDate));
-      }
-    });
+
+  getAllTasks().forEach(t => {
+    totalBudget += (t.budget || 0);
+    totalProgress += (t.progress || 0);
+    taskCount++;
+    if (t.startDate && t.endDate) {
+      allDates.push(new Date(t.startDate), new Date(t.endDate));
+    }
   });
 
   if (allDates.length >= 2) {
@@ -3183,21 +3217,31 @@ function initColResize(hdr) {
   });
 }
 
+function renderWBSTaskRows(tasks, phase, pi, depth, body) {
+  tasks.forEach((task, ti) => {
+    // Compute summary dates before rendering
+    if (task.type === 'summary') computeSummaryDates(task);
+    const tRow = createTaskRow(task, phase, pi, ti, depth);
+    body.appendChild(tRow);
+    // Recurse into children if summary and not collapsed
+    if (task.type === 'summary' && !task.collapsed && task.children && task.children.length) {
+      renderWBSTaskRows(task.children, phase, pi, depth + 1, body);
+    }
+  });
+}
+
 function renderWBS() {
   renderWBSHeader();
   const body = document.getElementById('wbs-body');
   body.innerHTML = '';
-  
+
   project.phases.forEach((phase, pi) => {
     // Phase row
     const phRow = createPhaseRow(phase, pi);
     body.appendChild(phRow);
-    
+
     if (!phase.collapsed) {
-      phase.tasks.forEach((task, ti) => {
-        const tRow = createTaskRow(task, phase, pi, ti);
-        body.appendChild(tRow);
-      });
+      renderWBSTaskRows(phase.tasks || [], phase, pi, 0, body);
     }
   });
 }
@@ -3213,32 +3257,23 @@ function getColTemplate() {
 
 function getWBSNum(phaseIdx, taskIdx) {
   if (taskIdx === undefined) return '';  // phases have no WBS number
+  // Count tasks sequentially across all phases (top-level tasks only, depth 0)
   let count = 0;
   for (let pi = 0; pi < project.phases.length; pi++) {
     if (pi === phaseIdx) return String(count + taskIdx + 1);
-    count += project.phases[pi].tasks.length;
+    count += (project.phases[pi].tasks || []).length;
   }
   return '';
 }
 
 function formatPreds(preds) {
   if (!preds || !preds.length) return '';
-  return preds.map(p => {
-    let lbl = '';
-    // Find task WBS number
-    project.phases.forEach((ph, pi) => ph.tasks.forEach((t, ti) => {
-      if (t.id === p.taskId) lbl = getWBSNum(pi, ti);
-    }));
-    const type = p.type || 'FS';
-    const lag = p.lag ? (p.lag > 0 ? '+' + p.lag : String(p.lag)) : '';
-    return lbl ? lbl + type + lag : '';
-  }).filter(Boolean).join(', ');
+  return preds.map(p => formatOnePred(p)).filter(Boolean).join(', ');
 }
 
 // ── Critical path (longest path through dependency network) ──────────────────
 function computeCriticalPath() {
-  const allTasks = [];
-  project.phases.forEach(ph => ph.tasks.forEach(t => allTasks.push(t)));
+  const allTasks = getAllTasks();
   if (!allTasks.length) return new Set();
 
   // Project end = latest endDate across all tasks
@@ -3541,20 +3576,30 @@ function createPhaseRow(phase, pi) {
   return row;
 }
 
-function createTaskRow(task, phase, pi, ti) {
+function createTaskRow(task, phase, pi, ti, depth) {
+  depth = depth || 0;
+  const isSummary = task.type === 'summary';
   const row = document.createElement('div');
   row.className = 'wbs-row'
     + (selectedTaskId === task.id ? ' selected' : '')
-    + (selectedTaskIds.has(task.id) ? ' multi-selected' : '');
+    + (selectedTaskIds.has(task.id) ? ' multi-selected' : '')
+    + (isSummary ? ' is-summary' : '');
   row.dataset.taskId = task.id;
+  if (depth > 0) row.style.setProperty('--indent', depth);
   row.onclick = (e) => {
     if (e.ctrlKey || e.metaKey || e.shiftKey) handleRowSelect(task.id, e);
     else selectTask(task.id);
   };
   row.ondblclick = (e) => {
-    if (e.target.closest('.cell-editable,.cell-edit-input,.row-actions,.row-selector,.row-fill-handle')) return;
+    if (e.target.closest('.cell-editable,.cell-edit-input,.row-actions,.row-selector,.row-fill-handle,.row-drag-handle')) return;
     openTaskDetailPanel(task.id);
   };
+  // Right-click context menu
+  row.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    if (!selectedTaskIds.has(task.id)) { selectedTaskIds.add(task.id); renderWBS(); }
+    showTaskContextMenu(e.clientX, e.clientY, task);
+  });
   const color = PHASE_COLORS[pi % PHASE_COLORS.length];
   const isMilestone = task.type === 'milestone';
   const dur = (task.startDate && task.endDate) ? daysBetween(task.startDate, task.endDate) : 0;
@@ -3563,9 +3608,14 @@ function createTaskRow(task, phase, pi, ti) {
     switch (colId) {
       case 'name': return `
         <div class="wbs-name-cell">
-          <div class="wbs-indent" style="width:28px;"></div>
+          <span class="row-drag-handle" title="Přetáhnout pro přeřazení">&#8942;&#8942;</span>
+          ${isSummary
+            ? `<div class="phase-toggle ${task.collapsed ? 'collapsed' : ''}" onclick="toggleSummaryCollapse('${task.id}');event.stopPropagation()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></div>`
+            : `<div style="width:16px;flex-shrink:0;"></div>`}
           ${isMilestone
             ? `<svg viewBox="0 0 24 24" fill="${color}" stroke="none" style="width:10px;height:10px;flex-shrink:0;transform:rotate(45deg);"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>`
+            : isSummary
+            ? `<svg viewBox="0 0 24 24" fill="${color}" stroke="none" style="width:12px;height:8px;flex-shrink:0;opacity:0.7;"><rect x="1" y="4" width="22" height="16" rx="2"/></svg>`
             : `<div style="width:6px;height:6px;border-radius:50%;background:${color};opacity:0.5;flex-shrink:0;"></div>`}
           <input type="text" class="wbs-name-input" value="${escHtml(task.name)}"
             onchange="updateTaskField('${task.id}','name',this.value)"
@@ -3597,16 +3647,33 @@ function createTaskRow(task, phase, pi, ti) {
           </button>
         </div>`;
       }
-      case 'start': return `<span class="cell-editable wbs-date-cell" onclick="inlineEdit(this,'${task.id}','startDate','date');event.stopPropagation();">${formatDateShort(task.startDate)}</span>`;
-      case 'end': return `<span class="cell-editable wbs-date-cell" onclick="inlineEdit(this,'${task.id}','endDate','date');event.stopPropagation();">${formatDateShort(task.endDate)}</span>`;
-      case 'duration': return `<span class="cell-editable wbs-date-cell" onclick="inlineEditDuration(this,'${task.id}');event.stopPropagation();">${dur + 'd'}</span>`;
+      case 'start': return isSummary
+        ? `<span class="wbs-date-cell" style="color:var(--text-muted);">${formatDateShort(task.startDate)}</span>`
+        : `<span class="cell-editable wbs-date-cell" onclick="inlineEdit(this,'${task.id}','startDate','date');event.stopPropagation();">${formatDateShort(task.startDate)}</span>`;
+      case 'end': return isSummary
+        ? `<span class="wbs-date-cell" style="color:var(--text-muted);">${formatDateShort(task.endDate)}</span>`
+        : `<span class="cell-editable wbs-date-cell" onclick="inlineEdit(this,'${task.id}','endDate','date');event.stopPropagation();">${formatDateShort(task.endDate)}</span>`;
+      case 'duration': return isSummary
+        ? `<span class="wbs-date-cell" style="color:var(--text-muted);">${dur + 'd'}</span>`
+        : `<span class="cell-editable wbs-date-cell" onclick="inlineEditDuration(this,'${task.id}');event.stopPropagation();">${dur + 'd'}</span>`;
       case 'assignee': return `<span class="cell-editable wbs-date-cell" onclick="inlineEdit(this,'${task.id}','assignee','text');event.stopPropagation();" title="${escHtml(task.assignee||'')}">${escHtml((task.assignee||'').substring(0,10) + ((task.assignee||'').length>10?'…':''))}</span>`;
-      case 'progress': return isMilestone
-        ? `<span style="font-size:9px;color:var(--warning);font-weight:700;padding:2px 4px;">MILNÍK</span>`
-        : `<span class="cell-editable wbs-pct-num" style="display:flex;align-items:center;gap:3px;" onclick="inlineEdit(this,'${task.id}','progress','number');event.stopPropagation();">
+      case 'progress': {
+        if (isMilestone) return `<span style="font-size:9px;color:var(--warning);font-weight:700;padding:2px 4px;">MILNÍK</span>`;
+        if (isSummary) {
+          const sumPct = task.children && task.children.length
+            ? Math.round(task.children.filter(c=>c.type!=='milestone').reduce((s,c)=>s+(c.progress||0),0) / Math.max(1, task.children.filter(c=>c.type!=='milestone').length))
+            : 0;
+          return `<span class="wbs-pct-num" style="display:flex;align-items:center;gap:3px;">
+            <div class="mini-progress" style="flex:1;"><div class="mini-progress-fill" style="width:${sumPct}%;background:${color};"></div></div>
+            <span>${sumPct}%</span></span>`;
+        }
+        return `<span class="cell-editable wbs-pct-num" style="display:flex;align-items:center;gap:3px;" onclick="inlineEdit(this,'${task.id}','progress','number');event.stopPropagation();">
             <div class="mini-progress" style="flex:1;"><div class="mini-progress-fill" style="width:${task.progress||0}%;background:${color};"></div></div>
             <span>${task.progress||0}%</span></span>`;
-      case 'budget': return `<span class="cell-editable wbs-budget-cell" onclick="inlineEdit(this,'${task.id}','budget','number');event.stopPropagation();">${isMilestone?'—':formatCZK(task.budget||0)}</span>`;
+      }
+      case 'budget': return isSummary
+        ? `<span class="wbs-budget-cell" style="color:var(--text-muted);">${formatCZK((task.children||[]).reduce((s,c)=>s+(c.budget||0),0))}</span>`
+        : `<span class="cell-editable wbs-budget-cell" onclick="inlineEdit(this,'${task.id}','budget','number');event.stopPropagation();">${isMilestone?'—':formatCZK(task.budget||0)}</span>`;
       case 'delay': {
         const bl = getActiveBaseline();
         if (!bl || isMilestone) return '<span class="wbs-date-cell" style="color:var(--text-muted);">—</span>';
@@ -3638,26 +3705,29 @@ function createTaskRow(task, phase, pi, ti) {
 }
 
 function formatOnePred(p) {
-  let wbs = '';
-  project.phases.forEach((ph, pi) => ph.tasks.forEach((t, ti) => { if (t.id === p.taskId) wbs = getWBSNum(pi, ti); }));
-  if (!wbs) return '';
   const type = p.type || 'FS';
-  const lag = p.lag ? (p.lag > 0 ? '+' + p.lag : '' + p.lag) : '';
+  const lag  = p.lag ? (p.lag > 0 ? '+' + p.lag : '' + p.lag) : '';
+  if (p.phaseId) {
+    const pi = project.phases.findIndex(ph => ph.id === p.phaseId);
+    if (pi < 0) return '';
+    return 'F' + (pi + 1) + ' ' + type + lag;
+  }
+  let wbs = '';
+  const allFlat = getAllTasksFlat();
+  allFlat.forEach((t, i) => { if (t.id === p.taskId) wbs = String(i + 1); });
+  if (!wbs) return '';
   return wbs + ' ' + type + lag;
 }
 
 function getSuccessors(taskId) {
   const result = [];
-  project.phases.forEach((ph, pi) => {
-    ph.tasks.forEach((t, ti) => {
-      (t.predecessors || []).forEach(p => {
-        if (p.taskId === taskId) {
-          const wbs = getWBSNum(pi, ti);
-          const type = p.type || 'FS';
-          const lag = p.lag ? (p.lag > 0 ? '+' + p.lag : '' + p.lag) : '';
-          result.push({ taskId: t.id, label: wbs + ' ' + type + lag });
-        }
-      });
+  getAllTasksFlat().forEach((t, i) => {
+    (t.predecessors || []).forEach(p => {
+      if (p.taskId === taskId) {
+        const type = p.type || 'FS';
+        const lag = p.lag ? (p.lag > 0 ? '+' + p.lag : '' + p.lag) : '';
+        result.push({ taskId: t.id, label: (i + 1) + ' ' + type + lag });
+      }
     });
   });
   return result;
@@ -3668,15 +3738,13 @@ function getSuccessors(taskId) {
 ═══════════════════════════════════════════════════ */
 function getGanttBounds() {
   let minD = null, maxD = null;
-  project.phases.forEach(ph => {
-    ph.tasks.forEach(t => {
-      if (t.startDate) {
-        const s = new Date(t.startDate);
-        const e = t.endDate ? new Date(t.endDate) : s;
-        if (!minD || s < minD) minD = new Date(s);
-        if (!maxD || e > maxD) maxD = new Date(e);
-      }
-    });
+  getAllTasks().forEach(t => {
+    if (t.startDate) {
+      const s = new Date(t.startDate);
+      const e = t.endDate ? new Date(t.endDate) : s;
+      if (!minD || s < minD) minD = new Date(s);
+      if (!maxD || e > maxD) maxD = new Date(e);
+    }
   });
   if (!minD) {
     minD = new Date(); minD.setDate(1);
@@ -3755,36 +3823,58 @@ function renderMobTaskPanel() {
 
     if (phase.collapsed) return;
 
-    phase.tasks.forEach(task => {
-      const row = document.createElement('div');
-      row.className = 'mob-task-row' + (selectedTaskId === task.id ? ' selected' : '');
-      if (cp.has(task.id)) row.style.borderLeft = '3px solid #c0392b';
+    function renderMobTasks(tasks, indent) {
+      tasks.forEach(task => {
+        if (task.type === 'summary') computeSummaryDates(task);
+        const isSummary = task.type === 'summary';
+        const row = document.createElement('div');
+        row.className = 'mob-task-row' + (selectedTaskId === task.id ? ' selected' : '') + (isSummary ? ' is-phase' : '');
+        if (!isSummary && cp.has(task.id)) row.style.borderLeft = '3px solid #c0392b';
 
-      const predCount = (task.predecessors || []).length;
-      const isMilestone = task.type === 'milestone';
-      const dur = (task.startDate && task.endDate) ? daysBetween(task.startDate, task.endDate) : 0;
+        const predCount = (task.predecessors || []).length;
+        const isMilestone = task.type === 'milestone';
+        const dur = (task.startDate && task.endDate) ? daysBetween(task.startDate, task.endDate) : 0;
+        const indentStyle = indent > 0 ? `padding-left:${indent * 12 + 8}px;` : '';
 
-      row.innerHTML = `
-        <div class="mob-task-color" style="background:${cp.has(task.id) ? '#c0392b' : taskColor};${isMilestone?'clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%)':'border-radius:2px;'}"></div>
-        <div class="mob-task-info">
-          <div class="mob-task-name">${escHtml(task.name)}</div>
-          <div class="mob-task-dates">${fmtDate(task.startDate)} — ${dur}d</div>
-        </div>
-        ${predCount ? `<span class="mob-task-dep-badge">↳${predCount}</span>` : ''}`;
+        row.innerHTML = `
+          <div class="mob-task-color" style="background:${(!isSummary && cp.has(task.id)) ? '#c0392b' : taskColor};${isMilestone?'clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%)':'border-radius:2px;'}"></div>
+          <div class="mob-task-info" style="${indentStyle}">
+            <div class="mob-task-name" style="${isSummary?'font-weight:700;':''}">${escHtml(task.name)}</div>
+            <div class="mob-task-dates">${fmtDate(task.startDate)} — ${isSummary ? (task.children||[]).length + ' úkolů' : dur + 'd'}</div>
+          </div>
+          ${predCount ? `<span class="mob-task-dep-badge">↳${predCount}</span>` : ''}`;
 
-      row.addEventListener('click', () => {
-        selectTask(task.id);
-        openTaskDetailPanel(task.id);
-        // Sync scroll — scroll Gantt to show this task's bar
-        const ganttRow = document.querySelector('#gantt-rows .gantt-row[data-task-id="' + task.id + '"]');
-        if (ganttRow) {
-          const ganttScroll = document.getElementById('gantt-scroll-wrap');
-          if (ganttScroll) ganttScroll.scrollTop = ganttRow.offsetTop - 80;
+        if (isSummary) {
+          let sumClickTimer = null;
+          row.addEventListener('click', () => {
+            if (sumClickTimer) return;
+            sumClickTimer = setTimeout(() => {
+              task.collapsed = !task.collapsed; saveProject(true); render();
+              sumClickTimer = null;
+            }, 250);
+          });
+          row.addEventListener('dblclick', () => { clearTimeout(sumClickTimer); sumClickTimer = null; openTaskDetailPanel(task.id); });
+        } else {
+          row.addEventListener('click', () => {
+            selectTask(task.id);
+            openTaskDetailPanel(task.id);
+            const ganttRow = document.querySelector('#gantt-rows .gantt-row[data-task-id="' + task.id + '"]');
+            if (ganttRow) {
+              const ganttScroll = document.getElementById('gantt-scroll-wrap');
+              if (ganttScroll) ganttScroll.scrollTop = ganttRow.offsetTop - 80;
+            }
+          });
+        }
+
+        body.appendChild(row);
+
+        // Recurse into children if summary and not collapsed
+        if (isSummary && !task.collapsed && task.children && task.children.length) {
+          renderMobTasks(task.children, indent + 1);
         }
       });
-
-      body.appendChild(row);
-    });
+    }
+    renderMobTasks(phase.tasks || [], 0);
   });
 
   // Sync vertical scroll with Gantt
@@ -4043,6 +4133,7 @@ function renderGanttRows(minD, totalW) {
     }
   }
 
+  const cp = getSettings().showCriticalPath ? getCriticalPath() : new Set();
   let rowOffset = 0;
   project.phases.forEach((phase, pi) => {
     const color = getPhaseColor(phase, pi);
@@ -4071,25 +4162,48 @@ function renderGanttRows(minD, totalW) {
     rowOffset++;
     if (phase.collapsed) return;
 
-    phase.tasks.forEach((task, ti) => {
-      const tRow = document.createElement('div');
-      tRow.className = 'gantt-row';
-      tRow.dataset.taskId = task.id;
-      tRow.style.width = totalW + 'px';
-      if (selectedTaskId === task.id) tRow.style.background = 'rgba(74,83,64,0.05)';
+    renderGanttTaskRowsRecursive(phase.tasks || [], phase, pi, minD, totalW, container, cp);
+  });
+}
 
-      if (task.type === 'milestone') {
-        // Milestone diamond
-        if (task.startDate) {
-          const x = dateToX(new Date(task.startDate), minD);
-          const diamond = document.createElement('div');
-          diamond.className = 'gantt-milestone';
-          diamond.style.left = x + 'px';
-          diamond.title = task.name;
-          tRow.appendChild(diamond);
-        }
-      } else if (task.startDate && task.endDate) {
-        if (taskMatchesFilter(task)) {
+function renderGanttTaskRowsRecursive(tasks, phase, pi, minD, totalW, container, cp) {
+  tasks.forEach(task => {
+    // Compute summary dates before rendering
+    if (task.type === 'summary') computeSummaryDates(task);
+
+    const tRow = document.createElement('div');
+    tRow.className = 'gantt-row' + (task.type === 'summary' ? ' is-summary' : '');
+    tRow.dataset.taskId = task.id;
+    tRow.style.width = totalW + 'px';
+    if (selectedTaskId === task.id) tRow.style.background = 'rgba(74,83,64,0.05)';
+
+    if (task.type === 'summary') {
+      // Summary bar: darker wider bar spanning children
+      if (task.startDate && task.endDate) {
+        const barColor = getTaskColor(task, phase, pi);
+        const x = Math.round(dateToX(new Date(task.startDate), minD));
+        const x2 = Math.round(dateToX(new Date(task.endDate), minD));
+        const w = Math.max(6, x2 - x);
+        const barWrap = document.createElement('div');
+        barWrap.className = 'gantt-bar-wrap';
+        barWrap.style.cssText = `left:${x}px;width:${w}px;height:10px;top:calc(50% - 5px);position:absolute;`;
+        barWrap.innerHTML = `<div class="gantt-bar summary-bar" style="background:${barColor};width:100%;height:100%;border-radius:2px;"></div>`;
+        // Click to select
+        barWrap.addEventListener('click', () => selectTask(task.id));
+        tRow.appendChild(barWrap);
+      }
+    } else if (task.type === 'milestone') {
+      // Milestone diamond
+      if (task.startDate) {
+        const x = dateToX(new Date(task.startDate), minD);
+        const diamond = document.createElement('div');
+        diamond.className = 'gantt-milestone';
+        diamond.style.left = x + 'px';
+        diamond.title = task.name;
+        tRow.appendChild(diamond);
+      }
+    } else if (task.startDate && task.endDate) {
+      if (taskMatchesFilter(task)) {
         const x = Math.round(dateToX(new Date(task.startDate), minD));
         const x2 = Math.round(dateToX(new Date(task.endDate), minD));
         const w = Math.max(4, x2 - x);
@@ -4112,10 +4226,9 @@ function renderGanttRows(minD, totalW) {
         `;
 
         // Mark critical path bar
-        if (getSettings().showCriticalPath && getCriticalPath().has(task.id)) {
+        if (getSettings().showCriticalPath && cp.has(task.id)) {
           barWrap.classList.add('is-critical');
         }
-
 
         // Mobile: single click → open detail panel; Desktop: single click → select, double-click → open panel
         let clickTimer = null;
@@ -4155,17 +4268,14 @@ function renderGanttRows(minD, totalW) {
 
         // Float bar (time reserve) — 50% transparent extension after bar end
         if (getSettings().showFloat && task.endDate) {
-          const allTasks2 = [];
-          project.phases.forEach(ph2 => ph2.tasks.forEach(t2 => allTasks2.push(t2)));
-          // Collect all FS successors of this task
-          const fsSuccStarts = allTasks2
+          const allLeafTasks = getAllTasks();
+          const fsSuccStarts = allLeafTasks
             .filter(t2 => (t2.predecessors||[]).some(p => p.taskId === task.id && (p.type||'FS') === 'FS'))
             .map(t2 => t2.startDate)
             .filter(Boolean);
-          // If no FS successors, use project end
-          const projectEndDate = allTasks2.filter(t2=>t2.endDate).map(t2=>t2.endDate).reduce((a,b)=>a>b?a:b,'');
+          const projectEndDate = allLeafTasks.filter(t2=>t2.endDate).map(t2=>t2.endDate).reduce((a,b)=>a>b?a:b,'');
           const floatEnd = fsSuccStarts.length
-            ? fsSuccStarts.reduce((a,b) => a < b ? a : b) // earliest successor start
+            ? fsSuccStarts.reduce((a,b) => a < b ? a : b)
             : (projectEndDate || '');
           if (floatEnd && floatEnd > task.endDate) {
             const fx1 = x2;
@@ -4178,13 +4288,15 @@ function renderGanttRows(minD, totalW) {
             }
           }
         }
+      } // end taskMatchesFilter
+    }
 
-        } // end taskMatchesFilter
-      }
+    container.appendChild(tRow);
 
-      container.appendChild(tRow);
-      rowOffset++;
-    });
+    // Recurse into children if summary and not collapsed
+    if (task.type === 'summary' && !task.collapsed && task.children && task.children.length) {
+      renderGanttTaskRowsRecursive(task.children, phase, pi, minD, totalW, container, cp);
+    }
   });
 }
 
@@ -4225,17 +4337,30 @@ function toggleTaskSchedule(taskId) {
 function computeConstrainedStart(task) {
   let latestStart = null;
   (task.predecessors || []).forEach(pred => {
-    const predTask = findTask(pred.taskId);
-    if (!predTask) return;
     const type = pred.type || 'FS';
     const lag  = pred.lag || 0;
+    const dur  = (task.startDate && task.endDate) ? daysBetween(task.startDate, task.endDate) : 0;
     let s = null;
-    // FS: successor starts the day after predecessor ends (+ lag days)
-    const dur = (task.startDate && task.endDate) ? daysBetween(task.startDate, task.endDate) : 0;
-    if      (type === 'FS' && predTask.endDate)   s = addDays(predTask.endDate,   lag + 1);
-    else if (type === 'SS' && predTask.startDate) s = addDays(predTask.startDate, lag);
-    else if (type === 'FF' && predTask.endDate)   s = addDays(predTask.endDate,   lag - dur);
-    else if (type === 'SF' && predTask.startDate) s = addDays(predTask.startDate, lag - dur);
+    if (pred.phaseId) {
+      // Phase predecessor: constrain against the aggregate start/end of all tasks in the phase
+      const ph = project.phases.find(p => p.id === pred.phaseId);
+      if (!ph) return;
+      const phLeafTasks = getPhaseLeafTasks(ph);
+      if (!phLeafTasks.length) return;
+      const phEnd   = phLeafTasks.filter(t => t.endDate).map(t => t.endDate).reduce((a,b) => a > b ? a : b, null);
+      const phStart = phLeafTasks.filter(t => t.startDate).map(t => t.startDate).reduce((a,b) => a < b ? a : b, null);
+      if      (type === 'FS' && phEnd)   s = addDays(phEnd,   lag + 1);
+      else if (type === 'SS' && phStart) s = addDays(phStart, lag);
+      else if (type === 'FF' && phEnd)   s = addDays(phEnd,   lag - dur);
+      else if (type === 'SF' && phStart) s = addDays(phStart, lag - dur);
+    } else {
+      const predTask = findTask(pred.taskId);
+      if (!predTask) return;
+      if      (type === 'FS' && predTask.endDate)   s = addDays(predTask.endDate,   lag + 1);
+      else if (type === 'SS' && predTask.startDate) s = addDays(predTask.startDate, lag);
+      else if (type === 'FF' && predTask.endDate)   s = addDays(predTask.endDate,   lag - dur);
+      else if (type === 'SF' && predTask.startDate) s = addDays(predTask.startDate, lag - dur);
+    }
     if (s && (!latestStart || s > latestStart)) latestStart = s;
   });
   return latestStart;
@@ -4245,28 +4370,50 @@ function computeConstrainedStart(task) {
 // Works in both directions — if predecessor moves earlier, successors pull back too.
 function cascadeSuccessors(changedTaskId) {
   const queue = [changedTaskId];
+  const phaseQueue = [];  // phase IDs whose aggregate end dates may have changed
   const visited = new Set();
-  while (queue.length) {
-    const id = queue.shift();
-    if (visited.has(id)) continue;
+  const visitedPhases = new Set();
+
+  // Seed phase queue with the phase containing the changed task
+  const _changedPhase = findPhaseForTask(changedTaskId);
+  if (_changedPhase) phaseQueue.push(_changedPhase.id);
+
+  function processTask(id) {
+    if (visited.has(id)) return;
     visited.add(id);
-    project.phases.forEach(ph => {
-      ph.tasks.forEach(task => {
-        if (visited.has(task.id)) return;
-        if (task.manual === true) return;
-        // Does this task depend on the just-processed task?
-        const hasPred = (task.predecessors || []).some(p => p.taskId === id);
-        if (!hasPred) return;
-        // Recompute from ALL predecessors (not just the changed one)
-        const newStart = computeConstrainedStart(task);
-        if (!newStart) return;
-        if (newStart === task.startDate) return;
-        const dur = daysBetween(task.startDate, task.endDate);
-        task.startDate = newStart;
-        task.endDate   = addDays(newStart, dur);
-        queue.push(task.id);
-      });
+    // Check if this task belongs to a phase that needs cascade
+    const _taskPhase = findPhaseForTask(id);
+    if (_taskPhase && !visitedPhases.has(_taskPhase.id)) phaseQueue.push(_taskPhase.id);
+    getAllTasksFlat().forEach(task => {
+      if (visited.has(task.id) || task.manual === true) return;
+      if (!(task.predecessors || []).some(p => p.taskId === id)) return;
+      const newStart = computeConstrainedStart(task);
+      if (!newStart || newStart === task.startDate) return;
+      const dur = daysBetween(task.startDate, task.endDate);
+      task.startDate = newStart;
+      task.endDate   = addDays(newStart, dur);
+      queue.push(task.id);
     });
+  }
+
+  function processPhase(phId) {
+    if (visitedPhases.has(phId)) return;
+    visitedPhases.add(phId);
+    getAllTasksFlat().forEach(task => {
+      if (visited.has(task.id) || task.manual === true) return;
+      if (!(task.predecessors || []).some(p => p.phaseId === phId)) return;
+      const newStart = computeConstrainedStart(task);
+      if (!newStart || newStart === task.startDate) return;
+      const dur = daysBetween(task.startDate, task.endDate);
+      task.startDate = newStart;
+      task.endDate   = addDays(newStart, dur);
+      queue.push(task.id);
+    });
+  }
+
+  while (queue.length || phaseQueue.length) {
+    while (queue.length)    processTask(queue.shift());
+    while (phaseQueue.length) processPhase(phaseQueue.shift());
   }
 }
 
@@ -4505,47 +4652,56 @@ function renderDependencies(minD) {
   const ELBOW   = 14;  // horizontal jog
   const GAP     = 5;   // offset from bar edge so line doesn't touch bar
 
-  // Modern palette: FS teal, FF orange-red, SS indigo, SF amber
+  // Smooth polyline with rounded corners
+  function smoothPts(pts, r) {
+    if (pts.length < 2) return '';
+    let d = `M ${pts[0].x},${pts[0].y}`;
+    for (let i = 1; i < pts.length; i++) {
+      const P=pts[i-1], C=pts[i], N=pts[i+1];
+      if (!N) { d+=` L ${C.x},${C.y}`; continue; }
+      const dx1=C.x-P.x, dy1=C.y-P.y, l1=Math.hypot(dx1,dy1)||0.01;
+      const dx2=N.x-C.x, dy2=N.y-C.y, l2=Math.hypot(dx2,dy2)||0.01;
+      const rr=Math.min(r,l1/2,l2/2);
+      if (rr<0.5) { d+=` L ${C.x},${C.y}`; continue; }
+      d+=` L ${C.x-dx1/l1*rr},${C.y-dy1/l1*rr} Q ${C.x},${C.y} ${C.x+dx2/l2*rr},${C.y+dy2/l2*rr}`;
+    }
+    return d;
+  }
+
   const TYPE_CFG = {
-    FS: { color: '#2e7d6e', dash: ''          },
-    FF: { color: '#c0440a', dash: '5,3'       },
-    SS: { color: '#4a5ab4', dash: '2,3'       },
-    SF: { color: '#a07810', dash: '6,2,2,2'   },
+    FS: { color: '#2e7d6e', dash: ''         },
+    FF: { color: '#c0440a', dash: '5,3'      },
+    SS: { color: '#4a5ab4', dash: '2,3'      },
+    SF: { color: '#a07810', dash: '6,2,2,2'  },
   };
-  const CP_COLOR = '#c0392b';  // critical path arrow color
+  const CP_COLOR = '#c0392b';
   const cp = getCriticalPath();
 
   const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
-  // Add CP marker
-  defs.innerHTML += `<marker id="arr-CP" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+  defs.innerHTML = `<marker id="arr-CP" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse">
     <path d="M1,1 L7,4 L1,7 Z" fill="${CP_COLOR}" stroke="none"/>
-  </marker>`;
-  Object.entries(TYPE_CFG).forEach(([t, cfg]) => {
-    defs.innerHTML += `
-      <marker id="arr-${t}" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse">
-        <path d="M1,1 L7,4 L1,7 Z" fill="${cfg.color}" stroke="none"/>
-      </marker>`;
-  });
+  </marker>` + Object.entries(TYPE_CFG).map(([t,cfg]) =>
+    `<marker id="arr-${t}" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M1,1 L7,4 L1,7 Z" fill="${cfg.color}" stroke="none"/>
+    </marker>`).join('');
   svg.appendChild(defs);
 
-  project.phases.forEach(ph => {
-    ph.tasks.forEach(task => {
-      // Migrate legacy dependsOn to predecessors array
-      if (!task.predecessors && task.dependsOn) {
-        task.predecessors = [{ taskId: task.dependsOn, type: 'FS', lag: 0 }];
-        delete task.dependsOn;
-      }
-      const preds = task.predecessors || [];
-      preds.forEach((pred, predIndex) => {
+  getAllTasksFlat().forEach(task => {
+    if (!task.predecessors && task.dependsOn) {
+      task.predecessors = [{ taskId: task.dependsOn, type: 'FS', lag: 0 }];
+      delete task.dependsOn;
+    }
+    (task.predecessors || []).forEach((pred, predIndex) => {
+        if (pred.phaseId) return;  // phase predecessors: no single Gantt bar to draw from
         const predTask = findTask(pred.taskId);
         if (!predTask) return;
         const type = pred.type || 'FS';
         const lag  = pred.lag || 0;
-        // Check if this specific link is on the critical path (both tasks on CP and link is tight)
+
         const isCPLink = cp.has(predTask.id) && cp.has(task.id) && (() => {
-          if (type === 'FS') return task.startDate === addDays(predTask.endDate, lag + 1);
-          if (type === 'SS') return task.startDate === addDays(predTask.startDate, lag);
-          if (type === 'FF') return task.endDate   === addDays(predTask.endDate,   lag);
+          if (type==='FS') return task.startDate === addDays(predTask.endDate, lag+1);
+          if (type==='SS') return task.startDate === addDays(predTask.startDate, lag);
+          if (type==='FF') return task.endDate   === addDays(predTask.endDate,   lag);
           return false;
         })();
         const cfg = isCPLink ? { color: CP_COLOR, dash: '' } : (TYPE_CFG[type] || TYPE_CFG.FS);
@@ -4553,133 +4709,98 @@ function renderDependencies(minD) {
         const ry1 = getTaskRowY(predTask.id);
         const ry2 = getTaskRowY(task.id);
         if (ry1 < 0 || ry2 < 0) return;
-        const y1 = ry1 + rowH / 2;
-        const y2 = ry2 + rowH / 2;
+        const y1 = ry1 + rowH/2;
+        const y2 = ry2 + rowH/2;
 
         let x1, x2;
-        if (type === 'FS') {
-          if (!predTask.endDate || !task.startDate) return;
-          x1 = dateToX(new Date(predTask.endDate), minD) + GAP;
-          x2 = dateToX(new Date(task.startDate), minD) - GAP;
-        } else if (type === 'FF') {
-          if (!predTask.endDate || !task.endDate) return;
-          x1 = dateToX(new Date(predTask.endDate), minD) + GAP;
-          x2 = dateToX(new Date(task.endDate), minD) + GAP;
-        } else if (type === 'SS') {
-          if (!predTask.startDate || !task.startDate) return;
-          x1 = dateToX(new Date(predTask.startDate), minD) - GAP;
-          x2 = dateToX(new Date(task.startDate), minD) - GAP;
-        } else if (type === 'SF') {
-          if (!predTask.startDate || !task.endDate) return;
-          x1 = dateToX(new Date(predTask.startDate), minD) - GAP;
-          x2 = dateToX(new Date(task.endDate), minD) + GAP;
-        } else return;
+        if      (type==='FS') { if (!predTask.endDate||!task.startDate)   return; x1=dateToX(new Date(predTask.endDate),  minD)+GAP; x2=dateToX(new Date(task.startDate),minD)-GAP; }
+        else if (type==='FF') { if (!predTask.endDate||!task.endDate)     return; x1=dateToX(new Date(predTask.endDate),  minD)+GAP; x2=dateToX(new Date(task.endDate),  minD)+GAP; }
+        else if (type==='SS') { if (!predTask.startDate||!task.startDate) return; x1=dateToX(new Date(predTask.startDate),minD)-GAP; x2=dateToX(new Date(task.startDate),minD)-GAP; }
+        else if (type==='SF') { if (!predTask.startDate||!task.endDate)   return; x1=dateToX(new Date(predTask.startDate),minD)-GAP; x2=dateToX(new Date(task.endDate),  minD)+GAP; }
+        else return;
 
+        // Build <g> tagged for hover-highlighting
         const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        g.dataset.fromId = predTask.id;
+        g.dataset.toId   = task.id;
+        g.setAttribute('opacity', isCPLink ? '0.92' : '0.4');
 
         // Source dot
         const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-        dot.setAttribute('cx', x1); dot.setAttribute('cy', y1); dot.setAttribute('r', '3.5');
-        dot.setAttribute('fill', cfg.color); dot.setAttribute('opacity', '0.85');
+        dot.setAttribute('cx', x1); dot.setAttribute('cy', y1); dot.setAttribute('r', '3');
+        dot.setAttribute('fill', cfg.color);
         g.appendChild(dot);
 
-        // Path routing — per-type to avoid crossing bars
-        const yDir  = y2 >= y1 ? 1 : -1;
-        const yChan = y1 + yDir * rowH / 2;
-        const path  = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-        let d, labelX, labelY;
+        // Waypoints → smooth rounded path
+        const yDir  = y2>=y1 ? 1 : -1;
+        const yChan = y1 + yDir*rowH/2;
+        let pts, labelX, labelY;
 
-        if (type === 'FS') {
-          // right-of-pred → left-of-succ
-          const jog = x1 + ELBOW;
-          if (Math.abs(y1 - y2) < 2) {
-            d = `M ${x1},${y1} H ${x2}`;
-            labelX = (x1 + x2) / 2; labelY = y1 - 6;
-          } else if (x2 >= jog) {
-            d = `M ${x1},${y1} H ${jog} V ${yChan} H ${x2 - ELBOW} V ${y2} H ${x2}`;
-            labelX = jog + (x2 - ELBOW - jog) / 2; labelY = yChan - 6;
+        if (type==='FS') {
+          const jog = x1+ELBOW;
+          if (Math.abs(y1-y2)<2) {
+            pts=[{x:x1,y:y1},{x:x2,y:y2}]; labelX=(x1+x2)/2; labelY=y1-6;
           } else {
-            d = `M ${x1},${y1} H ${jog} V ${yChan} H ${x2 - ELBOW} V ${y2} H ${x2}`;
-            labelX = (x1 + x2) / 2; labelY = yChan - 6;
+            pts=[{x:x1,y:y1},{x:jog,y:y1},{x:jog,y:yChan},{x:x2-ELBOW,y:yChan},{x:x2-ELBOW,y:y2},{x:x2,y:y2}];
+            labelX=(jog+x2-ELBOW)/2; labelY=yChan-6;
           }
-        } else if (type === 'FF') {
-          // right-of-pred → right-of-succ, jog outside right edge
-          const outerX = Math.max(x1, x2) + ELBOW;
-          if (Math.abs(y1 - y2) < 2) {
-            d = `M ${x1},${y1} H ${outerX} H ${x2}`;
-            labelX = outerX; labelY = y1 - 6;
+        } else if (type==='FF') {
+          const outerX=Math.max(x1,x2)+ELBOW;
+          if (Math.abs(y1-y2)<2) {
+            pts=[{x:x1,y:y1},{x:outerX,y:y1},{x:x2,y:y2}]; labelX=outerX; labelY=y1-6;
           } else {
-            d = `M ${x1},${y1} H ${outerX} V ${yChan} V ${y2} H ${x2}`;
-            labelX = outerX + 4; labelY = (y1 + y2) / 2;
+            pts=[{x:x1,y:y1},{x:outerX,y:y1},{x:outerX,y:y2},{x:x2,y:y2}]; labelX=outerX+4; labelY=(y1+y2)/2;
           }
-        } else if (type === 'SS') {
-          // left-of-pred → left-of-succ, jog outside left edge
-          const outerX = Math.min(x1, x2) - ELBOW;
-          if (Math.abs(y1 - y2) < 2) {
-            d = `M ${x1},${y1} H ${outerX} H ${x2}`;
-            labelX = outerX; labelY = y1 - 6;
+        } else if (type==='SS') {
+          const outerX=Math.min(x1,x2)-ELBOW;
+          if (Math.abs(y1-y2)<2) {
+            pts=[{x:x1,y:y1},{x:outerX,y:y1},{x:x2,y:y2}]; labelX=outerX; labelY=y1-6;
           } else {
-            d = `M ${x1},${y1} H ${outerX} V ${yChan} V ${y2} H ${x2}`;
-            labelX = outerX - 4; labelY = (y1 + y2) / 2;
+            pts=[{x:x1,y:y1},{x:outerX,y:y1},{x:outerX,y:y2},{x:x2,y:y2}]; labelX=outerX-4; labelY=(y1+y2)/2;
           }
-        } else if (type === 'SF') {
-          // left-of-pred → right-of-succ
-          const outerX = Math.min(x1, x2 - ELBOW * 2) - ELBOW;
-          d = `M ${x1},${y1} H ${outerX} V ${yChan} H ${x2 + ELBOW} V ${y2} H ${x2}`;
-          labelX = outerX + (x2 + ELBOW - outerX) / 2; labelY = yChan - 6;
         } else {
-          const jog = x1 + ELBOW;
-          d = `M ${x1},${y1} H ${jog} V ${yChan} H ${x2 - ELBOW} V ${y2} H ${x2}`;
-          labelX = jog; labelY = yChan - 6;
+          const outerX=Math.min(x1,x2-ELBOW*2)-ELBOW;
+          pts=[{x:x1,y:y1},{x:outerX,y:y1},{x:outerX,y:yChan},{x:x2+ELBOW,y:yChan},{x:x2+ELBOW,y:y2},{x:x2,y:y2}];
+          labelX=(outerX+x2+ELBOW)/2; labelY=yChan-6;
         }
 
+        const d = smoothPts(pts, 5);
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
         path.setAttribute('d', d);
         path.setAttribute('stroke', cfg.color);
-        path.setAttribute('stroke-width', '1.75');
+        path.setAttribute('stroke-width', isCPLink ? '2.2' : '1.6');
         path.setAttribute('stroke-linecap', 'round');
         path.setAttribute('stroke-linejoin', 'round');
         path.setAttribute('fill', 'none');
-        path.setAttribute('opacity', '0.8');
         if (cfg.dash) path.setAttribute('stroke-dasharray', cfg.dash);
-        path.setAttribute('marker-end', `url(#arr-${isCPLink ? 'CP' : type})`);
-        if (isCPLink) { path.setAttribute('stroke-width', '2.2'); path.setAttribute('opacity', '1'); }
+        path.setAttribute('marker-end', `url(#arr-${isCPLink?'CP':type})`);
         g.appendChild(path);
 
-        // Lag label — shown only when lag !== 0
         if (lag !== 0) {
-          const labelText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-          labelText.setAttribute('x', labelX);
-          labelText.setAttribute('y', labelY);
-          labelText.setAttribute('text-anchor', 'middle');
-          labelText.setAttribute('font-size', '9');
-          labelText.setAttribute('font-family', 'Inter, sans-serif');
-          labelText.setAttribute('font-weight', '600');
-          labelText.setAttribute('fill', cfg.color);
-          labelText.setAttribute('opacity', '0.9');
-          labelText.textContent = (lag > 0 ? '+' : '') + lag + 'd';
-          g.appendChild(labelText);
+          const lt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          lt.setAttribute('x', labelX); lt.setAttribute('y', labelY);
+          lt.setAttribute('text-anchor','middle'); lt.setAttribute('font-size','9');
+          lt.setAttribute('font-family','Inter,sans-serif'); lt.setAttribute('font-weight','600');
+          lt.setAttribute('fill', cfg.color);
+          lt.textContent = (lag>0?'+':'')+lag+'d';
+          g.appendChild(lt);
         }
 
-        // Invisible wide hit area for double-click editing
         const hit = document.createElementNS('http://www.w3.org/2000/svg', 'path');
         hit.setAttribute('d', d);
         hit.setAttribute('stroke', 'transparent');
-        hit.setAttribute('stroke-width', '12');
+        hit.setAttribute('stroke-width', '14');
         hit.setAttribute('fill', 'none');
         hit.style.pointerEvents = 'stroke';
         hit.style.cursor = 'pointer';
-        hit.title = `${type}${lag ? (lag>0?'+'+lag:lag) : ''} — двойной клик для редактирования`;
-        hit.addEventListener('dblclick', (e) => {
-          e.stopPropagation();
-          openDepEditor(task, predIndex);
-        });
+        hit.addEventListener('dblclick', (e) => { e.stopPropagation(); openDepEditor(task, predIndex); });
         g.appendChild(hit);
 
         svg.appendChild(g);
       });
-    });
   });
 }
+// end renderDependencies
 
 function getTaskRowY(taskId) {
   const row = document.querySelector(`#gantt-rows [data-task-id="${taskId}"]`);
@@ -4716,7 +4837,7 @@ function buildCashflowData() {
     if (!phaseData[phase.id]) {
       phaseData[phase.id] = { name: phase.name, monthly: new Array(months.length).fill(0), color: PHASE_COLORS[pi % PHASE_COLORS.length] };
     }
-    phase.tasks.forEach(task => {
+    getPhaseLeafTasks(phase).forEach(task => {
       if (!task.startDate || !task.endDate || task.type === 'milestone') return;
       const budget = task.budget || 0;
       if (budget === 0) return;
@@ -5239,13 +5360,10 @@ const COL_EDIT_TYPE = { start:'date', end:'date', progress:'number', budget:'num
 
 function addTaskAfterSelected() {
   if (!selectedTaskId) { openAddTaskModal(); return; }
-  let foundPhase = null, foundIdx = -1;
-  project.phases.forEach(ph => {
-    const idx = ph.tasks.findIndex(t => t.id === selectedTaskId);
-    if (idx >= 0) { foundPhase = ph; foundIdx = idx; }
-  });
+  const foundPhase = findPhaseForTask(selectedTaskId);
+  const ref = foundPhase ? foundPhase.tasks.findIndex(t => t.id === selectedTaskId) : -1;
   if (!foundPhase) { openAddTaskModal(); return; }
-  _insertAfter = { phaseId: foundPhase.id, afterIdx: foundIdx };
+  _insertAfter = { phaseId: foundPhase.id, afterIdx: ref >= 0 ? ref : foundPhase.tasks.length - 1 };
   openAddTaskModal(foundPhase.id);
 }
 
@@ -5689,15 +5807,22 @@ function getSettings() {
 ═══════════════════════════════════════════════════ */
 function openDepEditor(toTask, predIndex) {
   const pred = toTask.predecessors[predIndex];
-  const predTask = findTask(pred.taskId);
-  const predWBS = (() => {
-    let w = '';
-    project.phases.forEach((ph, pi) => ph.tasks.forEach((t, ti) => { if (t.id === pred.taskId) w = getWBSNum(pi, ti); }));
-    return w;
-  })();
+
+  let predLabel = '';
+  let predName  = '';
+  if (pred.phaseId) {
+    const pi = project.phases.findIndex(ph => ph.id === pred.phaseId);
+    predLabel = pi >= 0 ? 'F' + (pi + 1) : '?';
+    predName  = pi >= 0 ? 'Fáze ' + (pi + 1) + ': ' + project.phases[pi].name : 'Neznámá fáze';
+  } else {
+    const predTask = findTask(pred.taskId);
+    getAllTasksFlat().forEach((t, i) => { if (t.id === pred.taskId) predLabel = String(i + 1); });
+    predName = predTask?.name || '';
+  }
+
   const toWBS = (() => {
     let w = '';
-    project.phases.forEach((ph, pi) => ph.tasks.forEach((t, ti) => { if (t.id === toTask.id) w = getWBSNum(pi, ti); }));
+    getAllTasksFlat().forEach((t, i) => { if (t.id === toTask.id) w = String(i + 1); });
     return w;
   })();
 
@@ -5708,7 +5833,7 @@ function openDepEditor(toTask, predIndex) {
   openModal(`
     <div class="modal" style="max-width:360px;" onclick="event.stopPropagation()">
       <div class="modal-header">
-        <span class="modal-title">Vazba: úkol ${predWBS} → ${toWBS}</span>
+        <span class="modal-title">Vazba: ${escHtml(predLabel)} → ${toWBS}</span>
         <button class="modal-close" onclick="closeModal()">×</button>
       </div>
       <div class="modal-body" style="display:flex;flex-direction:column;gap:14px;">
@@ -5723,7 +5848,7 @@ function openDepEditor(toTask, predIndex) {
           <input id="dep-lag-inp" type="number" value="${pred.lag||0}" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:10px;background:var(--bg-card);color:var(--text);font-size:14px;font-family:inherit;">
         </div>
         <div style="font-size:12px;color:var(--text-muted);">
-          <strong>${escHtml(predTask?.name||'')}</strong> → <strong>${escHtml(toTask.name)}</strong>
+          <strong>${escHtml(predName)}</strong> → <strong>${escHtml(toTask.name)}</strong>
         </div>
       </div>
       <div class="modal-footer">
@@ -5994,12 +6119,103 @@ function loadTemplate(key, projectName, startDateStr) {
 /* ═══════════════════════════════════════════════════
    DATA OPERATIONS
 ═══════════════════════════════════════════════════ */
+// Recursively find a task by id (searches phase.tasks and all children)
 function findTask(taskId) {
+  function search(tasks) {
+    for (const t of tasks) {
+      if (t.id === taskId) return t;
+      if (t.children) { const r = search(t.children); if (r) return r; }
+    }
+    return null;
+  }
   for (const ph of project.phases) {
-    const t = ph.tasks.find(t => t.id === taskId);
-    if (t) return t;
+    const r = search(ph.tasks || []);
+    if (r) return r;
   }
   return null;
+}
+
+// Get all leaf tasks (non-summary) in a flat array
+function getAllTasks() {
+  const out = [];
+  function collect(tasks) {
+    for (const t of tasks) {
+      if (t.type === 'summary') collect(t.children || []);
+      else out.push(t);
+    }
+  }
+  project.phases.forEach(ph => collect(ph.tasks || []));
+  return out;
+}
+
+// Get all tasks flat including summary tasks themselves
+function getAllTasksFlat() {
+  const out = [];
+  function collect(tasks) {
+    for (const t of tasks) {
+      out.push(t);
+      if (t.children) collect(t.children);
+    }
+  }
+  project.phases.forEach(ph => collect(ph.tasks || []));
+  return out;
+}
+
+// Compute summary task dates from children (recursive)
+function computeSummaryDates(task) {
+  if (task.type !== 'summary' || !task.children || !task.children.length) return;
+  task.children.forEach(c => { if (c.type === 'summary') computeSummaryDates(c); });
+  const starts = task.children.map(c => c.startDate).filter(Boolean);
+  const ends   = task.children.map(c => c.endDate).filter(Boolean);
+  task.startDate = starts.length ? starts.reduce((a,b) => a < b ? a : b) : null;
+  task.endDate   = ends.length   ? ends.reduce((a,b)   => a > b ? a : b) : null;
+}
+
+// Find parent container (phase.tasks array or summary task children array) of a task
+function findParent(taskId) {
+  function search(tasks, parent) {
+    for (let i = 0; i < tasks.length; i++) {
+      if (tasks[i].id === taskId) return { container: tasks, parent, index: i };
+      if (tasks[i].children) {
+        const r = search(tasks[i].children, tasks[i]);
+        if (r) return r;
+      }
+    }
+    return null;
+  }
+  for (const ph of project.phases) {
+    const r = search(ph.tasks || [], ph);
+    if (r) return r;
+  }
+  return null;
+}
+
+// Find the top-level phase that contains a task (at any nesting depth)
+function findPhaseForTask(taskId) {
+  for (const ph of project.phases) {
+    function search(tasks) {
+      for (const t of tasks) {
+        if (t.id === taskId) return true;
+        if (t.children && search(t.children)) return true;
+      }
+      return false;
+    }
+    if (search(ph.tasks || [])) return ph;
+  }
+  return null;
+}
+
+// Get all leaf tasks from a phase (recursive, skips summary tasks)
+function getPhaseLeafTasks(phase) {
+  const out = [];
+  function collect(tasks) {
+    for (const t of tasks) {
+      if (t.type === 'summary') collect(t.children || []);
+      else out.push(t);
+    }
+  }
+  collect(phase.tasks || []);
+  return out;
 }
 
 function selectTask(taskId) {
@@ -6043,7 +6259,12 @@ function deleteSelectedTasks() {
   if (!ids.length) return;
   const msg = ids.length === 1 ? 'Smazat tento úkol?' : `Smazat ${ids.length} úkolů?`;
   if (!confirm(msg)) return;
-  ids.forEach(id => { project.phases.forEach(ph => { ph.tasks = ph.tasks.filter(t => t.id !== id); }); });
+  // Delete each task individually (findParent called fresh each time since indices shift after splice)
+  ids.forEach(id => {
+    const ref = findParent(id);
+    if (ref) ref.container.splice(ref.index, 1);
+    else project.phases.forEach(ph => { ph.tasks = ph.tasks.filter(t => t.id !== id); });
+  });
   selectedTaskIds.clear();
   selectedTaskId = null;
   lastSelectedTaskId = null;
@@ -6084,7 +6305,7 @@ function deleteColumnData() {
   if (!(selectedColId in clearable)) { showToast('Tento sloupec nelze vymazat'); return; }
   const label = COLUMN_DEFS.find(c => c.id === selectedColId)?.label || selectedColId;
   if (!confirm(`Vymazat data sloupce „${label}" pro všechny úkoly?`)) return;
-  project.phases.forEach(ph => ph.tasks.forEach(task => { task[selectedColId] = clearable[selectedColId] instanceof Array ? [] : clearable[selectedColId]; }));
+  getAllTasksFlat().forEach(task => { task[selectedColId] = clearable[selectedColId] instanceof Array ? [] : clearable[selectedColId]; });
   saveProject(true); render();
   showToast(`Sloupec „${label}" vymazán`);
 }
@@ -6098,8 +6319,7 @@ function getAdjacentEditableCol(fromColId, dir) {
 }
 
 function getAdjacentTaskId(taskId, dir) {
-  const all = [];
-  project.phases.forEach(ph => ph.tasks.forEach(t => all.push(t)));
+  const all = getAllTasksFlat();
   const idx = all.findIndex(t => t.id === taskId);
   return idx < 0 ? null : (all[idx + dir]?.id ?? null);
 }
@@ -6134,9 +6354,15 @@ function deletePhase(phaseId) {
 
 function deleteTask(taskId) {
   if (!confirm('Smazat tento úkol?')) return;
-  project.phases.forEach(ph => {
-    ph.tasks = ph.tasks.filter(t => t.id !== taskId);
-  });
+  const ref = findParent(taskId);
+  if (ref) {
+    ref.container.splice(ref.index, 1);
+  } else {
+    // Fallback for top-level tasks
+    project.phases.forEach(ph => { ph.tasks = ph.tasks.filter(t => t.id !== taskId); });
+  }
+  if (selectedTaskId === taskId) { selectedTaskId = null; }
+  selectedTaskIds.delete(taskId);
   saveProject(true);
   render();
 }
@@ -6338,7 +6564,8 @@ function escHtml(s) {
 }
 
 function getPhaseDates(phase) {
-  const dates = phase.tasks.filter(t=>t.startDate).map(t => ({ s: new Date(t.startDate), e: new Date(t.endDate||t.startDate) }));
+  const leafTasks = getPhaseLeafTasks(phase);
+  const dates = leafTasks.filter(t=>t.startDate).map(t => ({ s: new Date(t.startDate), e: new Date(t.endDate||t.startDate) }));
   if (!dates.length) return { start: '—', end: '—' };
   const s = new Date(Math.min(...dates.map(d=>d.s.getTime())));
   const e = new Date(Math.max(...dates.map(d=>d.e.getTime())));
@@ -6346,17 +6573,18 @@ function getPhaseDates(phase) {
 }
 
 function getPhaseDatesRaw(phase) {
-  const dates = phase.tasks.filter(t=>t.startDate).map(t => ({ s: new Date(t.startDate), e: new Date(t.endDate||t.startDate) }));
+  const leafTasks = getPhaseLeafTasks(phase);
+  const dates = leafTasks.filter(t=>t.startDate).map(t => ({ s: new Date(t.startDate), e: new Date(t.endDate||t.startDate) }));
   if (!dates.length) return { start: null, end: null };
   return { start: new Date(Math.min(...dates.map(d=>d.s.getTime()))), end: new Date(Math.max(...dates.map(d=>d.e.getTime()))) };
 }
 
 function getPhaseBudget(phase) {
-  return phase.tasks.reduce((s,t) => s + (t.budget||0), 0);
+  return getPhaseLeafTasks(phase).reduce((s,t) => s + (t.budget||0), 0);
 }
 
 function getPhaseProgress(phase) {
-  const tasks = phase.tasks.filter(t => t.type !== 'milestone');
+  const tasks = getPhaseLeafTasks(phase).filter(t => t.type !== 'milestone');
   if (!tasks.length) return 0;
   return Math.round(tasks.reduce((s,t) => s + (t.progress||0), 0) / tasks.length);
 }
@@ -6666,24 +6894,31 @@ function initSplitter() {
 function buildPredsList(taskId) {
   const task = findTask(taskId);
   if (!task) return '';
-  const allTasks = [];
-  project.phases.forEach((ph, pi) => ph.tasks.forEach((t, ti) => {
-    if (t.id !== taskId) allTasks.push({ id: t.id, label: getWBSNum(pi, ti) + ' ' + t.name });
-  }));
+  // Build dropdown options: phases first (value="phase:id"), then tasks
+  const options = [];
+  project.phases.forEach((ph, pi) => {
+    options.push({ value: 'phase:' + ph.id, label: '⬛ Fáze ' + (pi + 1) + ': ' + ph.name });
+  });
+  getAllTasks().forEach((t, i) => {
+    if (t.id !== taskId) options.push({ value: t.id, label: (i + 1) + ' ' + t.name });
+  });
   const preds = task.predecessors || [];
   return `
     <div id="pred-edit-list" style="display:flex;flex-direction:column;gap:4px;margin-bottom:8px;">
-      ${preds.map((p, i) => `
+      ${preds.map((p, i) => {
+        const currentVal = p.phaseId ? 'phase:' + p.phaseId : (p.taskId || '');
+        return `
         <div class="pred-edit-row" style="display:flex;gap:4px;align-items:center;">
           <select class="form-select" style="flex:1;font-size:11px;" data-pred-idx="${i}" data-field="taskId">
-            ${allTasks.map(t => `<option value="${t.id}" ${t.id===p.taskId?'selected':''}>${escHtml(t.label)}</option>`).join('')}
+            ${options.map(opt => `<option value="${escHtml(opt.value)}" ${opt.value===currentVal?'selected':''}>${escHtml(opt.label)}</option>`).join('')}
           </select>
           <select class="form-select" style="width:56px;font-size:11px;" data-pred-idx="${i}" data-field="type">
-            ${['FS','FF','SS','SF'].map(tp => `<option ${tp===p.type?'selected':''}>${tp}</option>`).join('')}
+            ${['FS','FF','SS','SF'].map(tp => `<option ${tp===(p.type||'FS')?'selected':''}>${tp}</option>`).join('')}
           </select>
           <input class="form-input" type="number" style="width:52px;font-size:11px;" placeholder="Lag" value="${p.lag||0}" data-pred-idx="${i}" data-field="lag">
           <button class="row-action-btn danger" style="width:22px;height:22px;flex-shrink:0;" onclick="removePredRow(${i},'${taskId}')">×</button>
-        </div>`).join('')}
+        </div>`;
+      }).join('')}
     </div>
     <button class="btn btn-ghost" style="font-size:10px;" onclick="addPredRow('${taskId}')">+ Přidat předchůdce</button>`;
 }
@@ -6692,10 +6927,9 @@ function addPredRow(taskId) {
   const task = findTask(taskId);
   if (!task) return;
   if (!task.predecessors) task.predecessors = [];
-  const allTasks = [];
-  project.phases.forEach((ph, pi) => ph.tasks.forEach((t, ti) => { if (t.id !== taskId) allTasks.push(t.id); }));
-  if (allTasks.length) task.predecessors.push({ taskId: allTasks[0], type: 'FS', lag: 0 });
-  // re-render pred section
+  const allTasks = getAllTasks().filter(t => t.id !== taskId);
+  if (allTasks.length) task.predecessors.push({ taskId: allTasks[0].id, type: 'FS', lag: 0 });
+  else if (project.phases.length) task.predecessors.push({ phaseId: project.phases[0].id, type: 'FS', lag: 0 });
   const section = document.getElementById('pred-section');
   if (section) section.innerHTML = buildPredsList(taskId);
 }
@@ -6713,13 +6947,163 @@ function collectPreds(taskId) {
   if (!task) return;
   const rows = document.querySelectorAll('#pred-edit-list .pred-edit-row');
   const preds = [];
-  rows.forEach((row, i) => {
-    const taskIdSel = row.querySelector('[data-field="taskId"]')?.value;
+  rows.forEach(row => {
+    const sel  = row.querySelector('[data-field="taskId"]')?.value;
     const type = row.querySelector('[data-field="type"]')?.value || 'FS';
-    const lag = parseInt(row.querySelector('[data-field="lag"]')?.value) || 0;
-    if (taskIdSel) preds.push({ taskId: taskIdSel, type, lag });
+    const lag  = parseInt(row.querySelector('[data-field="lag"]')?.value) || 0;
+    if (!sel) return;
+    if (sel.startsWith('phase:')) preds.push({ phaseId: sel.slice(6), type, lag });
+    else preds.push({ taskId: sel, type, lag });
   });
   task.predecessors = preds;
+}
+
+/* ═══════════════════════════════════════════════════
+   CONTEXT MENU
+═══════════════════════════════════════════════════ */
+function showContextMenu(x, y, items) {
+  let m = document.getElementById('ctx-menu');
+  if (!m) { m = document.createElement('div'); m.id = 'ctx-menu'; document.body.appendChild(m); }
+  m.style.cssText = `position:fixed;display:block;left:${x}px;top:${y}px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;box-shadow:var(--shadow-lg);z-index:2000;min-width:200px;padding:4px 0;font-size:12px;`;
+  m.innerHTML = items.map(item => {
+    if (item === '-') return '<div class="ctx-separator"></div>';
+    return `<div class="ctx-item${item.danger ? ' ctx-danger' : ''}" data-fn="${escHtml(item.fn)}">${escHtml(item.label)}</div>`;
+  }).join('');
+  m.querySelectorAll('.ctx-item').forEach(el => {
+    el.addEventListener('click', () => {
+      closeContextMenu();
+      const fn = el.dataset.fn;
+      if (fn) { try { new Function(fn)(); } catch(e) { console.error(e); } }
+    });
+  });
+  // Adjust position if offscreen
+  const rect = m.getBoundingClientRect();
+  if (rect.right > window.innerWidth) m.style.left = (x - rect.width) + 'px';
+  if (rect.bottom > window.innerHeight) m.style.top = (y - rect.height) + 'px';
+  // Close on outside click
+  setTimeout(() => document.addEventListener('mousedown', closeContextMenu, { once: true }), 0);
+}
+
+function closeContextMenu() {
+  const m = document.getElementById('ctx-menu');
+  if (m) m.style.display = 'none';
+}
+
+function showTaskContextMenu(x, y, task) {
+  const isSummary = task.type === 'summary';
+  const selCount = selectedTaskIds.size;
+  const items = [];
+  if (selCount > 0) {
+    items.push({ label: `Souhrnný úkol z výběru (${selCount})`, fn: 'createSummaryFromSelection()' });
+    items.push('-');
+  }
+  items.push({ label: 'Přidat pod-úkol', fn: `addSubTask('${task.id}')` });
+  if (isSummary) {
+    items.push({ label: task.collapsed ? 'Rozbalit' : 'Sbalit', fn: `toggleSummaryCollapse('${task.id}')` });
+    items.push({ label: 'Rozbalit souhrnný úkol (na úroveň výše)', fn: `ungroupSummary('${task.id}')` });
+  }
+  items.push('-');
+  items.push({ label: '↑ Posunout nahoru', fn: `moveTaskUpDown('${task.id}', -1)` });
+  items.push({ label: '↓ Posunout dolů', fn: `moveTaskUpDown('${task.id}', 1)` });
+  items.push('-');
+  items.push({ label: 'Smazat úkol', fn: `deleteTask('${task.id}')`, danger: true });
+  showContextMenu(x, y, items);
+}
+
+/* ═══════════════════════════════════════════════════
+   SUMMARY TASK OPERATIONS
+═══════════════════════════════════════════════════ */
+function createSummaryFromSelection() {
+  const ids = [...selectedTaskIds];
+  if (ids.length < 1) { showToast('Vyberte alespoň 1 úkol přes Shift+klik nebo Ctrl+klik'); return; }
+
+  // Find all selected tasks and verify they are in the same container
+  const refs = ids.map(id => findParent(id)).filter(Boolean);
+  if (!refs.length) return;
+  const container = refs[0].container;
+  if (!refs.every(r => r.container === container)) {
+    showToast('Všechny úkoly musí být ve stejné fázi/úrovni');
+    return;
+  }
+
+  // Get indices sorted ascending
+  const indices = refs.map(r => r.index).sort((a,b) => a-b);
+  const firstIdx = indices[0];
+  const selectedTasks = indices.map(i => container[i]);
+
+  // Remove from container (highest index first to preserve lower indices)
+  [...indices].reverse().forEach(i => container.splice(i, 1));
+
+  // Create summary task wrapping the selected tasks
+  const summaryId = 'st_' + (project.nextId++);
+  const summary = {
+    id: summaryId,
+    name: 'Souhrnný úkol',
+    type: 'summary',
+    collapsed: false,
+    children: selectedTasks,
+  };
+  computeSummaryDates(summary);
+
+  // Insert at first selected position
+  container.splice(firstIdx, 0, summary);
+
+  selectedTaskIds.clear();
+  selectedTaskId = null;
+  saveProject(true);
+  render();
+  showToast('Souhrnný úkol vytvořen — dvojklik na název pro přejmenování');
+}
+
+function addSubTask(parentId) {
+  const parent = findTask(parentId);
+  if (!parent) return;
+  // Convert to summary if not already
+  if (parent.type !== 'summary') {
+    parent.type = 'summary';
+    if (!parent.children) parent.children = [];
+  }
+  const newTask = {
+    id: 't_' + (project.nextId++),
+    name: 'Nový úkol',
+    startDate: parent.startDate || null,
+    endDate: parent.endDate || null,
+    progress: 0,
+    predecessors: [],
+  };
+  parent.children.push(newTask);
+  saveProject(true);
+  render();
+}
+
+function toggleSummaryCollapse(taskId) {
+  const task = findTask(taskId);
+  if (task) { task.collapsed = !task.collapsed; saveProject(true); render(); }
+}
+
+function ungroupSummary(taskId) {
+  const ref = findParent(taskId);
+  if (!ref) return;
+  const summary = ref.container[ref.index];
+  if (summary.type !== 'summary') return;
+  // Replace summary with its children in the parent container
+  ref.container.splice(ref.index, 1, ...(summary.children || []));
+  saveProject(true);
+  render();
+  showToast('Souhrnný úkol rozbalen');
+}
+
+function moveTaskUpDown(taskId, dir) {
+  const ref = findParent(taskId);
+  if (!ref) return;
+  const newIdx = ref.index + dir;
+  if (newIdx < 0 || newIdx >= ref.container.length) return;
+  const [task] = ref.container.splice(ref.index, 1);
+  ref.container.splice(newIdx, 0, task);
+  // Recompute summary dates after move
+  project.phases.forEach(ph => ph.tasks.forEach(t => { if (t.type === 'summary') computeSummaryDates(t); }));
+  saveProject(true);
+  render();
 }
 
 /* ═══════════════════════════════════════════════════
@@ -6788,22 +7172,18 @@ function initRowDrag() {
       const { taskId: fromId } = state;
       const { taskId: refId, before } = state.dropPos;
 
-      let srcTask = null, srcPhase = null;
-      project.phases.forEach(ph => {
-        const i = ph.tasks.findIndex(t => t.id === fromId);
-        if (i >= 0) { [srcTask] = ph.tasks.splice(i, 1); srcPhase = ph; }
-      });
-
-      if (srcTask) {
-        let inserted = false;
-        project.phases.forEach(ph => {
-          const i = ph.tasks.findIndex(t => t.id === refId);
-          if (i >= 0) {
-            ph.tasks.splice(before ? i : i + 1, 0, srcTask);
-            inserted = true;
-          }
-        });
-        if (!inserted) srcPhase.tasks.push(srcTask);
+      const srcRef = findParent(fromId);
+      if (srcRef) {
+        const [srcTask] = srcRef.container.splice(srcRef.index, 1);
+        const dstRef = findParent(refId);
+        if (dstRef) {
+          dstRef.container.splice(before ? dstRef.index : dstRef.index + 1, 0, srcTask);
+        } else {
+          // Fallback: push back to source container
+          srcRef.container.push(srcTask);
+        }
+        // Recompute summary dates after move
+        project.phases.forEach(ph => ph.tasks.forEach(t => { if (t.type === 'summary') computeSummaryDates(t); }));
         saveProject(true);
         render();
       }
@@ -6819,7 +7199,7 @@ function initRowDrag() {
 function openTaskDetailPanel(taskId) {
   const task = findTask(taskId);
   if (!task) return;
-  const phase = project.phases.find(ph => ph.tasks.some(t => t.id === taskId));
+  const phase = findPhaseForTask(taskId);
   const pi = project.phases.indexOf(phase);
   const color = getTaskColor(task, phase, pi);
   const onCP = getSettings().showCriticalPath && getCriticalPath().has(taskId);
@@ -7152,6 +7532,36 @@ if ('serviceWorker' in navigator) {
 }
 
 /* ═══════════════════════════════════════════════════
+   ARROW HOVER HIGHLIGHTING
+═══════════════════════════════════════════════════ */
+function initArrowHighlighting() {
+  const canvas = document.getElementById('gantt-canvas-wrap');
+  let active = null;
+  canvas.addEventListener('mouseover', (e) => {
+    const bar = e.target.closest('.gantt-bar-wrap');
+    if (!bar) return;
+    const tid = bar.dataset.taskId;
+    if (tid === active) return;
+    active = tid;
+    const svg = document.getElementById('gantt-dep-svg');
+    if (!svg) return;
+    svg.querySelectorAll('g[data-from-id]').forEach(g => {
+      const hit = g.dataset.fromId === tid || g.dataset.toId === tid;
+      g.setAttribute('opacity', hit ? '1' : '0.1');
+    });
+  });
+  canvas.addEventListener('mouseout', (e) => {
+    const bar = e.target.closest('.gantt-bar-wrap');
+    if (!bar) return;
+    if (e.relatedTarget?.closest('.gantt-bar-wrap')) return;
+    active = null;
+    const svg = document.getElementById('gantt-dep-svg');
+    if (!svg) return;
+    svg.querySelectorAll('g[data-from-id]').forEach(g => g.setAttribute('opacity', '0.4'));
+  });
+}
+
+/* ═══════════════════════════════════════════════════
    START
 ═══════════════════════════════════════════════════ */
 initDepDraw();
@@ -7159,6 +7569,7 @@ initFillHandle();
 initRowDrag();
 initSplitter();
 initPinchZoom();
+initArrowHighlighting();
 init();
 </script>
 
