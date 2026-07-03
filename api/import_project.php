@@ -14,10 +14,102 @@
  * Hledá tabulku projektů v tomto pořadí: plans_projects, plan_projects, noc_projects,
  * nebo jakoukoliv tabulku obsahující slovo 'project' (kromě time_*).
  */
-header('Content-Type: application/json; charset=utf-8');
 require_once __DIR__ . '/config.php';
 
 $userId    = requireAuth();
+$action    = $_GET['action'] ?? 'ui';
+
+// ── UI stránka s tlačítkem ────────────────────────────────────────────────────
+if ($action === 'ui' || $action === 'do_import') {
+    header('Content-Type: text/html; charset=utf-8');
+    $projectId = (int)($_GET['project_id'] ?? 15);
+    $msg = '';
+    $success = false;
+
+    if ($action === 'do_import') {
+        // Spustit import interně
+        ob_start();
+        $_GET['action'] = 'import';
+        $_SERVER['REQUEST_METHOD'] = 'POST';
+        // Zavolej import logiku přes include a zachyť výstup
+        // Jednodušší: přímý import zde
+        $projectTable = null;
+        foreach (['plan_projects','plans_projects','noc_projects'] as $t) {
+            if ((bool)$pdo->query("SHOW TABLES LIKE " . $pdo->quote($t))->fetch()) { $projectTable = $t; break; }
+        }
+        if (!$projectTable) {
+            $msg = 'Tabulka projektů nenalezena.';
+        } else {
+            $src = $pdo->prepare("SELECT * FROM `$projectTable` WHERE id = ?")->execute([$projectId]) ? null : null;
+            $stmt = $pdo->prepare("SELECT * FROM `$projectTable` WHERE id = ?");
+            $stmt->execute([$projectId]);
+            $src = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$src) {
+                $msg = "Projekt #$projectId nenalezen.";
+            } else {
+                $name = trim($src['name'] ?? '') ?: "Projekt #$projectId";
+                $dup = $pdo->prepare("SELECT id FROM time_projects WHERE name = ?");
+                $dup->execute([$name]);
+                if ($dup->fetch()) {
+                    $msg = "Projekt \"$name\" v Time již existuje!";
+                } else {
+                    try {
+                        $pdo->beginTransaction();
+                        $pdo->prepare("INSERT INTO time_projects (name, invite_code, created_by) VALUES (?,?,?)")
+                            ->execute([$name, bin2hex(random_bytes(6)), $userId]);
+                        $newId = (int)$pdo->lastInsertId();
+                        $pdo->prepare("INSERT INTO time_project_members (project_id, user_id, role) VALUES (?,?,'owner')")
+                            ->execute([$newId, $userId]);
+                        $pdo->prepare("INSERT INTO time_schedules (project_id, data, updated_by) VALUES (?,?,?)")
+                            ->execute([$newId, json_encode(['name'=>$name,'nextId'=>1,'phases'=>[]], JSON_UNESCAPED_UNICODE), $userId]);
+                        $pdo->commit();
+                        $msg = "✅ Projekt \"$name\" byl importován (ID $newId). Nyní přejděte do aplikace Time a projekt otevřete.";
+                        $success = true;
+                    } catch (Exception $e) {
+                        $pdo->rollBack();
+                        $msg = 'Chyba: ' . $e->getMessage();
+                    }
+                }
+            }
+        }
+    }
+
+    echo '<!DOCTYPE html><html lang="cs"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Import projektu</title>
+<style>
+  body{font-family:sans-serif;max-width:480px;margin:60px auto;padding:0 20px;background:#f5f5f5;}
+  .card{background:#fff;border-radius:12px;padding:28px;box-shadow:0 2px 12px rgba(0,0,0,0.1);}
+  h2{margin:0 0 8px;font-size:18px;}
+  p{color:#666;font-size:14px;margin:0 0 20px;}
+  .btn{display:block;width:100%;padding:14px;background:#4A5340;color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:700;cursor:pointer;text-align:center;text-decoration:none;}
+  .btn:hover{background:#3a4230;}
+  .msg{margin-top:16px;padding:12px 16px;border-radius:8px;font-size:14px;}
+  .msg.ok{background:#eafaf1;color:#1e8449;border:1px solid #a9dfbf;}
+  .msg.err{background:#fdf2f2;color:#c0392b;border:1px solid #f5b7b1;}
+  .back{display:block;text-align:center;margin-top:16px;color:#4A5340;font-size:13px;}
+</style></head><body>
+<div class="card">
+  <h2>Import projektu do Time</h2>
+  <p>Kliknutím importujete projekt <strong>NOV Bešta</strong> z plan_projects&nbsp;(ID&nbsp;15) do aplikace Time.</p>';
+
+    if ($msg) {
+        $cls = $success ? 'ok' : 'err';
+        echo '<div class="msg ' . $cls . '">' . htmlspecialchars($msg) . '</div>';
+        if ($success) {
+            echo '<a href="/" class="btn" style="margin-top:16px;">Otevřít Time →</a>';
+        } else {
+            echo '<a href="?action=do_import&project_id=' . $projectId . '" class="btn" style="margin-top:16px;">Zkusit znovu</a>';
+        }
+    } else {
+        echo '<a href="?action=do_import&project_id=' . $projectId . '" class="btn">Importovat NOV Bešta</a>';
+    }
+
+    echo '<a href="/" class="back">← Zpět do Time</a></div></body></html>';
+    exit;
+}
+
+header('Content-Type: application/json; charset=utf-8');
 $action    = $_GET['action']     ?? 'inspect';
 $sourceId  = (int)($_GET['project_id'] ?? 15);
 
