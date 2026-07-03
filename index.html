@@ -4344,9 +4344,11 @@ function computeConstrainedStart(task) {
     if (pred.phaseId) {
       // Phase predecessor: constrain against the aggregate start/end of all tasks in the phase
       const ph = project.phases.find(p => p.id === pred.phaseId);
-      if (!ph || !ph.tasks.length) return;
-      const phEnd   = ph.tasks.filter(t => t.endDate).map(t => t.endDate).reduce((a,b) => a > b ? a : b, null);
-      const phStart = ph.tasks.filter(t => t.startDate).map(t => t.startDate).reduce((a,b) => a < b ? a : b, null);
+      if (!ph) return;
+      const phLeafTasks = getPhaseLeafTasks(ph);
+      if (!phLeafTasks.length) return;
+      const phEnd   = phLeafTasks.filter(t => t.endDate).map(t => t.endDate).reduce((a,b) => a > b ? a : b, null);
+      const phStart = phLeafTasks.filter(t => t.startDate).map(t => t.startDate).reduce((a,b) => a < b ? a : b, null);
       if      (type === 'FS' && phEnd)   s = addDays(phEnd,   lag + 1);
       else if (type === 'SS' && phStart) s = addDays(phStart, lag);
       else if (type === 'FF' && phEnd)   s = addDays(phEnd,   lag - dur);
@@ -4685,12 +4687,11 @@ function renderDependencies(minD) {
   svg.appendChild(defs);
 
   getAllTasksFlat().forEach(task => {
-    {
-      if (!task.predecessors && task.dependsOn) {
-        task.predecessors = [{ taskId: task.dependsOn, type: 'FS', lag: 0 }];
-        delete task.dependsOn;
-      }
-      (task.predecessors || []).forEach((pred, predIndex) => {
+    if (!task.predecessors && task.dependsOn) {
+      task.predecessors = [{ taskId: task.dependsOn, type: 'FS', lag: 0 }];
+      delete task.dependsOn;
+    }
+    (task.predecessors || []).forEach((pred, predIndex) => {
         if (pred.phaseId) return;  // phase predecessors: no single Gantt bar to draw from
         const predTask = findTask(pred.taskId);
         if (!predTask) return;
@@ -4797,9 +4798,9 @@ function renderDependencies(minD) {
 
         svg.appendChild(g);
       });
-    });
   });
 }
+// end renderDependencies
 
 function getTaskRowY(taskId) {
   const row = document.querySelector(`#gantt-rows [data-task-id="${taskId}"]`);
@@ -4836,7 +4837,7 @@ function buildCashflowData() {
     if (!phaseData[phase.id]) {
       phaseData[phase.id] = { name: phase.name, monthly: new Array(months.length).fill(0), color: PHASE_COLORS[pi % PHASE_COLORS.length] };
     }
-    phase.tasks.forEach(task => {
+    getPhaseLeafTasks(phase).forEach(task => {
       if (!task.startDate || !task.endDate || task.type === 'milestone') return;
       const budget = task.budget || 0;
       if (budget === 0) return;
@@ -5815,13 +5816,13 @@ function openDepEditor(toTask, predIndex) {
     predName  = pi >= 0 ? 'Fáze ' + (pi + 1) + ': ' + project.phases[pi].name : 'Neznámá fáze';
   } else {
     const predTask = findTask(pred.taskId);
-    project.phases.forEach((ph, pi) => ph.tasks.forEach((t, ti) => { if (t.id === pred.taskId) predLabel = getWBSNum(pi, ti); }));
+    getAllTasksFlat().forEach((t, i) => { if (t.id === pred.taskId) predLabel = String(i + 1); });
     predName = predTask?.name || '';
   }
 
   const toWBS = (() => {
     let w = '';
-    project.phases.forEach((ph, pi) => ph.tasks.forEach((t, ti) => { if (t.id === toTask.id) w = getWBSNum(pi, ti); }));
+    getAllTasksFlat().forEach((t, i) => { if (t.id === toTask.id) w = String(i + 1); });
     return w;
   })();
 
