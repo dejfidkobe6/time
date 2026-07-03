@@ -1,14 +1,18 @@
 <?php
 /**
- * Import projektu z plans_projects do time_ tabulek.
+ * Import projektu z plan_projects do time_ tabulek.
  * Spustit jednorázově, pak smazat.
  *
  * !! BEZPEČNOST: tento skript POUZE ČTE z plans_* tabulek (jen SELECT) !!
  * !! Nikdy NEUPRAVUJE ani NEMAŽE žádná data plans aplikace              !!
  * !! Zapisuje výhradně do: time_projects, time_project_members, time_schedules !!
  *
+ * GET  ?action=list_tables             — vypíše VŠECHNY tabulky v DB (pro diagnostiku)
  * GET  ?action=inspect&project_id=15  — zobrazí data projektu + dostupné task tabulky
  * POST ?action=import&project_id=15   — provede import (přidá se přihlášený uživatel jako owner)
+ *
+ * Hledá tabulku projektů v tomto pořadí: plans_projects, plan_projects, noc_projects,
+ * nebo jakoukoliv tabulku obsahující slovo 'project' (kromě time_*).
  */
 header('Content-Type: application/json; charset=utf-8');
 require_once __DIR__ . '/config.php';
@@ -16,6 +20,13 @@ require_once __DIR__ . '/config.php';
 $userId    = requireAuth();
 $action    = $_GET['action']     ?? 'inspect';
 $sourceId  = (int)($_GET['project_id'] ?? 15);
+
+// ── LIST TABLES ───────────────────────────────────────────────────────────────
+if ($action === 'list_tables') {
+    $rows = $pdo->query("SHOW TABLES")->fetchAll(PDO::FETCH_COLUMN);
+    echo json_encode(['ok' => true, 'tables' => $rows], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+    exit;
+}
 
 function tblExists(PDO $pdo, string $t): bool {
     return (bool)$pdo->query("SHOW TABLES LIKE " . $pdo->quote($t))->fetch();
@@ -31,24 +42,47 @@ function findCol(array $cols, array $candidates): ?string {
     return null;
 }
 
+// Finds the first existing project table from a list of known candidates
+function findProjectTable(PDO $pdo): ?string {
+    $candidates = ['plan_projects', 'plans_projects', 'noc_projects'];
+    foreach ($candidates as $t) {
+        if (tblExists($pdo, $t)) return $t;
+    }
+    // Also accept any table whose name contains 'project'
+    $all = $pdo->query("SHOW TABLES")->fetchAll(PDO::FETCH_COLUMN);
+    foreach ($all as $t) {
+        if (stripos($t, 'project') !== false && !str_starts_with($t, 'time_')) return $t;
+    }
+    return null;
+}
+
 // ── INSPECT ──────────────────────────────────────────────────────────────────
 if ($action === 'inspect') {
     $out = [];
 
-    if (!tblExists($pdo, 'plans_projects')) {
-        echo json_encode(['ok' => false, 'error' => 'Tabulka plans_projects neexistuje'], JSON_PRETTY_PRINT);
+    $projectTable = findProjectTable($pdo);
+    if (!$projectTable) {
+        // List all tables so the user can identify the right one
+        $all = $pdo->query("SHOW TABLES")->fetchAll(PDO::FETCH_COLUMN);
+        echo json_encode([
+            'ok'    => false,
+            'error' => 'Tabulka s projekty nenalezena (hledáno: plans_projects, plan_projects, noc_projects, *project*)',
+            'all_tables' => $all,
+        ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
         exit;
     }
+    $out['project_table_used'] = $projectTable;
 
-    $stmt = $pdo->prepare("SELECT * FROM `plans_projects` WHERE id = ?");
+    $stmt = $pdo->prepare("SELECT * FROM `$projectTable` WHERE id = ?");
     $stmt->execute([$sourceId]);
     $project = $stmt->fetch();
-    $out['plans_projects_row'] = $project;
+    $out['project_row'] = $project;
 
     // Zkontroluj potenciální task tabulky
     $taskCandidates = [
+        'plan_tasks', 'plan_items', 'plan_task', 'plan_phases',
         'plans_tasks', 'plans_items', 'plans_task', 'tasks',
-        'plans_phases', 'plans_columns', 'plans_cards',
+        'plan_columns', 'plan_cards', 'plans_phases', 'plans_columns',
     ];
     $found = [];
     foreach ($taskCandidates as $t) {
@@ -71,18 +105,24 @@ if ($action === 'inspect') {
 
 // ── IMPORT ────────────────────────────────────────────────────────────────────
 if ($action === 'import' && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (!tblExists($pdo, 'plans_projects')) {
+    $projectTable = findProjectTable($pdo);
+    if (!$projectTable) {
+        $all = $pdo->query("SHOW TABLES")->fetchAll(PDO::FETCH_COLUMN);
         http_response_code(404);
-        echo json_encode(['ok' => false, 'error' => 'Tabulka plans_projects neexistuje']);
+        echo json_encode([
+            'ok'    => false,
+            'error' => 'Tabulka s projekty nenalezena. Použij ?action=list_tables pro seznam všech tabulek.',
+            'all_tables' => $all,
+        ]);
         exit;
     }
 
-    $stmt = $pdo->prepare("SELECT * FROM `plans_projects` WHERE id = ?");
+    $stmt = $pdo->prepare("SELECT * FROM `$projectTable` WHERE id = ?");
     $stmt->execute([$sourceId]);
     $src = $stmt->fetch();
     if (!$src) {
         http_response_code(404);
-        echo json_encode(['ok' => false, 'error' => "plans_projects #$sourceId nenalezen"]);
+        echo json_encode(['ok' => false, 'error' => "$projectTable #$sourceId nenalezen"]);
         exit;
     }
 
@@ -104,7 +144,7 @@ if ($action === 'import' && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // Zkusíme plans_tasks (nejpravděpodobnější název)
     $taskTbl = null;
-    foreach (['plans_tasks', 'plans_items', 'tasks'] as $t) {
+    foreach (['plan_tasks', 'plan_items', 'plans_tasks', 'plans_items', 'tasks'] as $t) {
         if (tblExists($pdo, $t)) { $taskTbl = $t; break; }
     }
 
