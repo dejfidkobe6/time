@@ -2730,7 +2730,10 @@ function openProjectOverview() {
         </div>
       </div>
       <div class="modal-footer" style="justify-content:space-between;">
-        <button class="btn btn-danger" onclick="confirmDeleteProject()">Smazat projekt</button>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-danger" onclick="confirmDeleteProject()">Smazat</button>
+          <button class="btn btn-secondary" onclick="duplicateProject()" title="Vytvořit kopii projektu se všemi úkoly">Duplikovat</button>
+        </div>
         <div style="display:flex;gap:8px;">
           <button class="btn btn-secondary" onclick="closeModal();document.getElementById('project-overlay').classList.remove('hidden');showProjectSelector()">Změnit projekt</button>
           <button class="btn btn-primary" onclick="saveProjectOverview()">Uložit</button>
@@ -2786,6 +2789,31 @@ async function deleteProject() {
       alert(data.error || 'Chyba při mazání projektu');
     }
   } catch (e) { alert('Chyba: ' + e.message); }
+}
+
+async function duplicateProject() {
+  if (!currentProjectId) return;
+  const btn = document.querySelector('[onclick="duplicateProject()"]');
+  if (btn) { btn.disabled = true; btn.textContent = 'Kopírování…'; }
+  try {
+    const res = await fetch('/api/projects.php?action=duplicate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project_id: currentProjectId }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      closeModal();
+      // Switch to the new duplicated project
+      await selectProject(data.project.id, data.project.name);
+    } else {
+      alert(data.error || 'Chyba při duplikování projektu');
+      if (btn) { btn.disabled = false; btn.textContent = 'Duplikovat'; }
+    }
+  } catch (e) {
+    alert('Chyba: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = 'Duplikovat'; }
+  }
 }
 
 /* ═══════════════════════════════════════════════════
