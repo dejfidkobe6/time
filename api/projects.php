@@ -261,5 +261,68 @@ if ($action === 'delete' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     exit;
 }
 
+// --- DUPLICATE ---
+if ($action === 'duplicate' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    $body      = json_decode(file_get_contents('php://input'), true) ?? [];
+    $projectId = (int)($body['project_id'] ?? 0);
+
+    requireProjectRole($projectId, 'viewer');
+
+    try {
+        $pdo->beginTransaction();
+
+        // Load source project
+        $src = $pdo->prepare("SELECT name, description, bg_color FROM time_projects WHERE id = ?");
+        $src->execute([$projectId]);
+        $srcRow = $src->fetch();
+        if (!$srcRow) {
+            $pdo->rollBack();
+            http_response_code(404);
+            echo json_encode(['ok' => false, 'error' => 'Zdrojový projekt nenalezen']);
+            exit;
+        }
+
+        // Load source schedule JSON
+        $sched = $pdo->prepare("SELECT data FROM time_schedules WHERE project_id = ?");
+        $sched->execute([$projectId]);
+        $schedRow = $sched->fetch();
+
+        // Create new project
+        $newName     = 'Kopie — ' . $srcRow['name'];
+        $inviteCode  = bin2hex(random_bytes(6));
+        $pdo->prepare(
+            "INSERT INTO time_projects (name, description, bg_color, invite_code, created_by) VALUES (?, ?, ?, ?, ?)"
+        )->execute([$newName, $srcRow['description'], $srcRow['bg_color'], $inviteCode, $userId]);
+        $newId = (int)$pdo->lastInsertId();
+
+        // Add current user as owner
+        $pdo->prepare(
+            "INSERT INTO time_project_members (project_id, user_id, role) VALUES (?, ?, 'owner')"
+        )->execute([$newId, $userId]);
+
+        // Copy schedule JSON (update project name inside JSON if present)
+        if ($schedRow && $schedRow['data']) {
+            $json = json_decode($schedRow['data'], true);
+            if (is_array($json)) {
+                $json['name'] = $newName;
+            }
+            $pdo->prepare(
+                "INSERT INTO time_schedules (project_id, data, updated_by) VALUES (?, ?, ?)"
+            )->execute([$newId, json_encode($json, JSON_UNESCAPED_UNICODE), $userId]);
+        }
+
+        $pdo->commit();
+        echo json_encode([
+            'ok'      => true,
+            'project' => ['id' => $newId, 'name' => $newName, 'role' => 'owner'],
+        ]);
+    } catch (Exception $e) {
+        $pdo->rollBack();
+        http_response_code(500);
+        echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
+    }
+    exit;
+}
+
 http_response_code(400);
 echo json_encode(['ok' => false, 'error' => 'Neznámá akce']);
