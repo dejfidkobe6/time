@@ -113,6 +113,44 @@ header('Content-Type: application/json; charset=utf-8');
 $action    = $_GET['action']     ?? 'inspect';
 $sourceId  = (int)($_GET['project_id'] ?? 15);
 
+// ── PEEK CANVAS DATA ──────────────────────────────────────────────────────────
+if ($action === 'peek_canvas') {
+    $projectId = (int)($_GET['project_id'] ?? 15);
+    $out = [];
+
+    foreach (['plan_canvas_data', 'plan_kd_data'] as $tbl) {
+        $cols = array_column($pdo->query("DESCRIBE `$tbl`")->fetchAll(PDO::FETCH_ASSOC), 'Field');
+        $out[$tbl]['columns'] = $cols;
+
+        // Najdi sloupec odkazující na projekt
+        $pkCol = null;
+        foreach (['project_id','plan_project_id','plan_id'] as $c) {
+            if (in_array($c, $cols)) { $pkCol = $c; break; }
+        }
+        $out[$tbl]['project_col'] = $pkCol;
+
+        if ($pkCol) {
+            $cnt = $pdo->prepare("SELECT COUNT(*) FROM `$tbl` WHERE `$pkCol` = ?");
+            $cnt->execute([$projectId]);
+            $out[$tbl]['rows_for_project'] = (int)$cnt->fetchColumn();
+
+            // Ukáž první řádek (bez velkých JSON dat — jen prvních 500 znaků)
+            $row = $pdo->prepare("SELECT * FROM `$tbl` WHERE `$pkCol` = ? LIMIT 1");
+            $row->execute([$projectId]);
+            $first = $row->fetch(PDO::FETCH_ASSOC);
+            if ($first) {
+                foreach ($first as $k => $v) {
+                    if (is_string($v) && strlen($v) > 500) $first[$k] = substr($v, 0, 500) . '…[zkráceno]';
+                }
+                $out[$tbl]['first_row_preview'] = $first;
+            }
+        }
+    }
+
+    echo json_encode(['ok' => true, 'project_id' => $projectId, 'data' => $out], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
 // ── LIST TABLES ───────────────────────────────────────────────────────────────
 if ($action === 'list_tables') {
     $rows = $pdo->query("SHOW TABLES")->fetchAll(PDO::FETCH_COLUMN);
