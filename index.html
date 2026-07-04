@@ -4770,32 +4770,43 @@ function initDepDraw() {
   const svg = document.getElementById('dep-draw-svg');
   const line = document.getElementById('dep-draw-line');
   let drawingFrom = null;
+  let _hoveredArrow = null;
 
-  document.addEventListener('mousedown', (e) => {
-    const dot = e.target.closest('.bar-connect-dot');
-    if (!dot) return;
-    e.preventDefault(); e.stopPropagation();
-    drawingFrom = dot.dataset.taskid;
-    const rect = dot.getBoundingClientRect();
-    svg.style.display = 'block';
-    line.setAttribute('x1', rect.left + rect.width/2);
-    line.setAttribute('y1', rect.top + rect.height/2);
-    line.setAttribute('x2', rect.left + rect.width/2);
-    line.setAttribute('y2', rect.top + rect.height/2);
-  });
+  // Walk elementsFromPoint (z-order) to find gantt-bar-wrap even if arrows/dots are on top
+  function findBarWrapAt(x, y) {
+    for (const el of document.elementsFromPoint(x, y)) {
+      if (el.classList && el.classList.contains('gantt-bar-wrap')) return el;
+      const bw = el.closest ? el.closest('.gantt-bar-wrap') : null;
+      if (bw) return bw;
+    }
+    return null;
+  }
 
-  document.addEventListener('mousemove', (e) => {
-    if (!drawingFrom) return;
-    line.setAttribute('x2', e.clientX);
-    line.setAttribute('y2', e.clientY);
-  });
+  // Highlight whichever dep arrow is under the pointer (gives orientation while dragging)
+  function highlightArrowAt(x, y) {
+    const el = document.elementFromPoint(x, y);
+    const g = el ? el.closest('#gantt-dep-svg g[data-from-id]') : null;
+    if (g === _hoveredArrow) return;
+    if (_hoveredArrow) _hoveredArrow.setAttribute('opacity', _hoveredArrow.dataset.baseOp || '0.4');
+    _hoveredArrow = g;
+    if (_hoveredArrow) {
+      if (!_hoveredArrow.dataset.baseOp) _hoveredArrow.dataset.baseOp = _hoveredArrow.getAttribute('opacity') || '0.4';
+      _hoveredArrow.setAttribute('opacity', '1');
+    }
+  }
 
-  document.addEventListener('mouseup', (e) => {
-    if (!drawingFrom) return;
+  function clearHighlight() {
+    if (_hoveredArrow) {
+      _hoveredArrow.setAttribute('opacity', _hoveredArrow.dataset.baseOp || '0.4');
+      _hoveredArrow = null;
+    }
+  }
+
+  function finishDep(x, y) {
     svg.style.display = 'none';
-    const target = e.target.closest('.gantt-bar-wrap');
+    clearHighlight();
+    const target = findBarWrapAt(x, y);
     if (target && target.dataset.taskId && target.dataset.taskId !== drawingFrom) {
-      // Drag FROM predecessor (finish) TO successor (start) → FS
       const toTask = findTask(target.dataset.taskId);
       if (toTask) {
         if (!toTask.predecessors) toTask.predecessors = [];
@@ -4804,26 +4815,51 @@ function initDepDraw() {
           enforceConstraints(toTask);
           cascadeSuccessors(toTask.id);
           saveProject(true); render();
-          showToast('Vazba FS vytvořena');
+          // Open dep editor immediately so user can tweak type/lag
+          const fresh = findTask(toTask.id);
+          if (fresh) openDepEditor(fresh, fresh.predecessors.length - 1);
         }
       }
     }
     drawingFrom = null;
+  }
+
+  // Mouse
+  document.addEventListener('mousedown', (e) => {
+    const dot = e.target.closest('.bar-connect-dot');
+    if (!dot) return;
+    e.preventDefault(); e.stopPropagation();
+    drawingFrom = dot.dataset.taskid;
+    const rect = dot.getBoundingClientRect();
+    const cx = rect.left + rect.width/2, cy = rect.top + rect.height/2;
+    svg.style.display = 'block';
+    line.setAttribute('x1', cx); line.setAttribute('y1', cy);
+    line.setAttribute('x2', cx); line.setAttribute('y2', cy);
   });
 
-  // Touch support for dependency drawing (mobile)
+  document.addEventListener('mousemove', (e) => {
+    if (!drawingFrom) return;
+    line.setAttribute('x2', e.clientX);
+    line.setAttribute('y2', e.clientY);
+    highlightArrowAt(e.clientX, e.clientY);
+  });
+
+  document.addEventListener('mouseup', (e) => {
+    if (!drawingFrom) return;
+    finishDep(e.clientX, e.clientY);
+  });
+
+  // Touch
   document.addEventListener('touchstart', (e) => {
     const dot = e.target.closest('.bar-connect-dot');
     if (!dot) return;
     e.preventDefault(); e.stopPropagation();
     drawingFrom = dot.dataset.taskid;
-    const touch = e.touches[0];
     const rect = dot.getBoundingClientRect();
+    const cx = rect.left + rect.width/2, cy = rect.top + rect.height/2;
     svg.style.display = 'block';
-    line.setAttribute('x1', rect.left + rect.width / 2);
-    line.setAttribute('y1', rect.top + rect.height / 2);
-    line.setAttribute('x2', rect.left + rect.width / 2);
-    line.setAttribute('y2', rect.top + rect.height / 2);
+    line.setAttribute('x1', cx); line.setAttribute('y1', cy);
+    line.setAttribute('x2', cx); line.setAttribute('y2', cy);
   }, { passive: false });
 
   document.addEventListener('touchmove', (e) => {
@@ -4832,27 +4868,19 @@ function initDepDraw() {
     const touch = e.touches[0];
     line.setAttribute('x2', touch.clientX);
     line.setAttribute('y2', touch.clientY);
+    highlightArrowAt(touch.clientX, touch.clientY);
   }, { passive: false });
 
   document.addEventListener('touchend', (e) => {
     if (!drawingFrom) return;
-    svg.style.display = 'none';
     const touch = e.changedTouches[0];
-    const el = document.elementFromPoint(touch.clientX, touch.clientY);
-    const target = el ? el.closest('.gantt-bar-wrap') : null;
-    if (target && target.dataset.taskId && target.dataset.taskId !== drawingFrom) {
-      const toTask = findTask(target.dataset.taskId);
-      if (toTask) {
-        if (!toTask.predecessors) toTask.predecessors = [];
-        if (!toTask.predecessors.some(p => p.taskId === drawingFrom)) {
-          toTask.predecessors.push({ taskId: drawingFrom, type: 'FS', lag: 0 });
-          enforceConstraints(toTask);
-          cascadeSuccessors(toTask.id);
-          saveProject(true); render();
-          showToast('Vazba FS vytvořena');
-        }
-      }
-    }
+    finishDep(touch.clientX, touch.clientY);
+  });
+
+  document.addEventListener('touchcancel', () => {
+    if (!drawingFrom) return;
+    svg.style.display = 'none';
+    clearHighlight();
     drawingFrom = null;
   });
 }
