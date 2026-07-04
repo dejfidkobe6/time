@@ -4042,11 +4042,6 @@ function renderMobTaskPanel() {
           row.addEventListener('click', () => {
             selectTask(task.id);
             openTaskDetailPanel(task.id);
-            const ganttRow = document.querySelector('#gantt-rows .gantt-row[data-task-id="' + task.id + '"]');
-            if (ganttRow) {
-              const ganttScroll = document.getElementById('gantt-scroll-wrap');
-              if (ganttScroll) ganttScroll.scrollTop = ganttRow.offsetTop - 80;
-            }
           });
         }
 
@@ -4191,6 +4186,8 @@ function initPinchZoom() {
       rafPending = true;
       requestAnimationFrame(() => {
         canvas.style.transform = `scaleX(${lastRatio})`;
+        const previewRowH = Math.max(20, Math.min(72, Math.round(startRowH * lastRatio)));
+        document.documentElement.style.setProperty('--row-h', previewRowH + 'px');
         rafPending = false;
       });
     }
@@ -4489,6 +4486,7 @@ function renderGanttTaskRowsRecursive(tasks, phase, pi, minD, totalW, container,
               mobLastTap = now;
               clickTimer = setTimeout(() => {
                 clickTimer = null; mobLastTap = 0;
+                if (Date.now() - _arrowClickTs < 400) return;
                 openTaskDetailPanel(task.id);
               }, 280);
             }
@@ -7952,6 +7950,7 @@ if ('serviceWorker' in navigator) {
    ARROW HOVER HIGHLIGHTING
 ═══════════════════════════════════════════════════ */
 let _selectedArrow = null;
+let _arrowClickTs = 0;
 
 function _resetArrows(svg) {
   if (!svg) return;
@@ -8011,6 +8010,7 @@ function initArrowHighlighting() {
     const g = e.target.closest('g[data-from-id]');
     if (g) {
       e.stopPropagation();
+      _arrowClickTs = Date.now();
       closeTaskDetailPanel();
       const svg = document.getElementById('gantt-dep-svg');
       if (_selectedArrow && _selectedArrow === g) {
