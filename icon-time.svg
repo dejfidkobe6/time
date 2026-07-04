@@ -8,7 +8,7 @@
     preserveAspectRatio="xMidYMid meet"/>
 
   <!-- TIME label -->
-  <text x="256" y="462" text-anchor="middle"
+  <text x="256" y="420" text-anchor="middle"
     font-family="Montserrat, Arial Black, Arial, sans-serif"
     font-weight="700" font-size="68" fill="#FFFFFF" letter-spacing="8">TIME</text>
 </svg>
