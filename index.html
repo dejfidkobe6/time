@@ -4186,8 +4186,6 @@ function initPinchZoom() {
       rafPending = true;
       requestAnimationFrame(() => {
         canvas.style.transform = `scaleX(${lastRatio})`;
-        const previewRowH = Math.max(20, Math.min(72, Math.round(startRowH * lastRatio)));
-        document.documentElement.style.setProperty('--row-h', previewRowH + 'px');
         rafPending = false;
       });
     }
@@ -7503,6 +7501,7 @@ function initRowDrag() {
    TASK DETAIL PANEL (slide-in, double-click on bar)
 ═══════════════════════════════════════════════════ */
 function openTaskDetailPanel(taskId) {
+  if (Date.now() - _arrowClickTs < 400) return;
   const task = findTask(taskId);
   if (!task) return;
   const phase = findPhaseForTask(taskId);
@@ -7691,6 +7690,14 @@ function updateTaskPanelLive(startDateStr, endDateStr) {
 function closeTaskDetailPanel() {
   const panel = document.getElementById('task-detail-panel');
   if (panel) panel.classList.remove('open');
+}
+
+function closeTaskDetailPanelInstant() {
+  const panel = document.getElementById('task-detail-panel');
+  if (!panel || !panel.classList.contains('open')) return;
+  panel.style.transition = 'none';
+  panel.classList.remove('open');
+  requestAnimationFrame(() => { panel.style.transition = ''; });
 }
 
 function tdpInlineEdit(field, taskId) {
@@ -8011,7 +8018,7 @@ function initArrowHighlighting() {
     if (g) {
       e.stopPropagation();
       _arrowClickTs = Date.now();
-      closeTaskDetailPanel();
+      closeTaskDetailPanelInstant();
       const svg = document.getElementById('gantt-dep-svg');
       if (_selectedArrow && _selectedArrow === g) {
         _selectedArrow = null;
