@@ -1905,7 +1905,7 @@ html, body {
   .ml-auto { display: none !important; }
 
   #wbs-toolbar { display: none !important; }
-  #gantt-toolbar { padding: 0 8px; gap: 6px; height: var(--toolbar-h); overflow-x: auto; }
+  #gantt-toolbar { padding: 0 8px; gap: 6px; height: var(--toolbar-h); overflow: visible; }
 
   /* Hide desktop WBS panel entirely on mobile */
   #wbs-panel { display: none !important; }
@@ -1928,15 +1928,15 @@ html, body {
   /* Gantt bar height bigger on mobile */
   .gantt-bar-wrap { height: 28px !important; top: 50% !important; transform: translateY(-50%) !important; }
 
-  /* Task detail panel — compact strip at TOP on mobile, never covers bars */
+  /* Task detail panel — bottom sheet on mobile */
   #task-detail-panel {
     position: fixed;
     width: 100%; left: 0; right: 0;
-    top: var(--header-h); bottom: auto;
-    height: auto; max-height: min(520px, 80vh); overflow-y: auto;
-    border-left: none; border-radius: 0 0 12px 12px;
-    border-top: none; border-bottom: 1px solid var(--border);
-    transform: translateY(-110%);
+    bottom: 56px; top: auto;
+    height: auto; max-height: min(320px, 50vh); overflow-y: auto;
+    border-left: none; border-radius: 12px 12px 0 0;
+    border-top: 1px solid var(--border); border-bottom: none;
+    transform: translateY(110%);
     transition: transform 0.28s cubic-bezier(0.4,0,0.2,1) !important;
     z-index: 300;
   }
@@ -1958,8 +1958,8 @@ html, body {
   #task-detail-panel .tdp-cp-badge { order: 3; }
   #task-detail-panel .tdp-mob-info { display: none !important; }
   #task-detail-panel .tdp-mob-info-v2 { display: block !important; }
-  /* Bar connect dot always visible on mobile */
-  .bar-connect-dot { display: block !important; opacity: 0.7; }
+  /* Bar connect dot appears after double-tap on mobile */
+  .bar-connect-dot.mob-dot-active { display: block !important; opacity: 1; }
 
   /* Mobile info grid */
   .tdp-mob-info {
@@ -4270,11 +4270,32 @@ function renderGanttTaskRowsRecursive(tasks, phase, pi, minD, totalW, container,
           barWrap.classList.add('is-critical');
         }
 
-        // Mobile: single click → open detail panel; Desktop: single click → select, double-click → open panel
+        // Mobile: single tap → popup (280ms delay for dbl-tap detection), double-tap → connect dot
+        // Desktop: single click → select, double-click → open panel
         let clickTimer = null;
+        let mobLastTap = 0;
         barWrap.addEventListener('click', (e) => {
           if (e.target.classList.contains('bar-resize-l') || e.target.classList.contains('bar-resize-r') || e.target.classList.contains('bar-connect-dot')) return;
-          if (window.innerWidth <= 768) { openTaskDetailPanel(task.id); return; }
+          if (window.innerWidth <= 768) {
+            const now = Date.now();
+            if (now - mobLastTap < 300) {
+              // Double-tap: show connect dot for 3 s
+              clearTimeout(clickTimer); clickTimer = null; mobLastTap = 0;
+              const dot = barWrap.querySelector('.bar-connect-dot');
+              if (dot) {
+                dot.classList.add('mob-dot-active');
+                setTimeout(() => dot.classList.remove('mob-dot-active'), 3000);
+              }
+            } else {
+              // First tap: wait to see if double-tap follows
+              mobLastTap = now;
+              clickTimer = setTimeout(() => {
+                clickTimer = null; mobLastTap = 0;
+                openTaskDetailPanel(task.id);
+              }, 280);
+            }
+            return;
+          }
           if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; }
           clickTimer = setTimeout(() => { selectTask(task.id); clickTimer = null; }, 220);
         });
@@ -7551,6 +7572,7 @@ function saveTaskDetailPanel(taskId) {
   cascadeSuccessors(taskId);
   saveProject(true);
   render();
+  closeTaskDetailPanel();
   showToast('Úkol uložen');
 }
 
