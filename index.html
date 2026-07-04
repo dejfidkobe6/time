@@ -1933,7 +1933,7 @@ html, body {
     position: fixed;
     width: 100%; left: 0; right: 0;
     top: var(--header-h); bottom: auto;
-    height: auto; max-height: 160px; overflow: hidden;
+    height: auto; max-height: min(520px, 80vh); overflow-y: auto;
     border-left: none; border-radius: 0 0 12px 12px;
     border-top: none; border-bottom: 1px solid var(--border);
     transform: translateY(-110%);
@@ -1945,8 +1945,9 @@ html, body {
   #task-detail-panel .tdp-body { display: none !important; }
   #task-detail-panel .tdp-actions { display: none !important; }
   #task-detail-panel .tdp-header {
-    padding: 8px 12px 4px; border-bottom: none;
+    padding: 8px 12px 6px; border-bottom: 1px solid var(--border);
     flex-wrap: wrap; align-items: flex-start;
+    position: sticky; top: 0; background: var(--bg-card); z-index: 1;
   }
   #task-detail-panel .tdp-title {
     flex: 1; white-space: normal; overflow: visible; text-overflow: unset;
@@ -1955,7 +1956,10 @@ html, body {
   #task-detail-panel #tdp-live-info { display: none !important; }
   #task-detail-panel #tdp-mob-edit { display: none !important; }
   #task-detail-panel .tdp-cp-badge { order: 3; }
-  #task-detail-panel .tdp-mob-info { display: grid !important; }
+  #task-detail-panel .tdp-mob-info { display: none !important; }
+  #task-detail-panel .tdp-mob-info-v2 { display: block !important; }
+  /* Bar connect dot always visible on mobile */
+  .bar-connect-dot { display: block !important; opacity: 0.7; }
 
   /* Mobile info grid */
   .tdp-mob-info {
@@ -1980,6 +1984,42 @@ html, body {
   }
   /* Phase cell spans full width */
   .tdp-mob-cell.full { grid-column: span 2; }
+
+  /* Redesigned mobile task popup v2 */
+  .tdp-mob-info-v2 { padding: 4px 12px 12px; }
+  .tdp-mob-row {
+    display: flex; align-items: center; min-height: 34px;
+    border-bottom: 1px solid var(--border); gap: 8px;
+    cursor: pointer;
+  }
+  .tdp-mob-row:last-child { border-bottom: none; }
+  .tdp-mob-row.no-edit { cursor: default; }
+  .tdp-mob-row-lbl {
+    font-size: 8px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.5px; color: var(--text-muted);
+    flex-shrink: 0; width: 72px;
+  }
+  .tdp-mob-row-val {
+    font-size: 11px; font-weight: 600; color: var(--text);
+    flex: 1; line-height: 1.3; overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .tdp-mob-row-hint {
+    font-size: 10px; color: var(--text-muted); flex-shrink: 0; padding-right: 2px;
+  }
+  .tdp-mob-inline-input {
+    flex: 1; font-size: 12px; font-weight: 600; min-width: 0;
+    border: 1px solid var(--olive); border-radius: 4px;
+    padding: 3px 6px; background: var(--bg); color: var(--text);
+  }
+  .tdp-mob-save-btn {
+    display: block; width: 100%; margin-top: 10px;
+    padding: 10px; background: var(--olive); color: #fff;
+    border: none; border-radius: var(--radius);
+    font-weight: 700; font-size: 12px; cursor: pointer; letter-spacing: 0.3px;
+  }
+  /* Compact nav buttons when 6 fit */
+  .mob-nav-btn { padding: 6px 8px; }
 
   /* Modal: full screen */
   .modal-card { width: 96vw !important; max-height: 88vh !important; }
@@ -4533,6 +4573,51 @@ function initDepDraw() {
     const target = e.target.closest('.gantt-bar-wrap');
     if (target && target.dataset.taskId && target.dataset.taskId !== drawingFrom) {
       // Drag FROM predecessor (finish) TO successor (start) → FS
+      const toTask = findTask(target.dataset.taskId);
+      if (toTask) {
+        if (!toTask.predecessors) toTask.predecessors = [];
+        if (!toTask.predecessors.some(p => p.taskId === drawingFrom)) {
+          toTask.predecessors.push({ taskId: drawingFrom, type: 'FS', lag: 0 });
+          enforceConstraints(toTask);
+          cascadeSuccessors(toTask.id);
+          saveProject(true); render();
+          showToast('Vazba FS vytvořena');
+        }
+      }
+    }
+    drawingFrom = null;
+  });
+
+  // Touch support for dependency drawing (mobile)
+  document.addEventListener('touchstart', (e) => {
+    const dot = e.target.closest('.bar-connect-dot');
+    if (!dot) return;
+    e.preventDefault(); e.stopPropagation();
+    drawingFrom = dot.dataset.taskid;
+    const touch = e.touches[0];
+    const rect = dot.getBoundingClientRect();
+    svg.style.display = 'block';
+    line.setAttribute('x1', rect.left + rect.width / 2);
+    line.setAttribute('y1', rect.top + rect.height / 2);
+    line.setAttribute('x2', rect.left + rect.width / 2);
+    line.setAttribute('y2', rect.top + rect.height / 2);
+  }, { passive: false });
+
+  document.addEventListener('touchmove', (e) => {
+    if (!drawingFrom) return;
+    e.preventDefault();
+    const touch = e.touches[0];
+    line.setAttribute('x2', touch.clientX);
+    line.setAttribute('y2', touch.clientY);
+  }, { passive: false });
+
+  document.addEventListener('touchend', (e) => {
+    if (!drawingFrom) return;
+    svg.style.display = 'none';
+    const touch = e.changedTouches[0];
+    const el = document.elementFromPoint(touch.clientX, touch.clientY);
+    const target = el ? el.closest('.gantt-bar-wrap') : null;
+    if (target && target.dataset.taskId && target.dataset.taskId !== drawingFrom) {
       const toTask = findTask(target.dataset.taskId);
       if (toTask) {
         if (!toTask.predecessors) toTask.predecessors = [];
@@ -7212,48 +7297,87 @@ function openTaskDetailPanel(taskId) {
     document.body.appendChild(panel);
   }
 
+  // Predecessors label
   const preds = (task.predecessors || []).map(p => {
-    const pt = findTask(p.taskId);
-    return pt ? `${pt.name} (${p.type}${p.lag ? (p.lag>0?'+':'')+p.lag+'d' : ''})` : p.taskId;
+    if (p.phaseId) {
+      const phI = project.phases.findIndex(ph => ph.id === p.phaseId);
+      return phI >= 0 ? 'F' + (phI + 1) + ' ' + (p.type || 'FS') : '?';
+    }
+    let wbs2 = '';
+    project.phases.forEach((ph2, pi2) => ph2.tasks.forEach((t2, ti2) => { if (t2.id === p.taskId) wbs2 = getWBSNum(pi2, ti2); }));
+    const type = p.type || 'FS';
+    const lag = p.lag ? (p.lag > 0 ? '+' + p.lag : '' + p.lag) + 'd' : '';
+    return wbs2 ? wbs2 + ' ' + type + lag : '?';
   }).join(', ') || '—';
 
+  // Successors label
+  const succsArr = [];
+  project.phases.forEach((ph2, pi2) => ph2.tasks.forEach((t2, ti2) => {
+    if ((t2.predecessors || []).some(p => p.taskId === taskId)) succsArr.push(getWBSNum(pi2, ti2));
+  }));
+  const succsStr = succsArr.join(', ') || '—';
+
+  const fmtD = s => s ? s.slice(5).replace('-', '.') : '—';
   const liveInfo = (task.startDate && task.endDate)
-    ? `${task.startDate.slice(5).replace('-','.')} – ${task.endDate.slice(5).replace('-','.')} · ${dur}d`
+    ? `${fmtD(task.startDate)} – ${fmtD(task.endDate)} · ${dur}d`
     : '';
+  const cpBadge = onCP ? '<span class="tdp-cp-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:10px;height:10px;"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>Kritická cesta</span>' : '';
+
   panel.innerHTML = `
     <div class="tdp-header">
       <div style="width:10px;height:10px;border-radius:50%;background:${color};flex-shrink:0;margin-top:2px;"></div>
       <div class="tdp-title">${escHtml(task.name)}</div>
-      ${onCP ? '<span class="tdp-cp-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:10px;height:10px;"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>Kritická cesta</span>' : ''}
+      ${cpBadge}
       <span id="tdp-live-info" style="font-size:10px;font-weight:700;color:var(--text-muted);white-space:nowrap;">${liveInfo}</span>
       <button class="tdp-close" onclick="closeTaskDetailPanel()">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
-    <div class="tdp-mob-info">
-      <div class="tdp-mob-cell">
-        <span class="tdp-mob-cell-lbl">Začátek</span>
-        <span class="tdp-mob-cell-val" id="tdp-mob-start">${task.startDate ? task.startDate.slice(5).replace('-','.') : '—'}</span>
+    <div class="tdp-mob-info-v2">
+      <div class="tdp-mob-row" onclick="tdpInlineEdit('name','${taskId}')">
+        <span class="tdp-mob-row-lbl">Název</span>
+        <span class="tdp-mob-row-val" id="tdp-mob-val-name">${escHtml(task.name)}</span>
+        <span class="tdp-mob-row-hint">✎</span>
       </div>
-      <div class="tdp-mob-cell">
-        <span class="tdp-mob-cell-lbl">Konec</span>
-        <span class="tdp-mob-cell-val" id="tdp-mob-end">${task.endDate ? task.endDate.slice(5).replace('-','.') : '—'}</span>
+      <div class="tdp-mob-row" onclick="tdpInlineEdit('start','${taskId}')">
+        <span class="tdp-mob-row-lbl">Začátek</span>
+        <span class="tdp-mob-row-val" id="tdp-mob-val-start">${fmtD(task.startDate)}</span>
+        <span class="tdp-mob-row-hint">✎</span>
       </div>
-      <div class="tdp-mob-cell">
-        <span class="tdp-mob-cell-lbl">Trvání</span>
-        <span class="tdp-mob-cell-val" id="tdp-mob-dur">${dur ? dur + ' d' : '—'}</span>
+      <div class="tdp-mob-row" onclick="tdpInlineEdit('end','${taskId}')">
+        <span class="tdp-mob-row-lbl">Konec</span>
+        <span class="tdp-mob-row-val" id="tdp-mob-val-end">${fmtD(task.endDate)}</span>
+        <span class="tdp-mob-row-hint">✎</span>
       </div>
-      <div class="tdp-mob-cell">
-        <span class="tdp-mob-cell-lbl">Postup</span>
-        <span class="tdp-mob-cell-val" id="tdp-mob-prog">${task.progress || 0} %</span>
+      <div class="tdp-mob-row" onclick="tdpInlineEdit('dur','${taskId}')">
+        <span class="tdp-mob-row-lbl">Trvání</span>
+        <span class="tdp-mob-row-val" id="tdp-mob-val-dur">${dur ? dur + ' d' : '—'}</span>
+        <span class="tdp-mob-row-hint">✎</span>
       </div>
-      <div class="tdp-mob-cell full">
-        <span class="tdp-mob-cell-lbl">Fáze</span>
-        <span class="tdp-mob-cell-val">${escHtml(phase ? phase.name : '—')}</span>
+      <div class="tdp-mob-row" onclick="tdpInlineEdit('progress','${taskId}')">
+        <span class="tdp-mob-row-lbl">Postup</span>
+        <span class="tdp-mob-row-val" id="tdp-mob-val-progress">${task.progress || 0} %</span>
+        <span class="tdp-mob-row-hint">✎</span>
       </div>
-      <div class="tdp-mob-cell full" style="padding-top:6px;">
-        <button onclick="closeTaskDetailPanel();openEditTaskModal('${taskId}')" style="width:100%;font-size:11px;font-weight:700;padding:6px 0;border:1px solid var(--border);border-radius:6px;background:var(--bg);cursor:pointer;color:var(--text);">Upravit úkol →</button>
+      <div class="tdp-mob-row" onclick="tdpToggleManual('${taskId}')">
+        <span class="tdp-mob-row-lbl">Plánování</span>
+        <span class="tdp-mob-row-val">${task.manual ? '✋ Ruční' : '⚙ Automatické'}</span>
       </div>
+      ${onCP ? '<div class="tdp-mob-row no-edit"><span class="tdp-mob-row-lbl">Stav</span><span class="tdp-mob-row-val" style="color:#d44;">⚠ Kritická cesta</span></div>' : ''}
+      <div class="tdp-mob-row" onclick="closeTaskDetailPanel();openEditTaskModal('${taskId}')">
+        <span class="tdp-mob-row-lbl">Předchůdci</span>
+        <span class="tdp-mob-row-val">${escHtml(preds)}</span>
+        <span class="tdp-mob-row-hint">→</span>
+      </div>
+      <div class="tdp-mob-row no-edit">
+        <span class="tdp-mob-row-lbl">Následovníci</span>
+        <span class="tdp-mob-row-val">${escHtml(succsStr)}</span>
+      </div>
+      <div class="tdp-mob-row no-edit">
+        <span class="tdp-mob-row-lbl">Fáze</span>
+        <span class="tdp-mob-row-val">${escHtml(phase ? phase.name : '—')}</span>
+      </div>
+      <button class="tdp-mob-save-btn" onclick="saveTaskDetailPanel('${taskId}')">Uložit</button>
     </div>
     <div class="tdp-body">
       <div class="tdp-field">
@@ -7340,6 +7464,64 @@ function closeTaskDetailPanel() {
   if (panel) panel.classList.remove('open');
 }
 
+function tdpInlineEdit(field, taskId) {
+  const task = findTask(taskId);
+  if (!task) return;
+  const valEl = document.getElementById('tdp-mob-val-' + field);
+  if (!valEl || valEl.querySelector('input')) return;
+  const dur0 = (task.startDate && task.endDate) ? daysBetween(task.startDate, task.endDate) : 0;
+
+  let inp = document.createElement('input');
+  inp.className = 'tdp-mob-inline-input';
+  if (field === 'name')     { inp.type = 'text';   inp.value = task.name; }
+  else if (field === 'start')    { inp.type = 'date';   inp.value = task.startDate || ''; }
+  else if (field === 'end')      { inp.type = 'date';   inp.value = task.endDate || ''; }
+  else if (field === 'dur')      { inp.type = 'number'; inp.min = 0; inp.value = dur0; }
+  else if (field === 'progress') { inp.type = 'number'; inp.min = 0; inp.max = 100; inp.value = task.progress || 0; }
+  else return;
+
+  valEl.textContent = '';
+  valEl.appendChild(inp);
+  inp.focus();
+  if (inp.select) inp.select();
+
+  let committed = false;
+  function commit() {
+    if (committed) return;
+    committed = true;
+    pushUndo();
+    if (field === 'name') { task.name = inp.value.trim() || task.name; }
+    else if (field === 'start' && inp.value) {
+      task.startDate = inp.value;
+      if (task.endDate && task.startDate > task.endDate) task.endDate = addDays(task.startDate, dur0 || 1);
+    }
+    else if (field === 'end' && inp.value) { task.endDate = inp.value; }
+    else if (field === 'dur') {
+      const d = Math.max(0, parseInt(inp.value) || 0);
+      task.endDate = addDays(task.startDate, d);
+      if (d === 0) task.type = 'milestone';
+    }
+    else if (field === 'progress') { task.progress = Math.min(100, Math.max(0, parseInt(inp.value) || 0)); }
+    cascadeSuccessors(taskId);
+    saveProject(true);
+    openTaskDetailPanel(taskId);
+  }
+  inp.addEventListener('blur', commit);
+  inp.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); inp.blur(); }
+    if (e.key === 'Escape') { committed = true; openTaskDetailPanel(taskId); }
+  });
+}
+
+function tdpToggleManual(taskId) {
+  const task = findTask(taskId);
+  if (!task) return;
+  pushUndo();
+  task.manual = !task.manual;
+  saveProject(true);
+  openTaskDetailPanel(taskId);
+}
+
 function saveTaskDetailPanel(taskId) {
   const task = findTask(taskId);
   if (!task) return;
@@ -7365,6 +7547,7 @@ function saveTaskDetailPanel(taskId) {
     if (typeEl.value === 'milestone') task.type = 'milestone';
     else if (task.type === 'milestone') delete task.type;
   }
+  pushUndo();
   cascadeSuccessors(taskId);
   saveProject(true);
   render();
@@ -7375,7 +7558,7 @@ function saveTaskDetailPanel(taskId) {
    MOBILE SIDEBAR
 ═══════════════════════════════════════════════════ */
 function setMobNav(active) {
-  ['gantt','cashflow','add','save','menu'].forEach(id => {
+  ['gantt','cashflow','add','undo','save','menu'].forEach(id => {
     const el = document.getElementById('mobnav-' + id);
     if (el) el.classList.toggle('active', id === active);
   });
@@ -7408,6 +7591,7 @@ function toggleMobileWBS() {
    TOUCH SUPPORT FOR GANTT BARS
 ═══════════════════════════════════════════════════ */
 function addTouchDrag(barWrap, task, minD) {
+  if (window.innerWidth <= 768) return;
   let startX = 0, origLeft = 0, moved = false, active = false;
 
   barWrap.addEventListener('touchstart', (e) => {
@@ -7457,6 +7641,7 @@ function addTouchDrag(barWrap, task, minD) {
 }
 
 function addTouchResize(barWrap, task, minD) {
+  if (window.innerWidth <= 768) return;
   const handleL = barWrap.querySelector('.bar-resize-l');
   const handleR = barWrap.querySelector('.bar-resize-r');
 
@@ -7562,6 +7747,26 @@ function initArrowHighlighting() {
 }
 
 /* ═══════════════════════════════════════════════════
+   UNDO STACK
+═══════════════════════════════════════════════════ */
+let _undoStack = [];
+function pushUndo() {
+  _undoStack.push(JSON.stringify(project));
+  if (_undoStack.length > 40) _undoStack.shift();
+  const btn = document.getElementById('mobnav-undo');
+  if (btn) btn.disabled = false;
+}
+function undoAction() {
+  if (!_undoStack.length) { showToast('Nic k vrácení'); return; }
+  project = JSON.parse(_undoStack.pop());
+  render();
+  closeTaskDetailPanel();
+  showToast('Vráceno zpět');
+  const btn = document.getElementById('mobnav-undo');
+  if (btn) btn.disabled = _undoStack.length === 0;
+}
+
+/* ═══════════════════════════════════════════════════
    START
 ═══════════════════════════════════════════════════ */
 initDepDraw();
@@ -7603,6 +7808,10 @@ init();
   <button class="mob-nav-btn" id="mobnav-add" onclick="openAddTaskModal()">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
     Přidat
+  </button>
+  <button class="mob-nav-btn" id="mobnav-undo" onclick="undoAction()" disabled title="Zpět">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 00-9-9 9 9 0 00-6 2.3L3 13"/></svg>
+    Zpět
   </button>
   <button class="mob-nav-btn" id="mobnav-save" onclick="saveProject();showToast('Uloženo')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
