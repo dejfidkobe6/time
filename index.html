@@ -8176,11 +8176,6 @@ function confirmDRP() {
   openTaskDetailPanel(id);
 }
 
-// Close DRP on backdrop click
-document.getElementById('drp-overlay').addEventListener('click', (e) => {
-  if (e.target === document.getElementById('drp-overlay')) closeDRP();
-});
-
 initFillHandle();
 initRowDrag();
 initSplitter();
@@ -8236,7 +8231,7 @@ init();
 </nav>
 
 <!-- DATE RANGE PICKER MODAL -->
-<div id="drp-overlay" class="hidden">
+<div id="drp-overlay" class="hidden" onclick="if(event.target===this)closeDRP()">
   <div id="drp-sheet">
     <div id="drp-top">
       <div id="drp-range-display">
