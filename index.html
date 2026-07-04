@@ -1896,6 +1896,87 @@ html, body {
 }
 
 /* ═══════════════════════════════════════
+   DATE RANGE PICKER
+═══════════════════════════════════════ */
+#drp-overlay {
+  position: fixed; inset: 0; z-index: 5500;
+  background: rgba(0,0,0,0.52);
+  display: flex; align-items: flex-end;
+}
+#drp-overlay.hidden { display: none; }
+#drp-sheet {
+  background: var(--bg-card);
+  border-radius: 18px 18px 0 0;
+  width: 100%;
+  max-height: 92vh;
+  overflow-y: auto;
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+#drp-top {
+  display: flex; align-items: center; gap: 10px;
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid var(--border);
+}
+#drp-range-display {
+  flex: 1; display: flex; align-items: center; gap: 8px;
+}
+.drp-pill {
+  padding: 5px 12px; border-radius: 8px;
+  background: var(--bg); border: 1.5px solid var(--border);
+  font-size: 14px; font-weight: 700; color: var(--text-muted);
+  transition: border-color 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+.drp-pill.active { border-color: var(--olive); color: var(--olive); }
+.drp-pill.locked { opacity: 0.5; font-style: italic; }
+#drp-nav {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 4px 4px;
+}
+#drp-nav button {
+  background: none; border: none; font-size: 22px; font-weight: 400;
+  color: var(--text); padding: 6px 16px; cursor: pointer; line-height: 1;
+}
+#drp-month-title { font-size: 14px; font-weight: 800; color: var(--text); }
+#drp-weekdays {
+  display: grid; grid-template-columns: repeat(7,1fr);
+  padding: 2px 10px;
+  font-size: 10px; font-weight: 700; color: var(--text-muted); text-align: center;
+}
+#drp-days {
+  display: grid; grid-template-columns: repeat(7,1fr);
+  padding: 4px 10px 8px;
+}
+.drp-day {
+  aspect-ratio: 1; display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 600; cursor: pointer; position: relative;
+  border-radius: 6px; transition: background 0.1s;
+}
+.drp-day.empty { cursor: default; }
+.drp-day:not(.empty):active { opacity: 0.7; }
+.drp-day.today { color: var(--olive); font-weight: 900; }
+.drp-day.today::after {
+  content:''; position:absolute; bottom:2px; left:50%; transform:translateX(-50%);
+  width:3px; height:3px; background:var(--olive); border-radius:50%;
+}
+.drp-day.in-range { background: rgba(74,83,64,0.13); border-radius: 0; }
+.drp-day.range-start, .drp-day.range-end {
+  background: var(--olive) !important; color: #fff !important; border-radius: 6px !important;
+}
+.drp-day.range-start.in-range { border-radius: 6px 0 0 6px !important; }
+.drp-day.range-end.in-range   { border-radius: 0 6px 6px 0 !important; }
+#drp-hint {
+  text-align: center; font-size: 11px; color: var(--text-muted);
+  font-weight: 600; padding: 2px 16px 8px;
+  min-height: 24px;
+}
+#drp-footer {
+  display: flex; gap: 8px; padding: 10px 16px 14px;
+  border-top: 1px solid var(--border);
+}
+#drp-footer .btn { flex: 1; }
+
+/* ═══════════════════════════════════════
    RESPONSIVE — MOBILE (≤768px)
 ═══════════════════════════════════════ */
 @media (max-width: 768px) {
@@ -7459,6 +7540,7 @@ function openTaskDetailPanel(taskId) {
   }));
   const succsStr = succsArr.join(', ') || '—';
 
+  const isStartLocked = !task.manual && (task.predecessors || []).length > 0;
   const fmtD = s => { if (!s) return '—'; const p = s.split('-'); return p[2]+'.'+p[1]+'.'+p[0].slice(2); };
   const liveInfo = (task.startDate && task.endDate)
     ? `${fmtD(task.startDate)} – ${fmtD(task.endDate)} · ${dur}d`
@@ -7481,12 +7563,19 @@ function openTaskDetailPanel(taskId) {
         <span class="tdp-mob-row-val" id="tdp-mob-val-name">${escHtml(task.name)}</span>
         <span class="tdp-mob-row-hint">✎</span>
       </div>
-      <div class="tdp-mob-row" onclick="tdpInlineEdit('start','${taskId}')">
-        <span class="tdp-mob-row-lbl">Začátek</span>
-        <span class="tdp-mob-row-val" id="tdp-mob-val-start">${fmtD(task.startDate)}</span>
-        <span class="tdp-mob-row-hint">✎</span>
-      </div>
-      <div class="tdp-mob-row" onclick="tdpInlineEdit('end','${taskId}')">
+      ${isStartLocked
+        ? `<div class="tdp-mob-row no-edit" style="opacity:0.6;">
+             <span class="tdp-mob-row-lbl">Začátek</span>
+             <span class="tdp-mob-row-val" id="tdp-mob-val-start">${fmtD(task.startDate)}</span>
+             <span class="tdp-mob-row-hint" style="font-size:10px;">🔒</span>
+           </div>`
+        : `<div class="tdp-mob-row" onclick="openDRP('${taskId}',false,false)">
+             <span class="tdp-mob-row-lbl">Začátek</span>
+             <span class="tdp-mob-row-val" id="tdp-mob-val-start">${fmtD(task.startDate)}</span>
+             <span class="tdp-mob-row-hint">✎</span>
+           </div>`
+      }
+      <div class="tdp-mob-row" onclick="openDRP('${taskId}',${isStartLocked},${isStartLocked})">
         <span class="tdp-mob-row-lbl">Konec</span>
         <span class="tdp-mob-row-val" id="tdp-mob-val-end">${fmtD(task.endDate)}</span>
         <span class="tdp-mob-row-hint">✎</span>
@@ -7945,7 +8034,7 @@ function initArrowHighlighting() {
       }
       return;
     }
-    if (_selectedArrow && !e.target.closest('.gantt-bar-wrap')) {
+    if (_selectedArrow && !e.target.closest('g[data-from-id]')) {
       _selectedArrow = null;
       const svg = document.getElementById('gantt-dep-svg');
       if (svg) _resetArrows(svg);
@@ -7977,6 +8066,121 @@ function undoAction() {
    START
 ═══════════════════════════════════════════════════ */
 initDepDraw();
+/* ═══════════════════════════════════════════════════
+   DATE RANGE PICKER
+═══════════════════════════════════════════════════ */
+const CZ_MONTHS_FULL = ['Leden','Únor','Březen','Duben','Květen','Červen','Červenec','Srpen','Září','Říjen','Listopad','Prosinec'];
+let _drp = null;
+
+function openDRP(taskId, lockStart, startAtEnd) {
+  const task = findTask(taskId);
+  if (!task) return;
+  const ref = task.startDate ? new Date(task.startDate) : new Date();
+  _drp = {
+    taskId,
+    lockStart: !!lockStart,
+    startDate: task.startDate || null,
+    endDate: task.endDate || null,
+    viewYear: ref.getFullYear(),
+    viewMonth: ref.getMonth(),
+    phase: (lockStart || startAtEnd) ? 2 : 1,
+  };
+  drpRender();
+  document.getElementById('drp-overlay').classList.remove('hidden');
+}
+
+function closeDRP() {
+  _drp = null;
+  document.getElementById('drp-overlay').classList.add('hidden');
+}
+
+function drpNav(dir) {
+  _drp.viewMonth += dir;
+  if (_drp.viewMonth < 0)  { _drp.viewMonth = 11; _drp.viewYear--; }
+  if (_drp.viewMonth > 11) { _drp.viewMonth = 0;  _drp.viewYear++; }
+  drpRender();
+}
+
+function drpSelectDay(dateStr) {
+  if (_drp.lockStart) {
+    // Only end date is editable; enforce end >= start
+    if (!_drp.startDate || dateStr >= _drp.startDate) {
+      _drp.endDate = dateStr;
+    }
+    drpRender(); return;
+  }
+  if (_drp.phase === 1) {
+    _drp.startDate = dateStr;
+    _drp.endDate = null;
+    _drp.phase = 2;
+  } else {
+    if (dateStr < _drp.startDate) { _drp.endDate = _drp.startDate; _drp.startDate = dateStr; }
+    else { _drp.endDate = dateStr; }
+    _drp.phase = 1;
+  }
+  drpRender();
+}
+
+function drpRender() {
+  const fmtD = s => { if (!s) return '—'; const p = s.split('-'); return p[2]+'.'+p[1]+'.'+p[0].slice(2); };
+  const pillS = document.getElementById('drp-pill-start');
+  const pillE = document.getElementById('drp-pill-end');
+  pillS.textContent = fmtD(_drp.startDate);
+  pillE.textContent = fmtD(_drp.endDate);
+  pillS.className = 'drp-pill' + (_drp.lockStart ? ' locked' : _drp.phase === 1 ? ' active' : '');
+  pillE.className = 'drp-pill' + (_drp.phase === 2 ? ' active' : '');
+
+  document.getElementById('drp-month-title').textContent = CZ_MONTHS_FULL[_drp.viewMonth] + ' ' + _drp.viewYear;
+  document.getElementById('drp-hint').textContent =
+    _drp.lockStart ? 'Začátek určen předchůdcem — vyberte datum ukončení' :
+    _drp.phase === 1 ? 'Klepněte na datum zahájení' : 'Klepněte na datum ukončení';
+  document.getElementById('drp-confirm-btn').disabled = !(_drp.startDate && _drp.endDate && _drp.startDate <= _drp.endDate);
+
+  const today = new Date().toISOString().slice(0, 10);
+  const firstDay = new Date(_drp.viewYear, _drp.viewMonth, 1);
+  const daysInMonth = new Date(_drp.viewYear, _drp.viewMonth + 1, 0).getDate();
+  let startDow = firstDay.getDay() - 1; if (startDow < 0) startDow = 6;
+
+  const container = document.getElementById('drp-days');
+  container.innerHTML = '';
+  for (let i = 0; i < startDow; i++) {
+    const e = document.createElement('div'); e.className = 'drp-day empty'; container.appendChild(e);
+  }
+  for (let d = 1; d <= daysInMonth; d++) {
+    const m = String(_drp.viewMonth + 1).padStart(2, '0');
+    const dd = String(d).padStart(2, '0');
+    const dateStr = `${_drp.viewYear}-${m}-${dd}`;
+    const el = document.createElement('div');
+    el.className = 'drp-day';
+    el.textContent = d;
+    if (dateStr === today) el.classList.add('today');
+    if (dateStr === _drp.startDate) el.classList.add('range-start');
+    if (dateStr === _drp.endDate)   el.classList.add('range-end');
+    if (_drp.startDate && _drp.endDate && dateStr > _drp.startDate && dateStr < _drp.endDate) el.classList.add('in-range');
+    el.addEventListener('click', () => drpSelectDay(dateStr));
+    container.appendChild(el);
+  }
+}
+
+function confirmDRP() {
+  if (!_drp || !_drp.startDate || !_drp.endDate || _drp.startDate > _drp.endDate) return;
+  const task = findTask(_drp.taskId);
+  if (!task) { closeDRP(); return; }
+  pushUndo();
+  if (!_drp.lockStart) task.startDate = _drp.startDate;
+  task.endDate = _drp.endDate;
+  cascadeSuccessors(_drp.taskId);
+  saveProject(true);
+  const id = _drp.taskId;
+  closeDRP();
+  openTaskDetailPanel(id);
+}
+
+// Close DRP on backdrop click
+document.getElementById('drp-overlay').addEventListener('click', (e) => {
+  if (e.target === document.getElementById('drp-overlay')) closeDRP();
+});
+
 initFillHandle();
 initRowDrag();
 initSplitter();
@@ -8031,5 +8235,30 @@ init();
   </button>
 </nav>
 
+<!-- DATE RANGE PICKER MODAL -->
+<div id="drp-overlay" class="hidden">
+  <div id="drp-sheet">
+    <div id="drp-top">
+      <div id="drp-range-display">
+        <span class="drp-pill" id="drp-pill-start">—</span>
+        <span style="color:var(--text-muted);font-weight:700;">→</span>
+        <span class="drp-pill" id="drp-pill-end">—</span>
+      </div>
+      <button onclick="closeDRP()" style="background:none;border:none;font-size:20px;color:var(--text-muted);padding:4px 8px;cursor:pointer;">✕</button>
+    </div>
+    <div id="drp-nav">
+      <button onclick="drpNav(-1)">‹</button>
+      <span id="drp-month-title"></span>
+      <button onclick="drpNav(1)">›</button>
+    </div>
+    <div id="drp-weekdays"><span>Po</span><span>Út</span><span>St</span><span>Čt</span><span>Pá</span><span>So</span><span>Ne</span></div>
+    <div id="drp-days"></div>
+    <div id="drp-hint"></div>
+    <div id="drp-footer">
+      <button class="btn btn-secondary" onclick="closeDRP()">Zrušit</button>
+      <button class="btn btn-primary" id="drp-confirm-btn" onclick="confirmDRP()">Potvrdit</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>
