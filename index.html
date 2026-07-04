@@ -4173,9 +4173,8 @@ function initPinchZoom() {
     // Set transform origin once — it stays fixed for the entire gesture
     canvas.style.transformOrigin = `${startContentMidX}px 0`;
     canvas.style.willChange = 'transform';
-    // Hide dependency arrows during gesture — they don't scale with bars
     const svg = document.getElementById('gantt-dep-svg');
-    if (svg) svg.style.opacity = '0';
+    if (svg) { svg.style.transformOrigin = `${startContentMidX}px 0`; svg.style.willChange = 'transform'; }
     e.preventDefault();
   }, { passive: false });
 
@@ -4189,6 +4188,8 @@ function initPinchZoom() {
       rafPending = true;
       requestAnimationFrame(() => {
         canvas.style.transform = `scaleX(${lastRatio})`;
+        const svg = document.getElementById('gantt-dep-svg');
+        if (svg) svg.style.transform = `scaleX(${lastRatio})`;
         rafPending = false;
       });
     }
@@ -4203,6 +4204,8 @@ function initPinchZoom() {
     canvas.style.transform = '';
     canvas.style.transformOrigin = '';
     canvas.style.willChange = '';
+    const svgEl = document.getElementById('gantt-dep-svg');
+    if (svgEl) { svgEl.style.transform = ''; svgEl.style.transformOrigin = ''; svgEl.style.willChange = ''; }
     // Snap cellW to even-pixel grid
     const raw = startCellW * scale;
     const stepped = Math.round(raw / 2) * 2;
@@ -4230,7 +4233,7 @@ function initPinchZoom() {
     canvas.style.transform = '';
     canvas.style.transformOrigin = '';
     const svg = document.getElementById('gantt-dep-svg');
-    if (svg) svg.style.opacity = '';
+    if (svg) { svg.style.transform = ''; svg.style.transformOrigin = ''; svg.style.willChange = ''; }
   });
 }
 
