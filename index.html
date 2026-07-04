@@ -486,7 +486,7 @@ html, body {
 .wbs-row {
   display: flex;
   align-items: center;
-  padding: 0 14px 0 30px;
+  padding: 0 14px 0 20px;
   height: var(--row-h, 40px);
   border-bottom: 1px solid var(--border-light);
   transition: background 0.1s;
@@ -501,7 +501,7 @@ html, body {
 }
 
 .wbs-row:hover { background: var(--bg-hover); }
-.wbs-row.selected { background: rgba(74,83,64,0.08); border-left: 2px solid var(--olive); padding-left: 28px; }
+.wbs-row.selected { background: rgba(74,83,64,0.08); border-left: 2px solid var(--olive); padding-left: 18px; }
 .wbs-row.multi-selected { background: rgba(74,83,64,0.1) !important; outline: 1px solid rgba(74,83,64,0.3); outline-offset: -1px; }
 .wbs-row.row-dragging { opacity: 0.35; pointer-events: none; }
 .row-drop-indicator { position: fixed; left: 0; right: 0; height: 2px; background: var(--olive); pointer-events: none; z-index: 1000; border-radius: 1px; box-shadow: 0 0 4px rgba(143,186,110,0.6); }
@@ -511,9 +511,9 @@ html, body {
   cursor: pointer; z-index: 3; user-select: none;
 }
 .row-num {
-  position: absolute; left: 0; top: 0; bottom: 0; width: 28px;
+  position: absolute; left: 0; top: 0; bottom: 0; width: 18px;
   display: flex; align-items: center; justify-content: center;
-  font-size: 8px; font-weight: 700; color: var(--text-muted);
+  font-size: 7px; font-weight: 700; color: var(--text-muted);
   pointer-events: none; user-select: none; letter-spacing: 0;
   opacity: 0.55;
 }
@@ -597,7 +597,7 @@ html, body {
   border: none;
   outline: none;
   font-family: var(--font-main);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   color: var(--text);
   width: 100%;
@@ -612,7 +612,7 @@ html, body {
 }
 
 .wbs-row.is-phase .wbs-name-input {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -2548,7 +2548,7 @@ const COLUMN_DEFS = [
   { id: 'budget',       label: 'Rozpočet',     w: '74px'  },
   { id: 'delay',        label: 'Zpoždění',     w: '64px'  },
 ];
-let visibleColumns = (() => { try { const saved = JSON.parse(localStorage.getItem('bt_cols') || 'null'); if (saved && saved[0] === 'wbs') return saved; return ['wbs','name','predecessors','successors','schedule','start','end','duration','progress','budget']; } catch(e) { return ['wbs','name','predecessors','successors','schedule','start','end','duration','progress','budget']; } })();
+let visibleColumns = (() => { try { const saved = JSON.parse(localStorage.getItem('bt_cols') || 'null'); if (saved && saved[0] === 'wbs') { const cleaned = saved.filter(c => c !== 'predecessors' && c !== 'successors'); return cleaned; } return ['wbs','name','schedule','start','end','duration','progress','budget']; } catch(e) { return ['wbs','name','schedule','start','end','duration','progress','budget']; } })();
 // Persisted custom column widths (overrides COLUMN_DEFS.w)
 let colWidths = (() => { try { return JSON.parse(localStorage.getItem('bt_col_w') || 'null') || {}; } catch(e) { return {}; } })();
 // always ensure 'wbs' is first (fixed), 'name' is present
