@@ -1855,8 +1855,8 @@ html, body {
   height: var(--row-h);
   display: flex;
   align-items: center;
-  padding: 0 8px;
-  gap: 6px;
+  padding: 0 6px 0 2px;
+  gap: 3px;
   border-bottom: 1px solid var(--border-light);
   cursor: pointer;
   transition: background 0.1s;
@@ -1869,20 +1869,20 @@ html, body {
   background: var(--bg);
 }
 .mob-row-num {
-  font-size: 7px; font-weight: 800; color: var(--text-muted); opacity: 0.6;
-  flex-shrink: 0; width: 16px; text-align: center; letter-spacing: 0; line-height: 1;
+  font-size: 7px; font-weight: 800; color: var(--text-muted); opacity: 0.55;
+  flex-shrink: 0; width: 12px; text-align: center; letter-spacing: 0; line-height: 1;
   user-select: none;
 }
-.mob-task-color { width: 3px; height: 22px; border-radius: 2px; flex-shrink: 0; }
+.mob-task-color { width: 3px; height: 18px; border-radius: 2px; flex-shrink: 0; }
 .mob-task-info { flex: 1; min-width: 0; }
 .mob-task-name {
-  font-size: 11px; font-weight: 700; color: var(--text);
+  font-size: 9px; font-weight: 700; color: var(--text);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .mob-task-phase-name {
-  font-size: 10px; font-weight: 800; color: var(--text-muted);
+  font-size: 9px; font-weight: 800; color: var(--text-muted);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  text-transform: uppercase; letter-spacing: 0.4px;
+  text-transform: uppercase; letter-spacing: 0.3px;
 }
 .mob-task-dates {
   font-size: 9px; color: var(--text-muted); font-weight: 600;
@@ -3945,7 +3945,7 @@ function renderMobTaskPanel() {
             <div class="mob-task-name" style="${isSummary?'font-weight:700;':''}">${escHtml(task.name)}</div>
             <div class="mob-task-dates">${fmtDate(task.startDate)} — ${isSummary ? (task.children||[]).length + ' úkolů' : dur + 'd'}</div>
           </div>
-          ${predCount ? `<span class="mob-task-dep-badge">↳${predCount}</span>` : ''}`;
+          `;
 
         if (isSummary) {
           let sumClickTimer = null;
@@ -4072,6 +4072,8 @@ function initPinchZoom() {
   let startDist = 0, startCellW = cellW, pinching = false;
   let startScrollLeft = 0, startViewportMidX = 0, startContentMidX = 0;
   let startRowH = 40;
+  let rafPending = false;
+  let lastRatio = 1;
 
   function getTouchDist(e) {
     const dx = e.touches[0].clientX - e.touches[1].clientX;
@@ -4085,15 +4087,16 @@ function initPinchZoom() {
   wrap.addEventListener('touchstart', (e) => {
     if (e.touches.length !== 2) return;
     pinching = true;
+    lastRatio = 1;
     startDist = getTouchDist(e);
     startCellW = cellW;
     startScrollLeft = wrap.scrollLeft;
-    // startViewportMidX: pinch midpoint in wrap-element coordinates (relative to wrap left edge)
     startViewportMidX = getTouchMidClientX(e) - wrap.getBoundingClientRect().left;
-    // startContentMidX: the content coordinate (column pixel) under the pinch centre
     startContentMidX = startViewportMidX + startScrollLeft;
-    // Save row height for proportional scaling
     startRowH = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--row-h')) || 40;
+    // Set transform origin once — it stays fixed for the entire gesture
+    canvas.style.transformOrigin = `${startContentMidX}px 0`;
+    canvas.style.willChange = 'transform';
     e.preventDefault();
   }, { passive: false });
 
@@ -4101,21 +4104,26 @@ function initPinchZoom() {
     if (!pinching || e.touches.length !== 2) return;
     const dist = getTouchDist(e);
     if (startDist < 5) return;
-    const ratio = dist / startDist;
-    // Transform origin is the content-coordinate of the pinch centre
-    canvas.style.transformOrigin = `${startContentMidX}px 0`;
-    canvas.style.transform = `scaleX(${ratio})`;
+    lastRatio = dist / startDist;
+    // Throttle style writes to animation frames for smoother gesture
+    if (!rafPending) {
+      rafPending = true;
+      requestAnimationFrame(() => {
+        canvas.style.transform = `scaleX(${lastRatio})`;
+        rafPending = false;
+      });
+    }
     e.preventDefault();
   }, { passive: false });
 
   wrap.addEventListener('touchend', () => {
     if (!pinching) return;
     pinching = false;
-    const scale = canvas.style.transform
-      ? parseFloat(canvas.style.transform.replace('scaleX(', '')) || 1
-      : 1;
+    rafPending = false;
+    const scale = lastRatio;
     canvas.style.transform = '';
     canvas.style.transformOrigin = '';
+    canvas.style.willChange = '';
     // Snap cellW to even-pixel grid
     const raw = startCellW * scale;
     const stepped = Math.round(raw / 2) * 2;
@@ -4139,6 +4147,7 @@ function initPinchZoom() {
   wrap.addEventListener('touchcancel', () => {
     if (!pinching) return;
     pinching = false;
+    rafPending = false;
     canvas.style.transform = '';
     canvas.style.transformOrigin = '';
   });
