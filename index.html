@@ -1936,11 +1936,11 @@ html, body {
     height: auto; max-height: min(520px, 80vh); overflow-y: auto;
     border-left: none; border-radius: 0 0 12px 12px;
     border-top: none; border-bottom: 1px solid var(--border);
-    transform: translateY(-110%);
-    transition: transform 0.28s cubic-bezier(0.4,0,0.2,1) !important;
+    top: -100vh; transform: none;
+    transition: top 0.28s cubic-bezier(0.4,0,0.2,1) !important;
     z-index: 300;
   }
-  #task-detail-panel.open { transform: translateY(0); }
+  #task-detail-panel.open { top: var(--header-h); }
   /* Hide full body + actions on mobile — use compact header + mob-info */
   #task-detail-panel .tdp-body { display: none !important; }
   #task-detail-panel .tdp-actions { display: none !important; }
