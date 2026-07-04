@@ -2649,7 +2649,11 @@ async function selectProject(projectId, projectName) {
   currentProjectId = projectId;
   showToast('Načítám projekt…');
   try {
-    const res = await fetch('/api/schedule.php?action=load&project_id=' + projectId);
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 12000);
+    const res = await fetch('/api/schedule.php?action=load&project_id=' + projectId, { signal: ctrl.signal });
+    clearTimeout(timer);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
     if (data.data) {
       project = data.data;
@@ -2660,7 +2664,8 @@ async function selectProject(projectId, projectName) {
   } catch (e) {
     // Fallback na localStorage
     const saved = localStorage.getItem('besixtime_project_' + projectId);
-    if (saved) try { project = JSON.parse(saved); } catch(e2) {}
+    if (saved) { try { project = JSON.parse(saved); } catch(e2) {} }
+    else { project = { name: projectName, code: 'PRJ-001', client: '', status: 'realizace', phases: [], nextId: 1 }; }
   }
   document.getElementById('project-overlay').classList.add('hidden');
   render();
