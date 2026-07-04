@@ -1411,7 +1411,7 @@ html, body {
    PROJECT SELECTOR OVERLAY
 ═══════════════════════════════════════ */
 #project-overlay {
-  position: fixed; inset: 0; z-index: 300;
+  position: fixed; inset: 0; z-index: 2000;
   background: var(--charcoal);
   display: flex; align-items: center; justify-content: center;
 }
@@ -1945,7 +1945,7 @@ html, body {
     height: auto; max-height: min(320px, 50vh); overflow-y: auto;
     border-left: none; border-radius: 12px 12px 0 0;
     border-top: 1px solid var(--border); border-bottom: none;
-    transform: translateY(110%);
+    transform: translateY(calc(100% + 120px));
     transition: transform 0.28s cubic-bezier(0.4,0,0.2,1) !important;
     z-index: 300;
   }
