@@ -545,11 +545,13 @@ html, body {
 .row-drag-handle:active { cursor: grabbing; }
 .row-drag-handle:hover { opacity: 1 !important; }
 
-/* Gantt summary bar */
+/* Gantt summary bar — hollow: colored border, white fill */
 .gantt-row.is-summary { background: var(--bg); }
 .gantt-bar.summary-bar {
-  height: 8px; border-radius: 2px; opacity: 0.75;
+  height: 10px; border-radius: 3px;
+  background: white !important;
   position: absolute; top: 50%; transform: translateY(-50%);
+  box-sizing: border-box;
 }
 
 /* Context menu items */
@@ -4402,7 +4404,7 @@ function renderGanttRows(minD, totalW) {
       const bar = document.createElement('div');
       bar.className = 'gantt-bar-wrap';
       bar.style.cssText = `left:${x}px;width:${w}px;height:10px;`;
-      bar.innerHTML = `<div class="gantt-bar" style="background:${color};opacity:0.55;border-radius:2px;"></div>`;
+      bar.innerHTML = `<div class="gantt-bar" style="background:white;border:2px solid ${color};border-radius:2px;box-sizing:border-box;opacity:0.9;"></div>`;
       phRow.appendChild(bar);
     }
 
@@ -4434,7 +4436,7 @@ function renderGanttTaskRowsRecursive(tasks, phase, pi, minD, totalW, container,
         const barWrap = document.createElement('div');
         barWrap.className = 'gantt-bar-wrap';
         barWrap.style.cssText = `left:${x}px;width:${w}px;height:10px;top:calc(50% - 5px);position:absolute;`;
-        barWrap.innerHTML = `<div class="gantt-bar summary-bar" style="background:${barColor};width:100%;height:100%;border-radius:2px;"></div>`;
+        barWrap.innerHTML = `<div class="gantt-bar summary-bar" style="border:2px solid ${barColor};width:100%;height:100%;border-radius:3px;"></div>`;
         // Click to select
         barWrap.addEventListener('click', () => selectTask(task.id));
         tRow.appendChild(barWrap);
@@ -4778,12 +4780,21 @@ function initDepDraw() {
   let drawingFrom = null;
   let _hoveredBar = null;
 
-  // Walk elementsFromPoint (z-order) to find gantt-bar-wrap even if arrows/dots are on top
+  // Find the gantt-bar-wrap under viewport point (x,y).
+  // Uses elementsFromPoint first; falls back to bounding-rect scan so SVG overlays
+  // and iOS Safari bugs don't block detection.
   function findBarWrapAt(x, y) {
-    for (const el of document.elementsFromPoint(x, y)) {
-      if (el.classList && el.classList.contains('gantt-bar-wrap')) return el;
-      const bw = el.closest ? el.closest('.gantt-bar-wrap') : null;
-      if (bw) return bw;
+    try {
+      for (const el of document.elementsFromPoint(x, y)) {
+        if (el.classList && el.classList.contains('gantt-bar-wrap')) return el;
+        const bw = el.closest ? el.closest('.gantt-bar-wrap') : null;
+        if (bw) return bw;
+      }
+    } catch (_) {}
+    // Fallback: check every rendered bar by its viewport bounding rect
+    for (const bw of document.querySelectorAll('#gantt-rows .gantt-bar-wrap[data-task-id]')) {
+      const r = bw.getBoundingClientRect();
+      if (x >= r.left - 8 && x <= r.right + 8 && y >= r.top - 8 && y <= r.bottom + 8) return bw;
     }
     return null;
   }
@@ -5003,13 +5014,13 @@ function renderDependencies(minD) {
     if (ry >= 0) allBars.push({ x: bx, w: bw, ry });
   });
 
-  // Build vertical path segment at x from ya to yb, inserting M-break gaps at bar row centers
+  // Build vertical path segment at x from ya to yb, inserting M-break gaps at bar row centers.
+  // Gap fires for every row with a bar whose y-center falls in the traversed range —
+  // x overlap is intentionally ignored, matching the standard Gantt "wire underpass" convention.
   function vSeg(x, ya, yb) {
     const yMin = Math.min(ya, yb), yMax = Math.max(ya, yb);
     const mids = new Set();
     allBars.forEach(b => {
-      // Use cellW as x-tolerance so gaps fire for adjacent-column bars too
-      if (x < b.x - cellW || x > b.x + b.w + cellW) return;
       const mid = b.ry + rowH / 2;
       if (mid > yMin + BRGAP && mid < yMax - BRGAP) mids.add(mid);
     });
