@@ -6800,7 +6800,7 @@ function exportCashflowXLSX() {
 /* ═══════════════════════════════════════════════════
    TOAST
 ═══════════════════════════════════════════════════ */
-function showToast(msg) {
+function showToast(msg, dur) {
   const existing = document.getElementById('toast');
   if (existing) existing.remove();
   const t = document.createElement('div');
@@ -7504,6 +7504,8 @@ function openTaskDetailPanel(taskId) {
   if (Date.now() - _arrowClickTs < 400) return;
   const task = findTask(taskId);
   if (!task) return;
+  const existingToast = document.getElementById('toast');
+  if (existingToast) existingToast.remove();
   const phase = findPhaseForTask(taskId);
   const pi = project.phases.indexOf(phase);
   const color = getTaskColor(task, phase, pi);
@@ -8038,7 +8040,7 @@ function initArrowHighlighting() {
         const toNum = _rowNumMap.get(toId) || '?';
         const fromName = fromTask ? fromTask.name : fromId;
         const toName = toTask ? toTask.name : toId;
-        showToast(`#${fromNum} ${fromName} → #${toNum} ${toName}`, 4000);
+        showToast(`#${fromNum} ${fromName} → #${toNum} ${toName}`, 2500);
       }
       return;
     }
