@@ -5,7 +5,7 @@
   "start_url": "/",
   "display": "standalone",
   "orientation": "any",
-  "background_color": "#FFFFFF",
+  "background_color": "#C9A84C",
   "theme_color": "#606857",
   "lang": "cs",
   "icons": [
@@ -23,7 +23,10 @@
     }
   ],
   "screenshots": [],
-  "categories": ["productivity", "business"],
+  "categories": [
+    "productivity",
+    "business"
+  ],
   "shortcuts": [
     {
       "name": "Harmonogram",
