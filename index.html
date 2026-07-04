@@ -1902,6 +1902,15 @@ html, body {
   border: 1px solid var(--border); color: var(--olive);
   flex-shrink: 0;
 }
+.mob-drag-handle {
+  width: 20px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--border); opacity: 0.6; touch-action: none;
+  cursor: grab;
+}
+.mob-drag-handle svg { width: 12px; height: 12px; }
+.mob-task-row.mob-row-dragging { opacity: 0.3; pointer-events: none; }
+.mob-task-row.mob-row-drag-active { background: rgba(74,83,64,0.08); }
 
 /* ═══════════════════════════════════════
    DATE RANGE PICKER
@@ -1985,9 +1994,9 @@ html, body {
 #drp-footer .btn { flex: 1; }
 
 /* ═══════════════════════════════════════
-   RESPONSIVE — MOBILE (≤768px)
+   RESPONSIVE — MOBILE (≤768px or landscape phone)
 ═══════════════════════════════════════ */
-@media (max-width: 768px) {
+@media (max-width: 768px), (orientation: landscape) and (max-height: 500px) {
   :root {
     --sidebar-w: 0px;
     --row-h: 46px;
@@ -2148,11 +2157,15 @@ html, body {
 
   /* Gantt header sync */
   #gantt-time-header { overflow-x: hidden; }
+
+  /* Ensure last row is scrollable above the bottom nav */
+  #gantt-rows { padding-bottom: 60px; }
+  #mob-task-panel-body { padding-bottom: 60px; }
 }
 
 /* Hide task panel toggle button on desktop */
 #mob-panel-toggle { display: none; }
-@media (max-width: 768px) {
+@media (max-width: 768px), (orientation: landscape) and (max-height: 500px) {
   #mob-panel-toggle {
     display: flex; align-items: center; justify-content: center;
     width: 28px; height: 100%; border: none; background: none;
@@ -4027,12 +4040,13 @@ function renderMobTaskPanel() {
         const indentStyle = indent > 0 ? `padding-left:${indent * 12 + 8}px;` : '';
 
         const mobRowNum = _rowNumMap.get(task.id) || '';
+        row.dataset.taskId = task.id;
         row.innerHTML = `
-          <span class="mob-row-num">${mobRowNum}</span>
+          <div class="mob-drag-handle"><svg viewBox="0 0 12 12" fill="currentColor"><rect x="1" y="2" width="10" height="1.5" rx="0.75"/><rect x="1" y="5.25" width="10" height="1.5" rx="0.75"/><rect x="1" y="8.5" width="10" height="1.5" rx="0.75"/></svg></div>
           <div class="mob-task-color" style="background:${(!isSummary && cp.has(task.id)) ? '#c0392b' : taskColor};${isMilestone?'clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%)':'border-radius:2px;'}"></div>
           <div class="mob-task-info" style="${indentStyle}">
             <div class="mob-task-name" style="${isSummary?'font-weight:700;':''}">${escHtml(task.name)}</div>
-            <div class="mob-task-dates">${fmtDate(task.startDate)} — ${isSummary ? (task.children||[]).length + ' úkolů' : dur + 'd'}</div>
+            <div class="mob-task-dates">${mobRowNum ? mobRowNum + ' · ' : ''}${fmtDate(task.startDate)} — ${isSummary ? (task.children||[]).length + ' úkolů' : dur + 'd'}</div>
           </div>
           `;
 
@@ -7605,6 +7619,108 @@ function initRowDrag() {
 }
 
 /* ═══════════════════════════════════════════════════
+   MOBILE ROW DRAG-TO-REORDER (long-press on handle)
+═══════════════════════════════════════════════════ */
+function initMobRowDrag() {
+  const body = document.getElementById('mob-task-panel-body');
+  if (!body) return;
+  let state = null;
+
+  body.addEventListener('touchstart', (e) => {
+    const handle = e.target.closest('.mob-drag-handle');
+    if (!handle) return;
+    const row = handle.closest('.mob-task-row[data-task-id]');
+    if (!row) return;
+    const touch = e.touches[0];
+    state = {
+      taskId: row.dataset.taskId,
+      startX: touch.clientX,
+      startY: touch.clientY,
+      row,
+      indicator: null,
+      dropPos: null,
+      dragging: false,
+      timer: setTimeout(() => {
+        if (!state) return;
+        state.dragging = true;
+        row.classList.add('mob-row-dragging');
+        if (navigator.vibrate) navigator.vibrate(40);
+        state.indicator = document.createElement('div');
+        state.indicator.className = 'row-drop-indicator';
+        document.body.appendChild(state.indicator);
+      }, 400)
+    };
+    e.stopPropagation();
+  }, { passive: true });
+
+  body.addEventListener('touchmove', (e) => {
+    if (!state) return;
+    const touch = e.touches[0];
+    if (!state.dragging) {
+      if (Math.abs(touch.clientX - state.startX) > 8 || Math.abs(touch.clientY - state.startY) > 8) {
+        clearTimeout(state.timer);
+        state = null;
+      }
+      return;
+    }
+    e.preventDefault();
+    const allRows = [...document.querySelectorAll('#mob-task-panel-body .mob-task-row[data-task-id]')];
+    state.dropPos = null;
+    let lastAbove = null;
+    for (const r of allRows) {
+      if (r === state.row) continue;
+      const rect = r.getBoundingClientRect();
+      if (touch.clientY < rect.top + rect.height / 2) {
+        state.dropPos = { taskId: r.dataset.taskId, before: true };
+        state.indicator.style.top = (rect.top - 1) + 'px';
+        break;
+      }
+      lastAbove = r;
+    }
+    if (!state.dropPos && lastAbove) {
+      const rect = lastAbove.getBoundingClientRect();
+      state.dropPos = { taskId: lastAbove.dataset.taskId, before: false };
+      state.indicator.style.top = (rect.bottom - 1) + 'px';
+    }
+  }, { passive: false });
+
+  body.addEventListener('touchend', () => {
+    if (!state) return;
+    clearTimeout(state.timer);
+    if (state.indicator) { state.indicator.remove(); state.indicator = null; }
+    if (state.row) state.row.classList.remove('mob-row-dragging');
+    if (state.dragging && state.dropPos && state.dropPos.taskId !== state.taskId) {
+      const { taskId: fromId } = state;
+      const { taskId: refId, before } = state.dropPos;
+      const srcRef = findParent(fromId);
+      if (srcRef) {
+        const [srcTask] = srcRef.container.splice(srcRef.index, 1);
+        const dstRef = findParent(refId);
+        if (dstRef) {
+          dstRef.container.splice(before ? dstRef.index : dstRef.index + 1, 0, srcTask);
+        } else {
+          srcRef.container.push(srcTask);
+        }
+        project.phases.forEach(ph => ph.tasks.forEach(t => {
+          if (t.type === 'summary') computeSummaryDates(t);
+        }));
+        saveProject(true);
+        render();
+      }
+    }
+    state = null;
+  });
+
+  body.addEventListener('touchcancel', () => {
+    if (!state) return;
+    clearTimeout(state.timer);
+    if (state.indicator) { state.indicator.remove(); }
+    if (state.row) state.row.classList.remove('mob-row-dragging');
+    state = null;
+  });
+}
+
+/* ═══════════════════════════════════════════════════
    TASK DETAIL PANEL (slide-in, double-click on bar)
 ═══════════════════════════════════════════════════ */
 function openTaskDetailPanel(taskId) {
@@ -7904,7 +8020,7 @@ function saveTaskDetailPanel(taskId) {
    MOBILE SIDEBAR
 ═══════════════════════════════════════════════════ */
 function setMobNav(active) {
-  ['gantt','cashflow','add','undo','save','menu'].forEach(id => {
+  ['gantt','cashflow','add','undo','save'].forEach(id => {
     const el = document.getElementById('mobnav-' + id);
     if (el) el.classList.toggle('active', id === active);
   });
@@ -8295,6 +8411,7 @@ function confirmDRP() {
 
 initFillHandle();
 initRowDrag();
+initMobRowDrag();
 initSplitter();
 initPinchZoom();
 initMobPanelResize();
@@ -8340,10 +8457,6 @@ init();
   <button class="mob-nav-btn" id="mobnav-save" onclick="saveProject();showToast('Uloženo')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
     Uložit
-  </button>
-  <button class="mob-nav-btn" id="mobnav-menu" onclick="openMobileSidebar()">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>
-    Více
   </button>
 </nav>
 
