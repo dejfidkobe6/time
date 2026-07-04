@@ -1130,6 +1130,7 @@ html, body {
 }
 
 @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+@keyframes spin { to { transform: rotate(360deg); } }
 
 .modal-header {
   padding: 20px 24px 16px;
@@ -2641,18 +2642,31 @@ function renderProjectList(projects) {
     </div>
   `).join('');
   el.querySelectorAll('.proj-sel-item').forEach(div => {
-    div.addEventListener('click', () => selectProject(+div.dataset.pid, div.dataset.name));
+    div.addEventListener('click', () => {
+      // Visual loading state: replace item with spinner
+      div.innerHTML = `<div style="display:flex;align-items:center;gap:10px;width:100%;">
+        <svg style="width:18px;height:18px;flex-shrink:0;animation:spin 0.9s linear infinite;" viewBox="0 0 24 24" fill="none" stroke="var(--olive)" stroke-width="2.5"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+        <span style="font-weight:600;font-size:14px;">Načítám ${_esc(div.dataset.name)}…</span>
+      </div>`;
+      div.style.pointerEvents = 'none';
+      selectProject(+div.dataset.pid, div.dataset.name);
+    });
   });
 }
 
 async function selectProject(projectId, projectName) {
   currentProjectId = projectId;
-  showToast('Načítám projekt…');
+  // Guarantee overlay hides after 14s no matter what (belt-and-suspenders)
+  const safeHideTimer = setTimeout(() => {
+    const ov = document.getElementById('project-overlay');
+    if (ov) ov.classList.add('hidden');
+    try { render(); } catch(e) {}
+  }, 14000);
   try {
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 12000);
+    const abortTimer = setTimeout(() => ctrl.abort(), 12000);
     const res = await fetch('/api/schedule.php?action=load&project_id=' + projectId, { signal: ctrl.signal });
-    clearTimeout(timer);
+    clearTimeout(abortTimer);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
     if (data.data) {
@@ -2667,8 +2681,9 @@ async function selectProject(projectId, projectName) {
     if (saved) { try { project = JSON.parse(saved); } catch(e2) {} }
     else { project = { name: projectName, code: 'PRJ-001', client: '', status: 'realizace', phases: [], nextId: 1 }; }
   }
+  clearTimeout(safeHideTimer);
   document.getElementById('project-overlay').classList.add('hidden');
-  render();
+  try { render(); } catch(e) { console.error('render() failed:', e); }
 }
 
 async function recoverFromLocalStorage() {
