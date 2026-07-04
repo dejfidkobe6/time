@@ -486,7 +486,7 @@ html, body {
 .wbs-row {
   display: flex;
   align-items: center;
-  padding: 0 14px;
+  padding: 0 14px 0 30px;
   height: var(--row-h, 40px);
   border-bottom: 1px solid var(--border-light);
   transition: background 0.1s;
@@ -501,7 +501,7 @@ html, body {
 }
 
 .wbs-row:hover { background: var(--bg-hover); }
-.wbs-row.selected { background: rgba(74,83,64,0.08); border-left: 2px solid var(--olive); padding-left: 12px; }
+.wbs-row.selected { background: rgba(74,83,64,0.08); border-left: 2px solid var(--olive); padding-left: 28px; }
 .wbs-row.multi-selected { background: rgba(74,83,64,0.1) !important; outline: 1px solid rgba(74,83,64,0.3); outline-offset: -1px; }
 .wbs-row.row-dragging { opacity: 0.35; pointer-events: none; }
 .row-drop-indicator { position: fixed; left: 0; right: 0; height: 2px; background: var(--olive); pointer-events: none; z-index: 1000; border-radius: 1px; box-shadow: 0 0 4px rgba(143,186,110,0.6); }
@@ -510,6 +510,14 @@ html, body {
   display: flex; align-items: center; justify-content: center;
   cursor: pointer; z-index: 3; user-select: none;
 }
+.row-num {
+  position: absolute; left: 0; top: 0; bottom: 0; width: 28px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 8px; font-weight: 700; color: var(--text-muted);
+  pointer-events: none; user-select: none; letter-spacing: 0;
+  opacity: 0.55;
+}
+.wbs-row.is-phase .row-num { font-size: 8px; font-weight: 800; }
 .row-selector::after {
   content: ''; width: 7px; height: 7px; border-radius: 50%;
   border: 1.5px solid transparent; background: transparent;
@@ -736,6 +744,7 @@ html, body {
   flex: 1;
   overflow: auto;
   position: relative;
+  touch-action: pan-x pan-y;
 }
 
 #gantt-scroll-wrap::-webkit-scrollbar { height: 6px; width: 6px; }
@@ -2092,7 +2101,7 @@ html, body {
   #gantt-scroll-wrap { overflow: visible !important; height: auto !important; flex: 1; }
   #gantt-canvas-wrap { overflow: visible !important; position: relative; }
   #gantt-rows { overflow: visible !important; }
-  #gantt-dep-svg { display: block !important; position: absolute !important; pointer-events: none; }
+  #gantt-dep-svg { display: block !important; position: absolute !important; pointer-events: all; }
   #wbs-splitter { display: none !important; }
   #today-line { display: none !important; }
   .wbs-row, .gantt-row { break-inside: avoid; }
@@ -2365,7 +2374,7 @@ html, body {
             <div id="gantt-canvas-wrap">
               <div id="gantt-rows"></div>
               <div id="today-line" style="display:none;"></div>
-              <svg id="gantt-dep-svg" class="gantt-dep-svg" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;"></svg>
+              <svg id="gantt-dep-svg" class="gantt-dep-svg" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:all;"></svg>
             </div>
           </div>
         </div>
@@ -3270,7 +3279,12 @@ function renderWBSTaskRows(tasks, phase, pi, depth, body) {
   });
 }
 
+let _rowNumMap = new Map();
+function buildRowNumMap() {
+  _rowNumMap = new Map(getAllTasksFlat().map((t, i) => [t.id, i + 1]));
+}
 function renderWBS() {
+  buildRowNumMap();
   renderWBSHeader();
   const body = document.getElementById('wbs-body');
   body.innerHTML = '';
@@ -3602,6 +3616,7 @@ function createPhaseRow(phase, pi) {
   }).join('');
 
   row.innerHTML = `
+    <span class="row-num">F${pi + 1}</span>
     <div class="wbs-row-content" style="grid-template-columns:${getColTemplate()};">
       ${cells}
     </div>
@@ -3728,6 +3743,7 @@ function createTaskRow(task, phase, pi, ti, depth) {
   }).join('');
 
   row.innerHTML = `
+    <span class="row-num">${_rowNumMap.get(task.id) || ''}</span>
     <div class="row-selector" onclick="event.stopPropagation()"></div>
     <div class="wbs-row-content" style="grid-template-columns:${getColTemplate()};">
       ${cells}
@@ -4748,6 +4764,7 @@ function renderTodayLine(minD, totalW) {
 }
 
 function renderDependencies(minD) {
+  _selectedArrow = null;
   const svg = document.getElementById('gantt-dep-svg');
   svg.innerHTML = '';
   if (!ganttOpts.deps) return;
@@ -4835,6 +4852,7 @@ function renderDependencies(minD) {
         const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
         dot.setAttribute('cx', x1); dot.setAttribute('cy', y1); dot.setAttribute('r', '3');
         dot.setAttribute('fill', cfg.color);
+        dot.style.pointerEvents = 'none';
         g.appendChild(dot);
 
         // Waypoints → smooth rounded path
@@ -4880,6 +4898,7 @@ function renderDependencies(minD) {
         path.setAttribute('fill', 'none');
         if (cfg.dash) path.setAttribute('stroke-dasharray', cfg.dash);
         path.setAttribute('marker-end', `url(#arr-${isCPLink?'CP':type})`);
+        path.style.pointerEvents = 'none';
         g.appendChild(path);
 
         if (lag !== 0) {
@@ -4889,6 +4908,7 @@ function renderDependencies(minD) {
           lt.setAttribute('font-family','Inter,sans-serif'); lt.setAttribute('font-weight','600');
           lt.setAttribute('fill', cfg.color);
           lt.textContent = (lag>0?'+':'')+lag+'d';
+          lt.style.pointerEvents = 'none';
           g.appendChild(lt);
         }
 
@@ -6620,7 +6640,7 @@ function showToast(msg) {
   `;
   t.textContent = '✓ ' + msg;
   document.body.appendChild(t);
-  setTimeout(() => t.remove(), 2500);
+  setTimeout(() => t.remove(), dur || 2500);
 }
 
 /* ═══════════════════════════════════════════════════
@@ -7338,7 +7358,7 @@ function openTaskDetailPanel(taskId) {
   }));
   const succsStr = succsArr.join(', ') || '—';
 
-  const fmtD = s => s ? s.slice(5).replace('-', '.') : '—';
+  const fmtD = s => { if (!s) return '—'; const p = s.split('-'); return p[2]+'.'+p[1]+'.'+p[0].slice(2); };
   const liveInfo = (task.startDate && task.endDate)
     ? `${fmtD(task.startDate)} – ${fmtD(task.endDate)} · ${dur}d`
     : '';
@@ -7741,30 +7761,94 @@ if ('serviceWorker' in navigator) {
 /* ═══════════════════════════════════════════════════
    ARROW HOVER HIGHLIGHTING
 ═══════════════════════════════════════════════════ */
+let _selectedArrow = null;
+
+function _resetArrows(svg) {
+  if (!svg) return;
+  svg.querySelectorAll('g[data-from-id]').forEach(g => g.setAttribute('opacity', '0.4'));
+}
+
+function _highlightArrowsFor(svg, tid) {
+  if (!svg) return;
+  svg.querySelectorAll('g[data-from-id]').forEach(g => {
+    const hit = g.dataset.fromId === tid || g.dataset.toId === tid;
+    g.setAttribute('opacity', hit ? '1' : '0.1');
+  });
+}
+
 function initArrowHighlighting() {
   const canvas = document.getElementById('gantt-canvas-wrap');
-  let active = null;
+  let hoverTid = null;
+
   canvas.addEventListener('mouseover', (e) => {
+    if (_selectedArrow) return;
+    const g = e.target.closest('g[data-from-id]');
+    if (g) {
+      const svg = document.getElementById('gantt-dep-svg');
+      if (!svg) return;
+      svg.querySelectorAll('g[data-from-id]').forEach(ag => {
+        ag.setAttribute('opacity', ag === g ? '1' : '0.1');
+      });
+      return;
+    }
     const bar = e.target.closest('.gantt-bar-wrap');
     if (!bar) return;
     const tid = bar.dataset.taskId;
-    if (tid === active) return;
-    active = tid;
+    if (tid === hoverTid) return;
+    hoverTid = tid;
     const svg = document.getElementById('gantt-dep-svg');
     if (!svg) return;
-    svg.querySelectorAll('g[data-from-id]').forEach(g => {
-      const hit = g.dataset.fromId === tid || g.dataset.toId === tid;
-      g.setAttribute('opacity', hit ? '1' : '0.1');
-    });
+    _highlightArrowsFor(svg, tid);
   });
+
   canvas.addEventListener('mouseout', (e) => {
+    if (_selectedArrow) return;
+    const gEl = e.target.closest('g[data-from-id]');
+    if (gEl && !e.relatedTarget?.closest('g[data-from-id]')) {
+      const svg = document.getElementById('gantt-dep-svg');
+      if (svg) _resetArrows(svg);
+      return;
+    }
     const bar = e.target.closest('.gantt-bar-wrap');
     if (!bar) return;
     if (e.relatedTarget?.closest('.gantt-bar-wrap')) return;
-    active = null;
+    hoverTid = null;
     const svg = document.getElementById('gantt-dep-svg');
-    if (!svg) return;
-    svg.querySelectorAll('g[data-from-id]').forEach(g => g.setAttribute('opacity', '0.4'));
+    if (svg) _resetArrows(svg);
+  });
+
+  canvas.addEventListener('click', (e) => {
+    const g = e.target.closest('g[data-from-id]');
+    if (g) {
+      e.stopPropagation();
+      const svg = document.getElementById('gantt-dep-svg');
+      if (_selectedArrow && _selectedArrow === g) {
+        _selectedArrow = null;
+        if (svg) _resetArrows(svg);
+      } else {
+        _selectedArrow = g;
+        if (svg) {
+          svg.querySelectorAll('g[data-from-id]').forEach(ag => {
+            ag.setAttribute('opacity', ag === g ? '1' : '0.1');
+          });
+        }
+        const fromId = g.dataset.fromId;
+        const toId = g.dataset.toId;
+        const fromTask = findTask(fromId);
+        const toTask = findTask(toId);
+        const fromNum = _rowNumMap.get(fromId) || '?';
+        const toNum = _rowNumMap.get(toId) || '?';
+        const fromName = fromTask ? fromTask.name : fromId;
+        const toName = toTask ? toTask.name : toId;
+        showToast(`#${fromNum} ${fromName} → #${toNum} ${toName}`, 4000);
+      }
+      return;
+    }
+    if (_selectedArrow && !e.target.closest('.gantt-bar-wrap')) {
+      _selectedArrow = null;
+      const svg = document.getElementById('gantt-dep-svg');
+      if (svg) _resetArrows(svg);
+    }
   });
 }
 
