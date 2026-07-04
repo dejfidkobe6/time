@@ -4958,23 +4958,40 @@ function renderDependencies(minD) {
   const rowH    = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--row-h')) || 40;
   const barH    = 22;
   const pxPerDay = timescale === 'days' ? cellW : timescale === 'weeks' ? cellW / 7 : cellW / 30.44;
-  const ELBOW   = 14;  // horizontal jog
-  const GAP     = 5;   // offset from bar edge so line doesn't touch bar
+  const ELBOW   = 14;
+  const GAP     = 5;
+  const SPREAD  = 3;   // px offset per overlapping arrow
+  const BRGAP   = 5;   // half-gap size for bridge breaks
+  const R       = 5;   // corner curve radius
 
-  // Smooth polyline with rounded corners
-  function smoothPts(pts, r) {
-    if (pts.length < 2) return '';
-    let d = `M ${pts[0].x},${pts[0].y}`;
-    for (let i = 1; i < pts.length; i++) {
-      const P=pts[i-1], C=pts[i], N=pts[i+1];
-      if (!N) { d+=` L ${C.x},${C.y}`; continue; }
-      const dx1=C.x-P.x, dy1=C.y-P.y, l1=Math.hypot(dx1,dy1)||0.01;
-      const dx2=N.x-C.x, dy2=N.y-C.y, l2=Math.hypot(dx2,dy2)||0.01;
-      const rr=Math.min(r,l1/2,l2/2);
-      if (rr<0.5) { d+=` L ${C.x},${C.y}`; continue; }
-      d+=` L ${C.x-dx1/l1*rr},${C.y-dy1/l1*rr} Q ${C.x},${C.y} ${C.x+dx2/l2*rr},${C.y+dy2/l2*rr}`;
-    }
-    return d;
+  // Collect all bar extents so we can cut bridge gaps in vertical segments
+  const allBars = [];
+  getAllTasksFlat().forEach(t => {
+    if (!t.startDate || !t.endDate) return;
+    const bx = dateToX(new Date(t.startDate), minD);
+    const bw = Math.max(4, dateToX(new Date(t.endDate), minD) - bx);
+    const ry = getTaskRowY(t.id);
+    if (ry >= 0) allBars.push({ x: bx, w: bw, ry });
+  });
+
+  // Build vertical path segment at x from ya to yb, inserting M-break gaps where task bars cross
+  function vSeg(x, ya, yb) {
+    const yMin = Math.min(ya, yb), yMax = Math.max(ya, yb);
+    const mids = [];
+    allBars.forEach(b => {
+      if (x <= b.x || x >= b.x + b.w) return;
+      const mid = b.ry + rowH / 2;
+      if (mid > yMin + BRGAP && mid < yMax - BRGAP) mids.push(mid);
+    });
+    if (!mids.length) return ` L ${x},${yb}`;
+    mids.sort((a, b_) => ya <= yb ? a - b_ : b_ - a);
+    let d = '';
+    mids.forEach(m => {
+      const g1 = ya <= yb ? m - BRGAP : m + BRGAP;
+      const g2 = ya <= yb ? m + BRGAP : m - BRGAP;
+      d += ` L ${x},${g1} M ${x},${g2}`;
+    });
+    return d + ` L ${x},${yb}`;
   }
 
   const TYPE_CFG = {
@@ -4995,121 +5012,155 @@ function renderDependencies(minD) {
     </marker>`).join('');
   svg.appendChild(defs);
 
+  // Count departures from each task and arrivals to each task for spread offsets
+  const deptUsed = new Map();
+  const arrUsed  = new Map();
+
   getAllTasksFlat().forEach(task => {
     if (!task.predecessors && task.dependsOn) {
       task.predecessors = [{ taskId: task.dependsOn, type: 'FS', lag: 0 }];
       delete task.dependsOn;
     }
     (task.predecessors || []).forEach((pred, predIndex) => {
-        if (pred.phaseId) return;  // phase predecessors: no single Gantt bar to draw from
-        const predTask = findTask(pred.taskId);
-        if (!predTask) return;
-        const type = pred.type || 'FS';
-        const lag  = pred.lag || 0;
+      if (pred.phaseId) return;
+      const predTask = findTask(pred.taskId);
+      if (!predTask) return;
+      const type = pred.type || 'FS';
+      const lag  = pred.lag || 0;
 
-        const isCPLink = cp.has(predTask.id) && cp.has(task.id) && (() => {
-          if (type==='FS') return task.startDate === addDays(predTask.endDate, lag+1);
-          if (type==='SS') return task.startDate === addDays(predTask.startDate, lag);
-          if (type==='FF') return task.endDate   === addDays(predTask.endDate,   lag);
-          return false;
-        })();
-        const cfg = isCPLink ? { color: CP_COLOR, dash: '' } : (TYPE_CFG[type] || TYPE_CFG.FS);
+      const isCPLink = cp.has(predTask.id) && cp.has(task.id) && (() => {
+        if (type==='FS') return task.startDate === addDays(predTask.endDate, lag+1);
+        if (type==='SS') return task.startDate === addDays(predTask.startDate, lag);
+        if (type==='FF') return task.endDate   === addDays(predTask.endDate,   lag);
+        return false;
+      })();
+      const cfg = isCPLink ? { color: CP_COLOR, dash: '' } : (TYPE_CFG[type] || TYPE_CFG.FS);
 
-        const ry1 = getTaskRowY(predTask.id);
-        const ry2 = getTaskRowY(task.id);
-        if (ry1 < 0 || ry2 < 0) return;
-        const y1 = ry1 + rowH/2;
-        const y2 = ry2 + rowH/2;
+      const ry1 = getTaskRowY(predTask.id);
+      const ry2 = getTaskRowY(task.id);
+      if (ry1 < 0 || ry2 < 0) return;
+      const y1 = ry1 + rowH/2;
+      const y2 = ry2 + rowH/2;
 
-        let x1, x2;
-        if      (type==='FS') { if (!predTask.endDate||!task.startDate)   return; x1=dateToX(new Date(predTask.endDate),  minD)+GAP; x2=dateToX(new Date(task.startDate),minD)-GAP; }
-        else if (type==='FF') { if (!predTask.endDate||!task.endDate)     return; x1=dateToX(new Date(predTask.endDate),  minD)+GAP; x2=dateToX(new Date(task.endDate),  minD)+GAP; }
-        else if (type==='SS') { if (!predTask.startDate||!task.startDate) return; x1=dateToX(new Date(predTask.startDate),minD)-GAP; x2=dateToX(new Date(task.startDate),minD)-GAP; }
-        else if (type==='SF') { if (!predTask.startDate||!task.endDate)   return; x1=dateToX(new Date(predTask.startDate),minD)-GAP; x2=dateToX(new Date(task.endDate),  minD)+GAP; }
-        else return;
+      let x1, x2;
+      if      (type==='FS') { if (!predTask.endDate||!task.startDate)   return; x1=dateToX(new Date(predTask.endDate),  minD)+GAP; x2=dateToX(new Date(task.startDate),minD)-GAP; }
+      else if (type==='FF') { if (!predTask.endDate||!task.endDate)     return; x1=dateToX(new Date(predTask.endDate),  minD)+GAP; x2=dateToX(new Date(task.endDate),  minD)+GAP; }
+      else if (type==='SS') { if (!predTask.startDate||!task.startDate) return; x1=dateToX(new Date(predTask.startDate),minD)-GAP; x2=dateToX(new Date(task.startDate),minD)-GAP; }
+      else if (type==='SF') { if (!predTask.startDate||!task.endDate)   return; x1=dateToX(new Date(predTask.startDate),minD)-GAP; x2=dateToX(new Date(task.endDate),  minD)+GAP; }
+      else return;
 
-        // Build <g> tagged for hover-highlighting
-        const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-        g.dataset.fromId = predTask.id;
-        g.dataset.toId   = task.id;
-        g.setAttribute('opacity', isCPLink ? '0.92' : '0.4');
+      const di = deptUsed.get(predTask.id) || 0;
+      deptUsed.set(predTask.id, di + 1);
+      const ai = arrUsed.get(task.id) || 0;
+      arrUsed.set(task.id, ai + 1);
 
-        // Source dot
-        const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-        dot.setAttribute('cx', x1); dot.setAttribute('cy', y1); dot.setAttribute('r', '3');
-        dot.setAttribute('fill', cfg.color);
-        dot.style.pointerEvents = 'none';
-        g.appendChild(dot);
+      const yDir  = y2 >= y1 ? 1 : -1;
+      const yChan = y1 + yDir * rowH / 2;
+      let d, labelX, labelY;
 
-        // Waypoints → smooth rounded path
-        const yDir  = y2>=y1 ? 1 : -1;
-        const yChan = y1 + yDir*rowH/2;
-        let pts, labelX, labelY;
-
-        if (type==='FS') {
-          const jog = x1+ELBOW;
-          if (Math.abs(y1-y2)<2) {
-            pts=[{x:x1,y:y1},{x:x2,y:y2}]; labelX=(x1+x2)/2; labelY=y1-6;
-          } else {
-            pts=[{x:x1,y:y1},{x:jog,y:y1},{x:jog,y:yChan},{x:x2-ELBOW,y:yChan},{x:x2-ELBOW,y:y2},{x:x2,y:y2}];
-            labelX=(jog+x2-ELBOW)/2; labelY=yChan-6;
-          }
-        } else if (type==='FF') {
-          const outerX=Math.max(x1,x2)+ELBOW;
-          if (Math.abs(y1-y2)<2) {
-            pts=[{x:x1,y:y1},{x:outerX,y:y1},{x:x2,y:y2}]; labelX=outerX; labelY=y1-6;
-          } else {
-            pts=[{x:x1,y:y1},{x:outerX,y:y1},{x:outerX,y:y2},{x:x2,y:y2}]; labelX=outerX+4; labelY=(y1+y2)/2;
-          }
-        } else if (type==='SS') {
-          const outerX=Math.min(x1,x2)-ELBOW;
-          if (Math.abs(y1-y2)<2) {
-            pts=[{x:x1,y:y1},{x:outerX,y:y1},{x:x2,y:y2}]; labelX=outerX; labelY=y1-6;
-          } else {
-            pts=[{x:x1,y:y1},{x:outerX,y:y1},{x:outerX,y:y2},{x:x2,y:y2}]; labelX=outerX-4; labelY=(y1+y2)/2;
-          }
+      if (type === 'FS') {
+        const jog  = x1 + ELBOW + di * SPREAD;
+        const arrX = x2 - ELBOW - ai * SPREAD;
+        if (Math.abs(y1 - y2) < 2) {
+          d = `M ${x1},${y1} L ${x2},${y2}`;
+          labelX = (x1+x2)/2; labelY = y1-6;
         } else {
-          const outerX=Math.min(x1,x2-ELBOW*2)-ELBOW;
-          pts=[{x:x1,y:y1},{x:outerX,y:y1},{x:outerX,y:yChan},{x:x2+ELBOW,y:yChan},{x:x2+ELBOW,y:y2},{x:x2,y:y2}];
-          labelX=(outerX+x2+ELBOW)/2; labelY=yChan-6;
+          d = `M ${x1},${y1}` +
+              ` L ${jog-R},${y1} Q ${jog},${y1} ${jog},${y1+yDir*R}` +
+              vSeg(jog, y1+yDir*R, yChan-yDir*R) +
+              ` Q ${jog},${yChan} ${jog+R},${yChan}` +
+              ` L ${arrX-R},${yChan} Q ${arrX},${yChan} ${arrX},${yChan+yDir*R}` +
+              vSeg(arrX, yChan+yDir*R, y2-yDir*R) +
+              ` Q ${arrX},${y2} ${arrX+R},${y2}` +
+              ` L ${x2},${y2}`;
+          labelX = (jog+arrX)/2; labelY = yChan-6;
         }
-
-        const d = smoothPts(pts, 5);
-        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-        path.setAttribute('d', d);
-        path.setAttribute('stroke', cfg.color);
-        path.setAttribute('stroke-width', isCPLink ? '2.2' : '1.6');
-        path.setAttribute('stroke-linecap', 'round');
-        path.setAttribute('stroke-linejoin', 'round');
-        path.setAttribute('fill', 'none');
-        if (cfg.dash) path.setAttribute('stroke-dasharray', cfg.dash);
-        path.setAttribute('marker-end', `url(#arr-${isCPLink?'CP':type})`);
-        path.style.pointerEvents = 'none';
-        g.appendChild(path);
-
-        if (lag !== 0) {
-          const lt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-          lt.setAttribute('x', labelX); lt.setAttribute('y', labelY);
-          lt.setAttribute('text-anchor','middle'); lt.setAttribute('font-size','9');
-          lt.setAttribute('font-family','Inter,sans-serif'); lt.setAttribute('font-weight','600');
-          lt.setAttribute('fill', cfg.color);
-          lt.textContent = (lag>0?'+':'')+lag+'d';
-          lt.style.pointerEvents = 'none';
-          g.appendChild(lt);
+      } else if (type === 'FF') {
+        const outerX = Math.max(x1, x2) + ELBOW + di * SPREAD;
+        if (Math.abs(y1 - y2) < 2) {
+          d = `M ${x1},${y1} L ${outerX},${y1} L ${x2},${y2}`;
+          labelX = outerX; labelY = y1-6;
+        } else {
+          d = `M ${x1},${y1}` +
+              ` L ${outerX-R},${y1} Q ${outerX},${y1} ${outerX},${y1+yDir*R}` +
+              vSeg(outerX, y1+yDir*R, y2-yDir*R) +
+              ` Q ${outerX},${y2} ${outerX-R},${y2}` +
+              ` L ${x2},${y2}`;
+          labelX = outerX+4; labelY = (y1+y2)/2;
         }
+      } else if (type === 'SS') {
+        const outerX = Math.min(x1, x2) - ELBOW - di * SPREAD;
+        if (Math.abs(y1 - y2) < 2) {
+          d = `M ${x1},${y1} L ${outerX},${y1} L ${x2},${y2}`;
+          labelX = outerX; labelY = y1-6;
+        } else {
+          d = `M ${x1},${y1}` +
+              ` L ${outerX+R},${y1} Q ${outerX},${y1} ${outerX},${y1+yDir*R}` +
+              vSeg(outerX, y1+yDir*R, y2-yDir*R) +
+              ` Q ${outerX},${y2} ${outerX+R},${y2}` +
+              ` L ${x2},${y2}`;
+          labelX = outerX-4; labelY = (y1+y2)/2;
+        }
+      } else { // SF
+        const outerX  = Math.min(x1, x2 - ELBOW*2) - ELBOW - di * SPREAD;
+        const arrSide = x2 + ELBOW + ai * SPREAD;
+        d = `M ${x1},${y1}` +
+            ` L ${outerX+R},${y1} Q ${outerX},${y1} ${outerX},${y1+yDir*R}` +
+            vSeg(outerX, y1+yDir*R, yChan-yDir*R) +
+            ` Q ${outerX},${yChan} ${outerX+R},${yChan}` +
+            ` L ${arrSide-R},${yChan} Q ${arrSide},${yChan} ${arrSide},${yChan+yDir*R}` +
+            vSeg(arrSide, yChan+yDir*R, y2-yDir*R) +
+            ` Q ${arrSide},${y2} ${arrSide-R},${y2}` +
+            ` L ${x2},${y2}`;
+        labelX = (outerX+arrSide)/2; labelY = yChan-6;
+      }
 
-        const hit = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-        hit.setAttribute('d', d);
-        hit.setAttribute('stroke', 'transparent');
-        hit.setAttribute('stroke-width', '14');
-        hit.setAttribute('fill', 'none');
-        hit.style.pointerEvents = 'stroke';
-        hit.style.cursor = 'pointer';
-        hit.addEventListener('dblclick', (e) => { e.stopPropagation(); openDepEditor(task, predIndex); });
-        g.appendChild(hit);
+      const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      g.dataset.fromId = predTask.id;
+      g.dataset.toId   = task.id;
+      g.setAttribute('opacity', isCPLink ? '0.92' : '0.4');
 
-        svg.appendChild(g);
-      });
+      const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      dot.setAttribute('cx', x1); dot.setAttribute('cy', y1); dot.setAttribute('r', '3');
+      dot.setAttribute('fill', cfg.color);
+      dot.style.pointerEvents = 'none';
+      g.appendChild(dot);
+
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', d);
+      path.setAttribute('stroke', cfg.color);
+      path.setAttribute('stroke-width', isCPLink ? '2.2' : '1.6');
+      path.setAttribute('stroke-linecap', 'round');
+      path.setAttribute('stroke-linejoin', 'round');
+      path.setAttribute('fill', 'none');
+      if (cfg.dash) path.setAttribute('stroke-dasharray', cfg.dash);
+      path.setAttribute('marker-end', `url(#arr-${isCPLink?'CP':type})`);
+      path.style.pointerEvents = 'none';
+      g.appendChild(path);
+
+      if (lag !== 0) {
+        const lt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        lt.setAttribute('x', labelX); lt.setAttribute('y', labelY);
+        lt.setAttribute('text-anchor','middle'); lt.setAttribute('font-size','9');
+        lt.setAttribute('font-family','Inter,sans-serif'); lt.setAttribute('font-weight','600');
+        lt.setAttribute('fill', cfg.color);
+        lt.textContent = (lag>0?'+':'')+lag+'d';
+        lt.style.pointerEvents = 'none';
+        g.appendChild(lt);
+      }
+
+      const hit = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      hit.setAttribute('d', d);
+      hit.setAttribute('stroke', 'transparent');
+      hit.setAttribute('stroke-width', '14');
+      hit.setAttribute('fill', 'none');
+      hit.style.pointerEvents = 'stroke';
+      hit.style.cursor = 'pointer';
+      hit.addEventListener('dblclick', (e) => { e.stopPropagation(); openDepEditor(task, predIndex); });
+      g.appendChild(hit);
+
+      svg.appendChild(g);
+    });
   });
 }
 // end renderDependencies
