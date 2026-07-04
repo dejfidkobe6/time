@@ -4974,19 +4974,20 @@ function renderDependencies(minD) {
     if (ry >= 0) allBars.push({ x: bx, w: bw, ry });
   });
 
-  // Build vertical path segment at x from ya to yb, inserting M-break gaps where task bars cross
+  // Build vertical path segment at x from ya to yb, inserting M-break gaps at bar row centers
   function vSeg(x, ya, yb) {
     const yMin = Math.min(ya, yb), yMax = Math.max(ya, yb);
-    const mids = [];
+    const mids = new Set();
     allBars.forEach(b => {
-      if (x <= b.x || x >= b.x + b.w) return;
+      // Use cellW as x-tolerance so gaps fire for adjacent-column bars too
+      if (x < b.x - cellW || x > b.x + b.w + cellW) return;
       const mid = b.ry + rowH / 2;
-      if (mid > yMin + BRGAP && mid < yMax - BRGAP) mids.push(mid);
+      if (mid > yMin + BRGAP && mid < yMax - BRGAP) mids.add(mid);
     });
-    if (!mids.length) return ` L ${x},${yb}`;
-    mids.sort((a, b_) => ya <= yb ? a - b_ : b_ - a);
+    if (!mids.size) return ` L ${x},${yb}`;
+    const sorted = [...mids].sort((a, b_) => ya <= yb ? a - b_ : b_ - a);
     let d = '';
-    mids.forEach(m => {
+    sorted.forEach(m => {
       const g1 = ya <= yb ? m - BRGAP : m + BRGAP;
       const g2 = ya <= yb ? m + BRGAP : m - BRGAP;
       d += ` L ${x},${g1} M ${x},${g2}`;
@@ -5012,9 +5013,8 @@ function renderDependencies(minD) {
     </marker>`).join('');
   svg.appendChild(defs);
 
-  // Count departures from each task and arrivals to each task for spread offsets
+  // Track departures from each predecessor task for spread offsets
   const deptUsed = new Map();
-  const arrUsed  = new Map();
 
   getAllTasksFlat().forEach(task => {
     if (!task.predecessors && task.dependsOn) {
@@ -5051,29 +5051,27 @@ function renderDependencies(minD) {
 
       const di = deptUsed.get(predTask.id) || 0;
       deptUsed.set(predTask.id, di + 1);
-      const ai = arrUsed.get(task.id) || 0;
-      arrUsed.set(task.id, ai + 1);
 
-      const yDir  = y2 >= y1 ? 1 : -1;
-      const yChan = y1 + yDir * rowH / 2;
+      const yDir = y2 >= y1 ? 1 : -1;
+      // Adaptive corner radius: never larger than half the vertical travel
+      const r = Math.min(R, Math.abs(y2 - y1) / 2);
       let d, labelX, labelY;
 
       if (type === 'FS') {
-        const jog  = x1 + ELBOW + di * SPREAD;
-        const arrX = x2 - ELBOW - ai * SPREAD;
+        // Single departure jog: right from x1, down to y2, then to x2
+        const jog = x1 + ELBOW + di * SPREAD;
         if (Math.abs(y1 - y2) < 2) {
           d = `M ${x1},${y1} L ${x2},${y2}`;
           labelX = (x1+x2)/2; labelY = y1-6;
         } else {
+          // Arrival corner direction depends on whether x2 is right or left of jog
+          const cEnd = x2 >= jog ? jog+r : jog-r;
           d = `M ${x1},${y1}` +
-              ` L ${jog-R},${y1} Q ${jog},${y1} ${jog},${y1+yDir*R}` +
-              vSeg(jog, y1+yDir*R, yChan-yDir*R) +
-              ` Q ${jog},${yChan} ${jog+R},${yChan}` +
-              ` L ${arrX-R},${yChan} Q ${arrX},${yChan} ${arrX},${yChan+yDir*R}` +
-              vSeg(arrX, yChan+yDir*R, y2-yDir*R) +
-              ` Q ${arrX},${y2} ${arrX+R},${y2}` +
+              ` L ${jog-r},${y1} Q ${jog},${y1} ${jog},${y1+yDir*r}` +
+              vSeg(jog, y1+yDir*r, y2-yDir*r) +
+              ` Q ${jog},${y2} ${cEnd},${y2}` +
               ` L ${x2},${y2}`;
-          labelX = (jog+arrX)/2; labelY = yChan-6;
+          labelX = jog+4; labelY = (y1+y2)/2;
         }
       } else if (type === 'FF') {
         const outerX = Math.max(x1, x2) + ELBOW + di * SPREAD;
@@ -5082,9 +5080,9 @@ function renderDependencies(minD) {
           labelX = outerX; labelY = y1-6;
         } else {
           d = `M ${x1},${y1}` +
-              ` L ${outerX-R},${y1} Q ${outerX},${y1} ${outerX},${y1+yDir*R}` +
-              vSeg(outerX, y1+yDir*R, y2-yDir*R) +
-              ` Q ${outerX},${y2} ${outerX-R},${y2}` +
+              ` L ${outerX-r},${y1} Q ${outerX},${y1} ${outerX},${y1+yDir*r}` +
+              vSeg(outerX, y1+yDir*r, y2-yDir*r) +
+              ` Q ${outerX},${y2} ${outerX-r},${y2}` +
               ` L ${x2},${y2}`;
           labelX = outerX+4; labelY = (y1+y2)/2;
         }
@@ -5095,22 +5093,24 @@ function renderDependencies(minD) {
           labelX = outerX; labelY = y1-6;
         } else {
           d = `M ${x1},${y1}` +
-              ` L ${outerX+R},${y1} Q ${outerX},${y1} ${outerX},${y1+yDir*R}` +
-              vSeg(outerX, y1+yDir*R, y2-yDir*R) +
-              ` Q ${outerX},${y2} ${outerX+R},${y2}` +
+              ` L ${outerX+r},${y1} Q ${outerX},${y1} ${outerX},${y1+yDir*r}` +
+              vSeg(outerX, y1+yDir*r, y2-yDir*r) +
+              ` Q ${outerX},${y2} ${outerX+r},${y2}` +
               ` L ${x2},${y2}`;
           labelX = outerX-4; labelY = (y1+y2)/2;
         }
-      } else { // SF
+      } else { // SF: left-jog to outerX, channel at yChan, right-jog to arrSide, then x2
+        const yChan   = y1 + yDir * rowH / 2;
+        const rC      = Math.min(R, rowH / 4);
         const outerX  = Math.min(x1, x2 - ELBOW*2) - ELBOW - di * SPREAD;
-        const arrSide = x2 + ELBOW + ai * SPREAD;
+        const arrSide = x2 + ELBOW;
         d = `M ${x1},${y1}` +
-            ` L ${outerX+R},${y1} Q ${outerX},${y1} ${outerX},${y1+yDir*R}` +
-            vSeg(outerX, y1+yDir*R, yChan-yDir*R) +
-            ` Q ${outerX},${yChan} ${outerX+R},${yChan}` +
-            ` L ${arrSide-R},${yChan} Q ${arrSide},${yChan} ${arrSide},${yChan+yDir*R}` +
-            vSeg(arrSide, yChan+yDir*R, y2-yDir*R) +
-            ` Q ${arrSide},${y2} ${arrSide-R},${y2}` +
+            ` L ${outerX+rC},${y1} Q ${outerX},${y1} ${outerX},${y1+yDir*rC}` +
+            vSeg(outerX, y1+yDir*rC, yChan-yDir*rC) +
+            ` Q ${outerX},${yChan} ${outerX+rC},${yChan}` +
+            ` L ${arrSide-rC},${yChan} Q ${arrSide},${yChan} ${arrSide},${yChan+yDir*rC}` +
+            vSeg(arrSide, yChan+yDir*rC, y2-yDir*rC) +
+            ` Q ${arrSide},${y2} ${arrSide-rC},${y2}` +
             ` L ${x2},${y2}`;
         labelX = (outerX+arrSide)/2; labelY = yChan-6;
       }
