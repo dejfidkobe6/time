@@ -1580,6 +1580,12 @@ html, body {
 }
 .gantt-bar-wrap:hover .bar-connect-dot { display: block; }
 
+/* Dep-drop target highlight — shown while dragging a connect dot over a bar */
+.gantt-bar-wrap.dep-drop-target .gantt-bar {
+  box-shadow: 0 0 0 2px var(--olive);
+  filter: brightness(1.12);
+}
+
 /* Dep-draw overlay */
 #dep-draw-svg {
   position: fixed; top: 0; left: 0; width: 100%; height: 100%;
@@ -4770,7 +4776,7 @@ function initDepDraw() {
   const svg = document.getElementById('dep-draw-svg');
   const line = document.getElementById('dep-draw-line');
   let drawingFrom = null;
-  let _hoveredArrow = null;
+  let _hoveredBar = null;
 
   // Walk elementsFromPoint (z-order) to find gantt-bar-wrap even if arrows/dots are on top
   function findBarWrapAt(x, y) {
@@ -4782,24 +4788,19 @@ function initDepDraw() {
     return null;
   }
 
-  // Highlight whichever dep arrow is under the pointer (gives orientation while dragging)
-  function highlightArrowAt(x, y) {
-    const el = document.elementFromPoint(x, y);
-    const g = el ? el.closest('#gantt-dep-svg g[data-from-id]') : null;
-    if (g === _hoveredArrow) return;
-    if (_hoveredArrow) _hoveredArrow.setAttribute('opacity', _hoveredArrow.dataset.baseOp || '0.4');
-    _hoveredArrow = g;
-    if (_hoveredArrow) {
-      if (!_hoveredArrow.dataset.baseOp) _hoveredArrow.dataset.baseOp = _hoveredArrow.getAttribute('opacity') || '0.4';
-      _hoveredArrow.setAttribute('opacity', '1');
-    }
+  // Highlight the target bar under the pointer to show where the dep will land
+  function highlightTargetAt(x, y) {
+    const bw = findBarWrapAt(x, y);
+    const targetId = bw && bw.dataset.taskId !== drawingFrom ? bw.dataset.taskId : null;
+    const next = targetId ? bw : null;
+    if (next === _hoveredBar) return;
+    if (_hoveredBar) { _hoveredBar.classList.remove('dep-drop-target'); }
+    _hoveredBar = next;
+    if (_hoveredBar) { _hoveredBar.classList.add('dep-drop-target'); }
   }
 
   function clearHighlight() {
-    if (_hoveredArrow) {
-      _hoveredArrow.setAttribute('opacity', _hoveredArrow.dataset.baseOp || '0.4');
-      _hoveredArrow = null;
-    }
+    if (_hoveredBar) { _hoveredBar.classList.remove('dep-drop-target'); _hoveredBar = null; }
   }
 
   function finishDep(x, y) {
@@ -4841,7 +4842,7 @@ function initDepDraw() {
     if (!drawingFrom) return;
     line.setAttribute('x2', e.clientX);
     line.setAttribute('y2', e.clientY);
-    highlightArrowAt(e.clientX, e.clientY);
+    highlightTargetAt(e.clientX, e.clientY);
   });
 
   document.addEventListener('mouseup', (e) => {
@@ -5086,20 +5087,28 @@ function renderDependencies(minD) {
       let d, labelX, labelY;
 
       if (type === 'FS') {
-        // Single departure jog: right from x1, down to y2, then to x2
-        const jog = x1 + ELBOW + di * SPREAD;
+        // Two jogs: departure (right of pred end) and arrival (left of succ start),
+        // joined by a horizontal channel at yChan — always arrives at x2 from the left.
+        const jog  = x1 + ELBOW + di * SPREAD;
+        const arrX = x2 - ELBOW;
         if (Math.abs(y1 - y2) < 2) {
           d = `M ${x1},${y1} L ${x2},${y2}`;
           labelX = (x1+x2)/2; labelY = y1-6;
         } else {
-          // Arrival corner direction depends on whether x2 is right or left of jog
-          const cEnd = x2 >= jog ? jog+r : jog-r;
+          const yChan = y1 + yDir * rowH / 2;
+          const rV = Math.min(R, rowH / 4);         // vertical turn radius
+          const rH = Math.min(rV, Math.abs(arrX - jog) / 2); // channel turn radius
+          const goRight = arrX >= jog;
           d = `M ${x1},${y1}` +
-              ` L ${jog-r},${y1} Q ${jog},${y1} ${jog},${y1+yDir*r}` +
-              vSeg(jog, y1+yDir*r, y2-yDir*r) +
-              ` Q ${jog},${y2} ${cEnd},${y2}` +
+              ` L ${jog-rV},${y1} Q ${jog},${y1} ${jog},${y1+yDir*rV}` +
+              vSeg(jog, y1+yDir*rV, yChan-yDir*rV) +
+              ` Q ${jog},${yChan} ${goRight ? jog+rH : jog-rH},${yChan}` +
+              ` L ${goRight ? arrX-rH : arrX+rH},${yChan}` +
+              ` Q ${arrX},${yChan} ${arrX},${yChan+yDir*rV}` +
+              vSeg(arrX, yChan+yDir*rV, y2-yDir*rV) +
+              ` Q ${arrX},${y2} ${arrX+rV},${y2}` +
               ` L ${x2},${y2}`;
-          labelX = jog+4; labelY = (y1+y2)/2;
+          labelX = (jog+arrX)/2; labelY = yChan-6;
         }
       } else if (type === 'FF') {
         const outerX = Math.max(x1, x2) + ELBOW + di * SPREAD;
