@@ -861,6 +861,11 @@ html, body {
   height: 22px;
   cursor: grab;
 }
+.gantt-bar-wrap::before {
+  content: '';
+  position: absolute;
+  inset: -10px -12px;
+}
 .gantt-bar-wrap:active { cursor: grabbing; }
 
 .gantt-row.is-phase .gantt-bar-wrap {
@@ -2055,7 +2060,7 @@ html, body {
   .gantt-bar-label { display: none !important; }
 
   /* Touch-friendly bars — bigger handles */
-  .gantt-bar-wrap { touch-action: none; }
+  .gantt-bar-wrap { touch-action: pan-x pan-y; }
   .bar-resize-l, .bar-resize-r { width: 16px; opacity: 0.7; }
   .bar-connect-dot { width: 24px; height: 24px; }
 
@@ -4336,27 +4341,47 @@ function renderGanttHeader(minD, maxD, totalW) {
       d.setDate(d.getDate() + 1);
     }
   } else if (timescale === 'weeks') {
-    // Group weeks by month
-    const months = groupWeeksByMonth(minD, maxD);
-    months.forEach(m => {
+    // Snap to Monday of the week containing minD
+    const _dow = (new Date(minD)).getDay();
+    const _firstMon = new Date(minD);
+    _firstMon.setDate(_firstMon.getDate() - (_dow === 0 ? 6 : _dow - 1));
+    // Width of the first (possibly partial) cell = pixels from minD to the following Monday
+    const _nextMon0 = new Date(_firstMon); _nextMon0.setDate(_firstMon.getDate() + 7);
+    const _firstCellW = (_dow === 1) ? cellW : Math.round(dateToX(_nextMon0, minD));
+
+    // Top row: month labels with pixel-accurate widths accounting for partial first week
+    const _mn = ['Leden','Únor','Březen','Duben','Květen','Červen','Červenec','Srpen','Září','Říjen','Listopad','Prosinec'];
+    const _mPx = {};
+    let _mPtr = new Date(_firstMon), _firstWk = true;
+    while (_mPtr <= maxD) {
+      const _key = _mPtr.getFullYear() + '-' + _mPtr.getMonth();
+      if (!_mPx[_key]) _mPx[_key] = { label: _mn[_mPtr.getMonth()] + ' ' + _mPtr.getFullYear(), px: 0 };
+      _mPx[_key].px += _firstWk ? _firstCellW : cellW;
+      _firstWk = false;
+      _mPtr.setDate(_mPtr.getDate() + 7);
+    }
+    Object.values(_mPx).forEach(m => {
       const cell = document.createElement('div');
       cell.className = 'time-month-cell';
-      cell.style.width = (m.weeks * cellW) + 'px';
-      cell.style.minWidth = (m.weeks * cellW) + 'px';
+      cell.style.width = m.px + 'px';
+      cell.style.minWidth = m.px + 'px';
       cell.textContent = m.label;
       monthsRow.appendChild(cell);
     });
-    // Week numbers
-    let d = new Date(minD);
-    d.setDate(d.getDate() - d.getDay() + 1); // Monday
-    while (d <= maxD) {
+
+    // Bottom row: week numbers, first cell trimmed to align with grid lines
+    let _d = new Date(_firstMon);
+    let _firstCell = true;
+    while (_d <= maxD) {
       const cell = document.createElement('div');
       cell.className = 'time-unit-cell';
-      cell.style.width = cellW + 'px';
-      cell.style.minWidth = cellW + 'px';
-      cell.textContent = 'T' + getWeekNumber(d);
+      const w = _firstCell ? _firstCellW : cellW;
+      cell.style.width = w + 'px';
+      cell.style.minWidth = w + 'px';
+      cell.textContent = 'T' + getWeekNumber(_d);
       unitsRow.appendChild(cell);
-      d.setDate(d.getDate() + 7);
+      _firstCell = false;
+      _d.setDate(_d.getDate() + 7);
     }
   } else {
     // Months
@@ -6691,11 +6716,15 @@ function showBarDot(barWrap) {
 function hideBarDot() {
   _activeDotWrap?.querySelector('.bar-connect-dot')?.classList.remove('dot-active');
   _activeDotWrap = null;
+  if (_popupRafId) { cancelAnimationFrame(_popupRafId); _popupRafId = null; }
   const pop = document.getElementById('bar-date-popup');
   if (pop) pop.style.visibility = 'hidden';
 }
 
+let _popupRafId = null;
+
 function showBarPopup(task, barWrap) {
+  if (_popupRafId) { cancelAnimationFrame(_popupRafId); _popupRafId = null; }
   let pop = document.getElementById('bar-date-popup');
   if (!pop) {
     pop = document.createElement('div');
@@ -6707,17 +6736,27 @@ function showBarPopup(task, barWrap) {
   pop.textContent = fmtD(task.startDate) + (task.startDate !== task.endDate ? ' — ' + fmtD(task.endDate) : '');
   pop.style.visibility = 'hidden';
   pop.style.left = '-9999px';
-  requestAnimationFrame(() => {
+  pop.style.top = '-9999px';
+  _popupRafId = requestAnimationFrame(() => {
+    _popupRafId = null;
     const r = barWrap.getBoundingClientRect();
-    const cx = r.left + r.width / 2;
-    const cy = r.top + r.height / 2;
+    if (!r.width && !r.height) return;
     const pw = pop.offsetWidth || 160;
     const ph = pop.offsetHeight || 32;
+    const cx = r.left + r.width / 2;
     const left = Math.max(8, Math.min(cx - pw / 2, window.innerWidth - pw - 8));
-    const top = cy - ph - 10 > 60 ? cy - ph - 10 : cy + 18;
+    // Prefer above the bar with 10px gap; if not enough room, place below
+    let top;
+    if (r.top - ph - 10 >= 54) {
+      top = r.top - ph - 10;
+    } else {
+      top = r.bottom + 10;
+      if (top + ph > window.innerHeight - 8) top = r.top - ph - 10;
+    }
+    top = Math.max(54, Math.min(top, window.innerHeight - ph - 8));
     pop.style.left = left + 'px';
-    pop.style.top = Math.max(60, top) + 'px';
-    requestAnimationFrame(() => { pop.style.visibility = 'visible'; });
+    pop.style.top = top + 'px';
+    _popupRafId = requestAnimationFrame(() => { _popupRafId = null; pop.style.visibility = 'visible'; });
   });
 }
 
