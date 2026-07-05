@@ -809,6 +809,7 @@ html, body {
 /* Gantt rows */
 #gantt-rows {
   position: relative;
+  z-index: 1;
 }
 
 .gantt-row {
@@ -1581,6 +1582,7 @@ html, body {
   box-shadow: 0 1px 4px rgba(0,0,0,0.25);
 }
 .gantt-bar-wrap:hover .bar-connect-dot { display: block; }
+.bar-connect-dot.dot-active { display: block !important; }
 
 /* Dep-drop target highlight — shown while dragging a connect dot over a bar */
 .gantt-bar-wrap.dep-drop-target .gantt-bar {
@@ -2090,8 +2092,7 @@ html, body {
   #task-detail-panel .tdp-cp-badge { order: 3; }
   #task-detail-panel .tdp-mob-info { display: none !important; }
   #task-detail-panel .tdp-mob-info-v2 { display: block !important; }
-  /* Bar connect dot appears after double-tap on mobile */
-  .bar-connect-dot.mob-dot-active { display: block !important; opacity: 1; }
+  /* connect dot visibility handled globally via .dot-active */
 
   /* Mobile info grid */
   .tdp-mob-info {
@@ -4514,18 +4515,12 @@ function renderGanttTaskRowsRecursive(tasks, phase, pi, minD, totalW, container,
           barWrap.classList.add('is-critical');
         }
 
-        // Bar click: show date popup + reveal connect dot. Nothing else — no panel, no re-render.
+        // Bar click: show date popup + connect dot. Click outside dismisses both.
         barWrap.addEventListener('click', (e) => {
           if (e.target.classList.contains('bar-resize-l') || e.target.classList.contains('bar-resize-r') || e.target.classList.contains('bar-connect-dot')) return;
           if (Date.now() - _arrowClickTs < 400) return;
           e.stopPropagation();
-          showBarDatePopup(task, e.clientX, e.clientY);
-          const dot = barWrap.querySelector('.bar-connect-dot');
-          if (dot) {
-            dot.classList.add('mob-dot-active');
-            clearTimeout(dot._dt);
-            dot._dt = setTimeout(() => dot.classList.remove('mob-dot-active'), 3000);
-          }
+          activateBarDot(barWrap, task, e.clientX, e.clientY);
         });
 
         makeDraggableBar(barWrap, task, minD);
@@ -6643,6 +6638,36 @@ function selectTask(taskId) {
   renderGantt();
 }
 
+let _activeDotWrap = null;
+
+function activateBarDot(barWrap, task, clientX, clientY) {
+  // Deactivate previous bar
+  if (_activeDotWrap && _activeDotWrap !== barWrap) {
+    const prev = _activeDotWrap.querySelector('.bar-connect-dot');
+    if (prev) prev.classList.remove('dot-active');
+  }
+  _activeDotWrap = barWrap;
+  const dot = barWrap.querySelector('.bar-connect-dot');
+  if (dot) dot.classList.add('dot-active');
+  showBarDatePopup(task, clientX, clientY);
+}
+
+function dismissBarDot() {
+  if (_activeDotWrap) {
+    const dot = _activeDotWrap.querySelector('.bar-connect-dot');
+    if (dot) dot.classList.remove('dot-active');
+    _activeDotWrap = null;
+  }
+  const pop = document.getElementById('bar-date-popup');
+  if (pop) pop.style.opacity = '0';
+}
+
+// One-time global dismiss listener — hides dot + popup when clicking outside any bar
+document.addEventListener('click', (e) => {
+  if (e.target.closest('.gantt-bar-wrap')) return;
+  dismissBarDot();
+}, true);
+
 function showBarDatePopup(task, clientX, clientY) {
   let pop = document.getElementById('bar-date-popup');
   if (!pop) {
@@ -6659,8 +6684,6 @@ function showBarDatePopup(task, clientX, clientY) {
   pop.style.left = left + 'px';
   pop.style.top  = Math.max(8, clientY - 46) + 'px';
   requestAnimationFrame(() => { pop.style.opacity = '1'; });
-  clearTimeout(pop._t);
-  pop._t = setTimeout(() => { pop.style.opacity = '0'; }, 2800);
 }
 
 function handleRowSelect(taskId, e) {
