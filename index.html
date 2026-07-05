@@ -1816,6 +1816,8 @@ html, body {
 }
 .mob-nav-btn svg { width: 20px; height: 20px; }
 .mob-nav-btn.active { color: var(--olive); }
+.mob-nav-btn.cp-active { color: #c0392b; }
+.mob-nav-btn.cp-active svg { stroke: #c0392b; }
 
 /* ═══════════════════════════════════════
    MOBILE TASK PANEL (slim left column)
@@ -2823,7 +2825,7 @@ async function selectProject(projectId, projectName) {
   }
   clearTimeout(safeHideTimer);
   document.getElementById('project-overlay').classList.add('hidden');
-  try { enforceAllConstraints(); render(); } catch(e) { console.error('render() failed:', e); }
+  try { enforceAllConstraints(); render(); syncCriticalPathBtn(); } catch(e) { console.error('render() failed:', e); }
 }
 
 async function recoverFromLocalStorage() {
@@ -4761,6 +4763,21 @@ function computeConstrainedStart(task) {
   return latestStart;
 }
 
+// Returns true if adding predId as a predecessor of succId would create a cycle
+function wouldCreateCycle(predId, succId) {
+  if (predId === succId) return true;
+  const visited = new Set();
+  function canReach(taskId, target) {
+    if (taskId === target) return true;
+    if (visited.has(taskId)) return false;
+    visited.add(taskId);
+    const task = findTask(taskId);
+    if (!task) return false;
+    return (task.predecessors || []).some(p => p.taskId && canReach(p.taskId, target));
+  }
+  return canReach(predId, succId);
+}
+
 // Cascade: when a task's dates change, snap all auto-scheduled successors (BFS, cycle-safe)
 // Works in both directions — if predecessor moves earlier, successors pull back too.
 function cascadeSuccessors(changedTaskId) {
@@ -4947,13 +4964,16 @@ function initDepDraw() {
       if (toTask) {
         if (!toTask.predecessors) toTask.predecessors = [];
         if (!toTask.predecessors.some(p => p.taskId === drawingFrom)) {
-          toTask.predecessors.push({ taskId: drawingFrom, type: 'FS', lag: 0 });
-          enforceConstraints(toTask);
-          cascadeSuccessors(toTask.id);
-          saveProject(true); render();
-          // Open dep editor immediately so user can tweak type/lag
-          const fresh = findTask(toTask.id);
-          if (fresh) openDepEditor(fresh, fresh.predecessors.length - 1);
+          if (wouldCreateCycle(drawingFrom, toTask.id)) {
+            showToast('Cyklická závislost není povolena');
+          } else {
+            toTask.predecessors.push({ taskId: drawingFrom, type: 'FS', lag: 0 });
+            enforceConstraints(toTask);
+            cascadeSuccessors(toTask.id);
+            saveProject(true); render();
+            const fresh = findTask(toTask.id);
+            if (fresh) openDepEditor(fresh, fresh.predecessors.length - 1);
+          }
         }
       }
     }
@@ -7544,18 +7564,25 @@ function removePredRow(idx, taskId) {
 
 function collectPreds(taskId) {
   const task = findTask(taskId);
-  if (!task) return;
+  if (!task) return true;
   const rows = document.querySelectorAll('#pred-edit-list .pred-edit-row');
   const preds = [];
+  let hasCycle = false;
   rows.forEach(row => {
     const sel  = row.querySelector('[data-field="taskId"]')?.value;
     const type = row.querySelector('[data-field="type"]')?.value || 'FS';
     const lag  = parseInt(row.querySelector('[data-field="lag"]')?.value) || 0;
     if (!sel) return;
+    if (!sel.startsWith('phase:') && wouldCreateCycle(sel, taskId)) {
+      showToast('Cyklická závislost není povolena — vazba přeskočena');
+      hasCycle = true;
+      return;
+    }
     if (sel.startsWith('phase:')) preds.push({ phaseId: sel.slice(6), type, lag });
     else preds.push({ taskId: sel, type, lag });
   });
   task.predecessors = preds;
+  return !hasCycle;
 }
 
 /* ═══════════════════════════════════════════════════
@@ -8197,10 +8224,25 @@ function saveTaskDetailPanel(taskId) {
    MOBILE SIDEBAR
 ═══════════════════════════════════════════════════ */
 function setMobNav(active) {
-  ['gantt','cashflow','add','undo','save'].forEach(id => {
+  ['gantt','cp','add','undo','save'].forEach(id => {
     const el = document.getElementById('mobnav-' + id);
     if (el) el.classList.toggle('active', id === active);
   });
+}
+
+function toggleCriticalPath() {
+  if (!project.settings) project.settings = {};
+  project.settings.showCriticalPath = !project.settings.showCriticalPath;
+  _criticalPathCache = null;
+  const btn = document.getElementById('mobnav-cp');
+  if (btn) btn.classList.toggle('cp-active', !!project.settings.showCriticalPath);
+  saveProject(true);
+  renderGantt();
+}
+
+function syncCriticalPathBtn() {
+  const btn = document.getElementById('mobnav-cp');
+  if (btn) btn.classList.toggle('cp-active', !!getSettings().showCriticalPath);
 }
 
 function openMobileSidebar() {
@@ -8619,9 +8661,9 @@ init();
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="3" rx="1"/><rect x="3" y="10.5" width="12" height="3" rx="1"/><rect x="3" y="17" width="15" height="3" rx="1"/></svg>
     Plán
   </button>
-  <button class="mob-nav-btn" id="mobnav-cashflow" onclick="switchMainView('cashflow');setMobNav('cashflow')">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-    Cashflow
+  <button class="mob-nav-btn" id="mobnav-cp" onclick="toggleCriticalPath()" title="Kritická cesta">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+    Krit. cesta
   </button>
   <button class="mob-nav-btn" id="mobnav-add" onclick="openAddTaskModal()">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
