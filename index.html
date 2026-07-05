@@ -4664,20 +4664,47 @@ function addDays(dateStr, n) {
 
 // Re-enforce constraints on every auto-scheduled task; call after project load to fix saved violations
 function enforceAllConstraints() {
-  const allTasks = getAllTasksFlat().filter(t => !t.manual && (t.predecessors || []).length > 0);
-  for (let pass = 0; pass < 10; pass++) {
-    let changed = false;
-    allTasks.forEach(task => {
-      const newStart = computeConstrainedStart(task);
-      if (newStart && newStart !== task.startDate) {
-        const dur = daysBetween(task.startDate, task.endDate);
-        task.startDate = newStart;
-        task.endDate   = addDays(newStart, dur);
-        changed = true;
-      }
+  const allTasks = getAllTasksFlat();
+  if (!allTasks.length) return;
+  const taskById = new Map(allTasks.map(t => [t.id, t]));
+
+  // Build task-to-task successor graph and compute in-degrees for topological sort
+  const succIds = new Map(allTasks.map(t => [t.id, []]));
+  const inDeg   = new Map(allTasks.map(t => [t.id, 0]));
+  allTasks.forEach(t => {
+    (t.predecessors || []).forEach(p => {
+      if (!p.taskId || !taskById.has(p.taskId)) return;
+      succIds.get(p.taskId).push(t.id);
+      inDeg.set(t.id, inDeg.get(t.id) + 1);
     });
-    if (!changed) break;
+  });
+
+  // Kahn's topological sort — tasks in cycles never reach in-degree 0 and are excluded
+  const queue = [];
+  inDeg.forEach((deg, id) => { if (deg === 0) queue.push(id); });
+  const topo = [];
+  while (queue.length) {
+    const id = queue.shift();
+    topo.push(id);
+    succIds.get(id).forEach(sid => {
+      const d = inDeg.get(sid) - 1;
+      inDeg.set(sid, d);
+      if (d === 0) queue.push(sid);
+    });
   }
+  // Tasks still with inDeg > 0 are in cycles — append once at end (no repeated passes)
+  inDeg.forEach((deg, id) => { if (deg > 0) { topo.push(id); console.warn('[BeSix] Circular dependency detected for task', id); } });
+
+  // Single forward pass in topological order — guaranteed no runaway for DAGs, one-pass for cycles
+  topo.forEach(id => {
+    const task = taskById.get(id);
+    if (!task || task.manual || !(task.predecessors || []).length) return;
+    const newStart = computeConstrainedStart(task);
+    if (!newStart || newStart === task.startDate) return;
+    const dur = daysBetween(task.startDate, task.endDate);
+    task.startDate = newStart;
+    task.endDate   = addDays(newStart, dur);
+  });
 }
 
 /// Enforce predecessor constraints on a single task — strict snap for auto-scheduled tasks
