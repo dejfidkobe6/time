@@ -4514,41 +4514,18 @@ function renderGanttTaskRowsRecursive(tasks, phase, pi, minD, totalW, container,
           barWrap.classList.add('is-critical');
         }
 
-        // Mobile: single tap → date popup + select (280ms delay for dbl-tap detection), double-tap → connect dot
-        // Desktop: single click → date popup + select
-        let clickTimer = null;
-        let mobLastTap = 0;
+        // Bar click: show date popup + reveal connect dot. Nothing else — no panel, no re-render.
         barWrap.addEventListener('click', (e) => {
-          const cx = e.clientX, cy = e.clientY;
           if (e.target.classList.contains('bar-resize-l') || e.target.classList.contains('bar-resize-r') || e.target.classList.contains('bar-connect-dot')) return;
-          if (window.innerWidth <= 768) {
-            const now = Date.now();
-            if (now - mobLastTap < 300) {
-              // Double-tap: show connect dot for 3 s
-              clearTimeout(clickTimer); clickTimer = null; mobLastTap = 0;
-              const dot = barWrap.querySelector('.bar-connect-dot');
-              if (dot) {
-                dot.classList.add('mob-dot-active');
-                setTimeout(() => dot.classList.remove('mob-dot-active'), 3000);
-              }
-            } else {
-              // First tap: select + show date popup
-              mobLastTap = now;
-              clickTimer = setTimeout(() => {
-                clickTimer = null; mobLastTap = 0;
-                if (Date.now() - _arrowClickTs < 400) return;
-                selectTask(task.id);
-                showBarDatePopup(task, cx, cy);
-              }, 280);
-            }
-            return;
+          if (Date.now() - _arrowClickTs < 400) return;
+          e.stopPropagation();
+          showBarDatePopup(task, e.clientX, e.clientY);
+          const dot = barWrap.querySelector('.bar-connect-dot');
+          if (dot) {
+            dot.classList.add('mob-dot-active');
+            clearTimeout(dot._dt);
+            dot._dt = setTimeout(() => dot.classList.remove('mob-dot-active'), 3000);
           }
-          if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; }
-          clickTimer = setTimeout(() => {
-            selectTask(task.id);
-            showBarDatePopup(task, cx, cy);
-            clickTimer = null;
-          }, 220);
         });
 
         makeDraggableBar(barWrap, task, minD);
