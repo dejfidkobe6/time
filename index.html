@@ -1582,7 +1582,6 @@ html, body {
   box-shadow: 0 1px 4px rgba(0,0,0,0.25);
 }
 .gantt-bar-wrap:hover .bar-connect-dot { display: block; }
-.bar-connect-dot.dot-active { display: block !important; }
 
 /* Dep-drop target highlight — shown while dragging a connect dot over a bar */
 .gantt-bar-wrap.dep-drop-target .gantt-bar {
@@ -2092,8 +2091,6 @@ html, body {
   #task-detail-panel .tdp-cp-badge { order: 3; }
   #task-detail-panel .tdp-mob-info { display: none !important; }
   #task-detail-panel .tdp-mob-info-v2 { display: block !important; }
-  /* connect dot visibility handled globally via .dot-active */
-
   /* Mobile info grid */
   .tdp-mob-info {
     display: none;
@@ -2642,7 +2639,6 @@ let project = {
 let timescale = 'weeks';
 let cellW = 28; // px per unit
 let selectedTaskId = null;
-let _lastGanttMinD = null;
 let selectedTaskIds = new Set();
 let lastSelectedTaskId = null;
 let currentMainView = 'gantt';
@@ -3981,7 +3977,6 @@ function renderGantt() {
   const savedLeft = wrap ? wrap.scrollLeft : 0;
 
   const { minD, maxD } = getGanttBounds();
-  _lastGanttMinD = minD;
   const totalUnits = timescale === 'days' ? daysBetween(minD, maxD) :
                      timescale === 'weeks' ? Math.ceil(daysBetween(minD, maxD)/7) + 1 :
                      Math.ceil(daysBetween(minD, maxD)/30.44) + 1;
@@ -4512,19 +4507,6 @@ function renderGanttTaskRowsRecursive(tasks, phase, pi, minD, totalW, container,
         if (getSettings().showCriticalPath && cp.has(task.id)) {
           barWrap.classList.add('is-critical');
         }
-
-        // Bar click: show date popup + connect dot + highlight dep arrows. Click outside dismisses.
-        barWrap.addEventListener('click', (e) => {
-          if (e.target.classList.contains('bar-resize-l') || e.target.classList.contains('bar-resize-r')) return;
-          if (Date.now() - _arrowClickTs < 400) return;
-          e.stopPropagation();
-          // Use bounding rect — iOS synthetic click events have clientX/Y = 0
-          const r = barWrap.getBoundingClientRect();
-          activateBarDot(barWrap, task, r.left + r.width / 2, r.top + r.height / 2);
-          // Update dep arrow highlighting without full re-render
-          selectedTaskId = task.id;
-          if (_lastGanttMinD) renderDependencies(_lastGanttMinD);
-        });
 
         makeDraggableBar(barWrap, task, minD);
         makeResizableBar(barWrap, task, minD);
@@ -6641,61 +6623,6 @@ function selectTask(taskId) {
   renderGantt();
 }
 
-let _activeDotWrap = null;
-
-function activateBarDot(barWrap, task, clientX, clientY) {
-  // Deactivate previous bar
-  if (_activeDotWrap && _activeDotWrap !== barWrap) {
-    const prev = _activeDotWrap.querySelector('.bar-connect-dot');
-    if (prev) prev.classList.remove('dot-active');
-  }
-  _activeDotWrap = barWrap;
-  const dot = barWrap.querySelector('.bar-connect-dot');
-  if (dot) dot.classList.add('dot-active');
-  showBarDatePopup(task, clientX, clientY);
-}
-
-function dismissBarDot() {
-  if (_activeDotWrap) {
-    const dot = _activeDotWrap.querySelector('.bar-connect-dot');
-    if (dot) dot.classList.remove('dot-active');
-    _activeDotWrap = null;
-  }
-  const pop = document.getElementById('bar-date-popup');
-  if (pop) pop.style.visibility = 'hidden';
-}
-
-// One-time global dismiss listener — hides dot + popup when clicking outside any bar
-document.addEventListener('click', (e) => {
-  if (e.target.closest('.gantt-bar-wrap')) return;
-  dismissBarDot();
-}, true);
-
-function showBarDatePopup(task, barCX, barCY) {
-  let pop = document.getElementById('bar-date-popup');
-  if (!pop) {
-    pop = document.createElement('div');
-    pop.id = 'bar-date-popup';
-    pop.style.cssText = 'position:fixed;background:#1a1a1a;color:#fff;padding:6px 14px;border-radius:10px;font-size:13px;font-weight:600;z-index:9999;pointer-events:none;box-shadow:0 4px 18px rgba(0,0,0,0.4);white-space:nowrap;visibility:hidden;left:-9999px;top:-9999px;';
-    document.body.appendChild(pop);
-  }
-  pop.textContent = formatDateShort(task.startDate) + ' — ' + formatDateShort(task.endDate);
-  pop.style.visibility = 'hidden';
-  pop.style.left = '-9999px';
-  // Frame 1: measure size; Frame 2: position and show
-  requestAnimationFrame(() => {
-    const pw = pop.offsetWidth  || 160;
-    const ph = pop.offsetHeight || 32;
-    const left = Math.max(8, Math.min(barCX - pw / 2, window.innerWidth - pw - 8));
-    // Show above bar if enough room (header ≈ 100px), otherwise below
-    const topAbove = barCY - ph - 10;
-    const topBelow = barCY + 18;
-    const top = topAbove > 105 ? topAbove : topBelow;
-    pop.style.left = left + 'px';
-    pop.style.top  = Math.max(60, top) + 'px';
-    requestAnimationFrame(() => { pop.style.visibility = 'visible'; });
-  });
-}
 
 function handleRowSelect(taskId, e) {
   e.stopPropagation();
