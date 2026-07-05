@@ -2149,6 +2149,12 @@ html, body {
     border: none; border-radius: var(--radius);
     font-weight: 700; font-size: 12px; cursor: pointer; letter-spacing: 0.3px;
   }
+  .tdp-mob-delete-btn {
+    display: block; width: 100%; margin-top: 6px;
+    padding: 10px; background: none; color: var(--danger);
+    border: 1px solid var(--danger); border-radius: var(--radius);
+    font-weight: 700; font-size: 12px; cursor: pointer; letter-spacing: 0.3px;
+  }
   /* Compact nav buttons when 6 fit */
   .mob-nav-btn { padding: 6px 8px; }
 
@@ -6797,11 +6803,31 @@ function deleteTask(taskId) {
   if (ref) {
     ref.container.splice(ref.index, 1);
   } else {
-    // Fallback for top-level tasks
     project.phases.forEach(ph => { ph.tasks = ph.tasks.filter(t => t.id !== taskId); });
   }
   if (selectedTaskId === taskId) { selectedTaskId = null; }
   selectedTaskIds.delete(taskId);
+  saveProject(true);
+  render();
+}
+
+function deleteTaskFromPanel(taskId) {
+  const task = findTask(taskId);
+  if (!task) return;
+  const succsCount = getAllTasksFlat().filter(t => (t.predecessors || []).some(p => p.taskId === taskId)).length;
+  const msg = `Opravdu chcete odstranit úkol "${task.name}"?\n\nZtratí se i všechny vazby${succsCount > 0 ? ' (' + succsCount + ' následovník' + (succsCount > 1 ? 'ů' : '') + ')' : ''}.`;
+  if (!confirm(msg)) return;
+  // Remove dep references in other tasks
+  getAllTasksFlat().forEach(t => {
+    if (t.predecessors) t.predecessors = t.predecessors.filter(p => p.taskId !== taskId);
+  });
+  // Remove the task itself
+  const ref = findParent(taskId);
+  if (ref) ref.container.splice(ref.index, 1);
+  else project.phases.forEach(ph => { ph.tasks = ph.tasks.filter(t => t.id !== taskId); });
+  if (selectedTaskId === taskId) selectedTaskId = null;
+  selectedTaskIds.delete(taskId);
+  closeTaskDetailPanel();
   saveProject(true);
   render();
 }
@@ -7847,6 +7873,7 @@ function openTaskDetailPanel(taskId) {
         <span class="tdp-mob-row-val">${escHtml(phase ? phase.name : '—')}</span>
       </div>
       <button class="tdp-mob-save-btn" onclick="saveTaskDetailPanel('${taskId}')">Uložit</button>
+      <button class="tdp-mob-delete-btn" onclick="deleteTaskFromPanel('${taskId}')">Smazat úkol</button>
     </div>
     <div class="tdp-body">
       <div class="tdp-field">
