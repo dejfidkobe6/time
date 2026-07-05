@@ -924,6 +924,7 @@ html, body {
 .gantt-dep-svg {
   position: absolute;
   top: 0; left: 0;
+  pointer-events: none;
   overflow: visible;
 }
 
@@ -2242,7 +2243,7 @@ html, body {
   #gantt-scroll-wrap { overflow: visible !important; height: auto !important; flex: 1; }
   #gantt-canvas-wrap { overflow: visible !important; position: relative; }
   #gantt-rows { overflow: visible !important; }
-  #gantt-dep-svg { display: block !important; position: absolute !important; }
+  #gantt-dep-svg { display: block !important; position: absolute !important; pointer-events: none; }
   #wbs-splitter { display: none !important; }
   #today-line { display: none !important; }
   .wbs-row, .gantt-row { break-inside: avoid; }
@@ -2516,7 +2517,7 @@ html, body {
             <div id="gantt-canvas-wrap">
               <div id="gantt-rows"></div>
               <div id="today-line" style="display:none;"></div>
-              <svg id="gantt-dep-svg" class="gantt-dep-svg" style="position:absolute;top:0;left:0;width:100%;height:100%;"></svg>
+              <svg id="gantt-dep-svg" class="gantt-dep-svg" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;"></svg>
             </div>
           </div>
         </div>
@@ -3518,9 +3519,9 @@ function computeCriticalPath() {
       const type = pred.type || 'FS';
       const lag  = pred.lag || 0;
       let tight = false;
-      if      (type === 'FS') tight = task.startDate === addDays(predTask.endDate, lag + 1);
-      else if (type === 'SS') tight = task.startDate === addDays(predTask.startDate, lag);
-      else if (type === 'FF') tight = task.endDate   === addDays(predTask.endDate,   lag);
+      if      (type === 'FS') tight = task.startDate === nextWorkDay(addDays(predTask.endDate, lag + 1));
+      else if (type === 'SS') tight = task.startDate === nextWorkDay(addDays(predTask.startDate, lag));
+      else if (type === 'FF') tight = task.endDate   === nextWorkDay(addDays(predTask.endDate,   lag));
       if (tight) trace(pred.taskId);
     });
   }
@@ -4663,6 +4664,17 @@ function addDays(dateStr, n) {
   return d.toISOString().split('T')[0];
 }
 
+// Advance to the nearest working day (same day if already a work day)
+function nextWorkDay(dateStr) {
+  const ws = getSettings().workDays || [1,2,3,4,5];
+  const d = new Date(dateStr + 'T12:00:00');
+  for (let i = 0; i < 8; i++) {
+    if (ws.includes(d.getDay())) return d.toISOString().split('T')[0];
+    d.setDate(d.getDate() + 1);
+  }
+  return dateStr;
+}
+
 // Re-enforce constraints on every auto-scheduled task; call after project load to fix saved violations
 function enforceAllConstraints() {
   const allTasks = getAllTasksFlat();
@@ -4745,17 +4757,17 @@ function computeConstrainedStart(task) {
       if (!phLeafTasks.length) return;
       const phEnd   = phLeafTasks.filter(t => t.endDate).map(t => t.endDate).reduce((a,b) => a > b ? a : b, null);
       const phStart = phLeafTasks.filter(t => t.startDate).map(t => t.startDate).reduce((a,b) => a < b ? a : b, null);
-      if      (type === 'FS' && phEnd)   s = addDays(phEnd,   lag + 1);
-      else if (type === 'SS' && phStart) s = addDays(phStart, lag);
-      else if (type === 'FF' && phEnd)   s = addDays(phEnd,   lag - dur);
-      else if (type === 'SF' && phStart) s = addDays(phStart, lag - dur);
+      if      (type === 'FS' && phEnd)   s = nextWorkDay(addDays(phEnd,   lag + 1));
+      else if (type === 'SS' && phStart) s = nextWorkDay(addDays(phStart, lag));
+      else if (type === 'FF' && phEnd)   s = nextWorkDay(addDays(phEnd,   lag - dur));
+      else if (type === 'SF' && phStart) s = nextWorkDay(addDays(phStart, lag - dur));
     } else {
       const predTask = findTask(pred.taskId);
       if (!predTask) return;
-      if      (type === 'FS' && predTask.endDate)   s = addDays(predTask.endDate,   lag + 1);
-      else if (type === 'SS' && predTask.startDate) s = addDays(predTask.startDate, lag);
-      else if (type === 'FF' && predTask.endDate)   s = addDays(predTask.endDate,   lag - dur);
-      else if (type === 'SF' && predTask.startDate) s = addDays(predTask.startDate, lag - dur);
+      if      (type === 'FS' && predTask.endDate)   s = nextWorkDay(addDays(predTask.endDate,   lag + 1));
+      else if (type === 'SS' && predTask.startDate) s = nextWorkDay(addDays(predTask.startDate, lag));
+      else if (type === 'FF' && predTask.endDate)   s = nextWorkDay(addDays(predTask.endDate,   lag - dur));
+      else if (type === 'SF' && predTask.startDate) s = nextWorkDay(addDays(predTask.startDate, lag - dur));
     }
     if (s && (!latestStart || s > latestStart)) latestStart = s;
   });
@@ -5182,9 +5194,9 @@ function renderDependencies(minD) {
       const lag  = pred.lag || 0;
 
       const isCPLink = cp.has(predTask.id) && cp.has(task.id) && (() => {
-        if (type==='FS') return task.startDate === addDays(predTask.endDate, lag+1);
-        if (type==='SS') return task.startDate === addDays(predTask.startDate, lag);
-        if (type==='FF') return task.endDate   === addDays(predTask.endDate,   lag);
+        if (type==='FS') return task.startDate === nextWorkDay(addDays(predTask.endDate, lag+1));
+        if (type==='SS') return task.startDate === nextWorkDay(addDays(predTask.startDate, lag));
+        if (type==='FF') return task.endDate   === nextWorkDay(addDays(predTask.endDate,   lag));
         return false;
       })();
       const cfg = isCPLink ? { color: CP_COLOR, dash: '' } : (TYPE_CFG[type] || TYPE_CFG.FS);
@@ -5321,19 +5333,6 @@ function renderDependencies(minD) {
       hit.style.pointerEvents = 'stroke';
       hit.style.cursor = 'pointer';
       hit.addEventListener('dblclick', (e) => { e.stopPropagation(); openDepEditor(task, predIndex); });
-      // Mobile double-tap: touchstart fires before the 300ms-delayed click
-      let _hitTapTs = 0;
-      hit.addEventListener('touchstart', (e) => {
-        const now = Date.now();
-        if (now - _hitTapTs < 380) {
-          e.stopPropagation();
-          _hitTapTs = 0;
-          _lastDepTap = { g: null, ts: 0 };
-          openDepEditor(task, predIndex);
-        } else {
-          _hitTapTs = now;
-        }
-      }, { passive: true });
       g.appendChild(hit);
 
       svg.appendChild(g);
@@ -8243,11 +8242,11 @@ function setMobNav(active) {
 }
 
 function toggleCriticalPath() {
-  if (!project.settings) project.settings = {};
-  project.settings.showCriticalPath = !project.settings.showCriticalPath;
+  const s = getSettings();
+  s.showCriticalPath = !s.showCriticalPath;
   _criticalPathCache = null;
   const btn = document.getElementById('mobnav-cp');
-  if (btn) btn.classList.toggle('cp-active', !!project.settings.showCriticalPath);
+  if (btn) btn.classList.toggle('cp-active', !!s.showCriticalPath);
   saveProject(true);
   renderGantt();
 }
@@ -8415,6 +8414,7 @@ if ('serviceWorker' in navigator) {
 let _selectedArrow = null;
 let _arrowClickTs = 0;
 let _lastDepTap = { g: null, ts: 0 };
+let _depDblTapState = { ts: 0, x: 0, y: 0 };
 
 function _resetArrows(svg) {
   if (!svg) return;
@@ -8474,20 +8474,7 @@ function initArrowHighlighting() {
     const g = e.target.closest('g[data-from-id]');
     if (g) {
       e.stopPropagation();
-      const now = Date.now();
-      // Double-click / double-tap → open dep editor
-      if (_lastDepTap.g === g && now - _lastDepTap.ts < 400) {
-        _lastDepTap = { g: null, ts: 0 };
-        const toId = g.dataset.toId;
-        const fromId = g.dataset.fromId;
-        const toTask = findTask(toId);
-        if (toTask) {
-          const predIndex = (toTask.predecessors || []).findIndex(p => p.taskId === fromId);
-          if (predIndex >= 0) { openDepEditor(toTask, predIndex); return; }
-        }
-      }
-      _lastDepTap = { g, ts: now };
-      _arrowClickTs = now;
+      _arrowClickTs = Date.now();
       closeTaskDetailPanelInstant();
       const svg = document.getElementById('gantt-dep-svg');
       if (_selectedArrow && _selectedArrow === g) {
@@ -8518,6 +8505,43 @@ function initArrowHighlighting() {
       if (svg) _resetArrows(svg);
     }
   });
+
+  // Mobile double-tap on dep arrows: SVG has pointer-events:none so we do geometric hit-testing.
+  // Two touchstart within 400ms at the same spot → check isPointInStroke on all hit paths.
+  canvas.addEventListener('touchstart', (e) => {
+    if (e.target.closest('.gantt-bar-wrap')) return; // bars handle their own taps
+    if (e.touches.length !== 1) return;
+    const touch = e.touches[0];
+    const now = Date.now();
+    const dx = touch.clientX - _depDblTapState.x;
+    const dy = touch.clientY - _depDblTapState.y;
+    if (now - _depDblTapState.ts < 400 && dx * dx + dy * dy < 900) {
+      // Second tap at same location — check dep paths geometrically
+      const svg = document.getElementById('gantt-dep-svg');
+      if (svg && svg.getScreenCTM) {
+        try {
+          const inv = svg.getScreenCTM().inverse();
+          const pt = svg.createSVGPoint();
+          pt.x = touch.clientX; pt.y = touch.clientY;
+          const svgPt = pt.matrixTransform(inv);
+          for (const g of svg.querySelectorAll('g[data-from-id]')) {
+            const hitPath = [...g.children].find(el => el.tagName === 'path' && el.getAttribute('stroke') === 'transparent');
+            if (hitPath && hitPath.isPointInStroke && hitPath.isPointInStroke(svgPt)) {
+              _depDblTapState = { ts: 0, x: 0, y: 0 };
+              const toTask = findTask(g.dataset.toId);
+              if (toTask) {
+                const predIndex = (toTask.predecessors || []).findIndex(p => p.taskId === g.dataset.fromId);
+                if (predIndex >= 0) { openDepEditor(toTask, predIndex); return; }
+              }
+            }
+          }
+        } catch (_) {}
+      }
+      _depDblTapState = { ts: 0, x: 0, y: 0 };
+    } else {
+      _depDblTapState = { ts: now, x: touch.clientX, y: touch.clientY };
+    }
+  }, { passive: true });
 }
 
 /* ═══════════════════════════════════════════════════
