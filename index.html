@@ -3997,6 +3997,8 @@ function renderGantt() {
 
   // Restore scroll — DOM rebuild resets scrollTop to 0
   if (wrap) { wrap.scrollTop = savedTop; wrap.scrollLeft = savedLeft; }
+  const _mobBody = document.getElementById('mob-task-panel-body');
+  if (_mobBody) _mobBody.scrollTop = savedTop;
   requestAnimationFrame(() => { _renderDepth = Math.max(0, _renderDepth - 1); });
 }
 
@@ -4271,7 +4273,11 @@ function initPinchZoom() {
     // Override scroll immediately (renderGantt restores old position; we need the zoom-anchored one)
     wrap.scrollLeft = targetLeft;
     wrap.scrollTop  = targetTop;
-    requestAnimationFrame(() => { renderMobTaskPanel(); });
+    requestAnimationFrame(() => {
+      renderMobTaskPanel();
+      const mb = document.getElementById('mob-task-panel-body');
+      if (mb) mb.scrollTop = targetTop;
+    });
   }, { passive: false });
 
   wrap.addEventListener('touchcancel', () => {
