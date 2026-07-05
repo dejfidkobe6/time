@@ -924,7 +924,6 @@ html, body {
 .gantt-dep-svg {
   position: absolute;
   top: 0; left: 0;
-  pointer-events: none;
   overflow: visible;
 }
 
@@ -2243,7 +2242,7 @@ html, body {
   #gantt-scroll-wrap { overflow: visible !important; height: auto !important; flex: 1; }
   #gantt-canvas-wrap { overflow: visible !important; position: relative; }
   #gantt-rows { overflow: visible !important; }
-  #gantt-dep-svg { display: block !important; position: absolute !important; pointer-events: none; }
+  #gantt-dep-svg { display: block !important; position: absolute !important; }
   #wbs-splitter { display: none !important; }
   #today-line { display: none !important; }
   .wbs-row, .gantt-row { break-inside: avoid; }
@@ -2517,7 +2516,7 @@ html, body {
             <div id="gantt-canvas-wrap">
               <div id="gantt-rows"></div>
               <div id="today-line" style="display:none;"></div>
-              <svg id="gantt-dep-svg" class="gantt-dep-svg" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;"></svg>
+              <svg id="gantt-dep-svg" class="gantt-dep-svg" style="position:absolute;top:0;left:0;width:100%;height:100%;"></svg>
             </div>
           </div>
         </div>
@@ -5322,6 +5321,19 @@ function renderDependencies(minD) {
       hit.style.pointerEvents = 'stroke';
       hit.style.cursor = 'pointer';
       hit.addEventListener('dblclick', (e) => { e.stopPropagation(); openDepEditor(task, predIndex); });
+      // Mobile double-tap: touchstart fires before the 300ms-delayed click
+      let _hitTapTs = 0;
+      hit.addEventListener('touchstart', (e) => {
+        const now = Date.now();
+        if (now - _hitTapTs < 380) {
+          e.stopPropagation();
+          _hitTapTs = 0;
+          _lastDepTap = { g: null, ts: 0 };
+          openDepEditor(task, predIndex);
+        } else {
+          _hitTapTs = now;
+        }
+      }, { passive: true });
       g.appendChild(hit);
 
       svg.appendChild(g);
@@ -8402,6 +8414,7 @@ if ('serviceWorker' in navigator) {
 ═══════════════════════════════════════════════════ */
 let _selectedArrow = null;
 let _arrowClickTs = 0;
+let _lastDepTap = { g: null, ts: 0 };
 
 function _resetArrows(svg) {
   if (!svg) return;
@@ -8461,7 +8474,20 @@ function initArrowHighlighting() {
     const g = e.target.closest('g[data-from-id]');
     if (g) {
       e.stopPropagation();
-      _arrowClickTs = Date.now();
+      const now = Date.now();
+      // Double-click / double-tap → open dep editor
+      if (_lastDepTap.g === g && now - _lastDepTap.ts < 400) {
+        _lastDepTap = { g: null, ts: 0 };
+        const toId = g.dataset.toId;
+        const fromId = g.dataset.fromId;
+        const toTask = findTask(toId);
+        if (toTask) {
+          const predIndex = (toTask.predecessors || []).findIndex(p => p.taskId === fromId);
+          if (predIndex >= 0) { openDepEditor(toTask, predIndex); return; }
+        }
+      }
+      _lastDepTap = { g, ts: now };
+      _arrowClickTs = now;
       closeTaskDetailPanelInstant();
       const svg = document.getElementById('gantt-dep-svg');
       if (_selectedArrow && _selectedArrow === g) {
