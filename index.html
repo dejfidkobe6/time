@@ -1903,12 +1903,13 @@ html, body {
   flex-shrink: 0;
 }
 .mob-drag-handle {
-  width: 20px; flex-shrink: 0;
-  display: flex; align-items: center; justify-content: center;
-  color: var(--border); opacity: 0.6; touch-action: none;
-  cursor: grab;
+  width: 26px; flex-shrink: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  color: var(--text-muted); opacity: 0.75; touch-action: none;
+  cursor: grab; gap: 1px; user-select: none;
 }
-.mob-drag-handle svg { width: 12px; height: 12px; }
+.mob-drag-num { font-size: 9px; font-weight: 700; line-height: 1; }
+.mob-drag-handle svg { width: 10px; height: 8px; }
 .mob-task-row.mob-row-dragging { opacity: 0.3; pointer-events: none; }
 .mob-task-row.mob-row-drag-active { background: rgba(74,83,64,0.08); }
 
@@ -2809,7 +2810,7 @@ async function selectProject(projectId, projectName) {
   }
   clearTimeout(safeHideTimer);
   document.getElementById('project-overlay').classList.add('hidden');
-  try { render(); } catch(e) { console.error('render() failed:', e); }
+  try { enforceAllConstraints(); render(); } catch(e) { console.error('render() failed:', e); }
 }
 
 async function recoverFromLocalStorage() {
@@ -4056,11 +4057,11 @@ function renderMobTaskPanel() {
         const mobRowNum = _rowNumMap.get(task.id) || '';
         row.dataset.taskId = task.id;
         row.innerHTML = `
-          <div class="mob-drag-handle"><svg viewBox="0 0 12 12" fill="currentColor"><rect x="1" y="2" width="10" height="1.5" rx="0.75"/><rect x="1" y="5.25" width="10" height="1.5" rx="0.75"/><rect x="1" y="8.5" width="10" height="1.5" rx="0.75"/></svg></div>
+          <div class="mob-drag-handle"><span class="mob-drag-num">${mobRowNum}</span><svg viewBox="0 0 12 10" fill="currentColor"><rect x="1" y="0.5" width="10" height="1.5" rx="0.75"/><rect x="1" y="4" width="10" height="1.5" rx="0.75"/><rect x="1" y="7.5" width="10" height="1.5" rx="0.75"/></svg></div>
           <div class="mob-task-color" style="background:${(!isSummary && cp.has(task.id)) ? '#c0392b' : taskColor};${isMilestone?'clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%)':'border-radius:2px;'}"></div>
           <div class="mob-task-info" style="${indentStyle}">
             <div class="mob-task-name" style="${isSummary?'font-weight:700;':''}">${escHtml(task.name)}</div>
-            <div class="mob-task-dates">${mobRowNum ? mobRowNum + ' · ' : ''}${fmtDate(task.startDate)} — ${isSummary ? (task.children||[]).length + ' úkolů' : dur + 'd'}</div>
+            <div class="mob-task-dates">${fmtDate(task.startDate)} — ${isSummary ? (task.children||[]).length + ' úkolů' : dur + 'd'}</div>
           </div>
           `;
 
@@ -4617,6 +4618,24 @@ function addDays(dateStr, n) {
   return d.toISOString().split('T')[0];
 }
 
+// Re-enforce constraints on every auto-scheduled task; call after project load to fix saved violations
+function enforceAllConstraints() {
+  const allTasks = getAllTasksFlat().filter(t => !t.manual && (t.predecessors || []).length > 0);
+  for (let pass = 0; pass < 10; pass++) {
+    let changed = false;
+    allTasks.forEach(task => {
+      const newStart = computeConstrainedStart(task);
+      if (newStart && newStart !== task.startDate) {
+        const dur = daysBetween(task.startDate, task.endDate);
+        task.startDate = newStart;
+        task.endDate   = addDays(newStart, dur);
+        changed = true;
+      }
+    });
+    if (!changed) break;
+  }
+}
+
 /// Enforce predecessor constraints on a single task — strict snap for auto-scheduled tasks
 function enforceConstraints(task) {
   if (task.manual) return;
@@ -4914,7 +4933,7 @@ function initDepDraw() {
     const touch = e.touches[0];
     line.setAttribute('x2', touch.clientX);
     line.setAttribute('y2', touch.clientY);
-    highlightArrowAt(touch.clientX, touch.clientY);
+    highlightTargetAt(touch.clientX, touch.clientY);
   }, { passive: false });
 
   document.addEventListener('touchend', (e) => {
@@ -5985,6 +6004,8 @@ function confirmEditTask(taskId) {
     newPhase.tasks.push(task);
   }
 
+  enforceConstraints(task);
+  cascadeSuccessors(taskId);
   closeModal();
   saveProject(true);
   render();
@@ -6852,6 +6873,7 @@ function handleJSONImport(e) {
   reader.onload = (ev) => {
     try {
       project = JSON.parse(ev.target.result);
+      enforceAllConstraints();
       saveProject(true);
       render();
       showToast('Projekt importován');
@@ -8000,6 +8022,7 @@ function saveTaskDetailPanel(taskId) {
     else if (task.type === 'milestone') delete task.type;
   }
   pushUndo();
+  enforceConstraints(task);
   cascadeSuccessors(taskId);
   saveProject(true);
   render();
