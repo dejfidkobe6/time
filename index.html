@@ -4520,7 +4520,9 @@ function renderGanttTaskRowsRecursive(tasks, phase, pi, minD, totalW, container,
           if (e.target.classList.contains('bar-resize-l') || e.target.classList.contains('bar-resize-r') || e.target.classList.contains('bar-connect-dot')) return;
           if (Date.now() - _arrowClickTs < 400) return;
           e.stopPropagation();
-          activateBarDot(barWrap, task, e.clientX, e.clientY);
+          // Use bounding rect — iOS synthetic click events have clientX/Y = 0
+          const r = barWrap.getBoundingClientRect();
+          activateBarDot(barWrap, task, r.left + r.width / 2, r.top + r.height / 2);
         });
 
         makeDraggableBar(barWrap, task, minD);
@@ -6668,22 +6670,29 @@ document.addEventListener('click', (e) => {
   dismissBarDot();
 }, true);
 
-function showBarDatePopup(task, clientX, clientY) {
+function showBarDatePopup(task, barCX, barCY) {
   let pop = document.getElementById('bar-date-popup');
   if (!pop) {
     pop = document.createElement('div');
     pop.id = 'bar-date-popup';
-    pop.style.cssText = 'position:fixed;background:#1a1a1a;color:#fff;padding:6px 13px;border-radius:10px;font-size:13px;font-weight:600;z-index:2000;pointer-events:none;box-shadow:0 4px 18px rgba(0,0,0,0.35);white-space:nowrap;transition:opacity 0.18s;';
+    pop.style.cssText = 'position:fixed;background:#1a1a1a;color:#fff;padding:6px 14px;border-radius:10px;font-size:13px;font-weight:600;z-index:9999;pointer-events:none;box-shadow:0 4px 18px rgba(0,0,0,0.4);white-space:nowrap;opacity:0;transition:opacity 0.15s;';
     document.body.appendChild(pop);
   }
   pop.textContent = formatDateShort(task.startDate) + ' — ' + formatDateShort(task.endDate);
   pop.style.opacity = '0';
-  // Position above the tap point, clamped to viewport
-  const est = 180;
-  const left = Math.max(8, Math.min(clientX - est / 2, window.innerWidth - est - 8));
-  pop.style.left = left + 'px';
-  pop.style.top  = Math.max(8, clientY - 46) + 'px';
-  requestAnimationFrame(() => { pop.style.opacity = '1'; });
+  // Measure after text set, then position centered on bar, above or below
+  requestAnimationFrame(() => {
+    const pw = pop.offsetWidth  || 160;
+    const ph = pop.offsetHeight || 32;
+    const left = Math.max(8, Math.min(barCX - pw / 2, window.innerWidth - pw - 8));
+    // Show above bar if enough room (header ≈ 100px), otherwise below
+    const topAbove = barCY - ph - 10;
+    const topBelow = barCY + 18;
+    const top = topAbove > 105 ? topAbove : topBelow;
+    pop.style.left = left + 'px';
+    pop.style.top  = Math.max(60, top) + 'px';
+    pop.style.opacity = '1';
+  });
 }
 
 function handleRowSelect(taskId, e) {
