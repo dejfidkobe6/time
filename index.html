@@ -4509,9 +4509,18 @@ function renderGanttTaskRowsRecursive(tasks, phase, pi, minD, totalW, container,
           barWrap.classList.add('is-critical');
         }
 
-        // Bar tap → show connect dot at center so user can drag to create dep
+        // Bar tap → show connect dot. touchstart for immediate mobile response.
+        // No stopPropagation so dep-drawing touchstart on document still fires when dot is tapped.
+        barWrap.addEventListener('touchstart', (e) => {
+          if (e.target.classList.contains('bar-resize-l') || e.target.classList.contains('bar-resize-r')) return;
+          if (e.target.classList.contains('bar-connect-dot')) return; // dot touchstart handled by dep-draw listener
+          showBarDot(barWrap);
+        }, { passive: true });
+
+        // Desktop: also react on click
         barWrap.addEventListener('click', (e) => {
           if (e.target.classList.contains('bar-resize-l') || e.target.classList.contains('bar-resize-r')) return;
+          if (e.target.classList.contains('bar-connect-dot')) return;
           e.stopPropagation();
           showBarDot(barWrap);
         });
@@ -6647,10 +6656,13 @@ function hideBarDot() {
   _activeDotWrap = null;
 }
 
-// Tap outside any bar → hide dot
+// Tap / click outside any bar → hide dot
 document.addEventListener('click', (e) => {
   if (!e.target.closest('.gantt-bar-wrap')) hideBarDot();
 }, true);
+document.addEventListener('touchstart', (e) => {
+  if (!e.target.closest('.gantt-bar-wrap')) hideBarDot();
+}, { capture: true, passive: true });
 
 
 function handleRowSelect(taskId, e) {
