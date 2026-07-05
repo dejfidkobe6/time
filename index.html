@@ -4515,7 +4515,7 @@ function renderGanttTaskRowsRecursive(tasks, phase, pi, minD, totalW, container,
 
         // Bar click: show date popup + connect dot + highlight dep arrows. Click outside dismisses.
         barWrap.addEventListener('click', (e) => {
-          if (e.target.classList.contains('bar-resize-l') || e.target.classList.contains('bar-resize-r') || e.target.classList.contains('bar-connect-dot')) return;
+          if (e.target.classList.contains('bar-resize-l') || e.target.classList.contains('bar-resize-r')) return;
           if (Date.now() - _arrowClickTs < 400) return;
           e.stopPropagation();
           // Use bounding rect — iOS synthetic click events have clientX/Y = 0
