@@ -3433,6 +3433,7 @@ function renderWBS() {
   buildRowNumMap();
   renderWBSHeader();
   const body = document.getElementById('wbs-body');
+  const savedWbsTop = body.scrollTop;
   body.innerHTML = '';
 
   project.phases.forEach((phase, pi) => {
@@ -3444,6 +3445,8 @@ function renderWBS() {
       renderWBSTaskRows(phase.tasks || [], phase, pi, 0, body);
     }
   });
+
+  body.scrollTop = savedWbsTop;
 }
 
 function getColWidth(id) {
@@ -3967,6 +3970,10 @@ function dateToX(date, minD) {
 
 function renderGantt() {
   _criticalPathCache = null; // invalidate on each render
+  const wrap = document.getElementById('gantt-scroll-wrap');
+  const savedTop  = wrap ? wrap.scrollTop  : 0;
+  const savedLeft = wrap ? wrap.scrollLeft : 0;
+
   const { minD, maxD } = getGanttBounds();
   const totalUnits = timescale === 'days' ? daysBetween(minD, maxD) :
                      timescale === 'weeks' ? Math.ceil(daysBetween(minD, maxD)/7) + 1 :
@@ -3978,6 +3985,9 @@ function renderGantt() {
   renderTodayLine(minD, totalW);
   renderDependencies(minD);
   if (window.innerWidth <= 768) renderMobTaskPanel();
+
+  // Restore scroll — innerHTML rebuild may have reset scrollTop to 0
+  if (wrap) { wrap.scrollTop = savedTop; wrap.scrollLeft = savedLeft; }
 }
 
 /* ═══════════════════════════════════════════════════
@@ -4168,7 +4178,7 @@ function initPinchZoom() {
   if (!wrap || !canvas) return;
 
   let startDist = 0, startCellW = cellW, pinching = false;
-  let startScrollLeft = 0, startViewportMidX = 0, startContentMidX = 0;
+  let startScrollLeft = 0, startScrollTop = 0, startViewportMidX = 0, startViewportMidY = 0, startContentMidX = 0;
   let startRowH = 40;
   let rafPending = false;
   let lastRatio = 1;
@@ -4178,8 +4188,11 @@ function initPinchZoom() {
     const dy = e.touches[0].clientY - e.touches[1].clientY;
     return Math.sqrt(dx*dx + dy*dy);
   }
-  function getTouchMidClientX(e) {
-    return (e.touches[0].clientX + e.touches[1].clientX) / 2;
+  function getTouchMid(e) {
+    return {
+      x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+      y: (e.touches[0].clientY + e.touches[1].clientY) / 2
+    };
   }
 
   wrap.addEventListener('touchstart', (e) => {
@@ -4189,7 +4202,11 @@ function initPinchZoom() {
     startDist = getTouchDist(e);
     startCellW = cellW;
     startScrollLeft = wrap.scrollLeft;
-    startViewportMidX = getTouchMidClientX(e) - wrap.getBoundingClientRect().left;
+    startScrollTop  = wrap.scrollTop;
+    const wrapRect = wrap.getBoundingClientRect();
+    const mid = getTouchMid(e);
+    startViewportMidX = mid.x - wrapRect.left;
+    startViewportMidY = mid.y - wrapRect.top;
     startContentMidX = startViewportMidX + startScrollLeft;
     startRowH = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--row-h')) || 40;
     // Set transform origin once — it stays fixed for the entire gesture
@@ -4237,13 +4254,15 @@ function initPinchZoom() {
     const newRowH = Math.max(20, Math.min(72, Math.round(startRowH * actualScale)));
     document.documentElement.style.setProperty('--row-h', newRowH + 'px');
     // Compute target scroll position BEFORE DOM rebuild
+    // X: keep the horizontal finger midpoint anchored
     const targetLeft = Math.max(0, startContentMidX * actualScale - startViewportMidX);
-    const savedTop = wrap.scrollTop;
+    // Y: keep the vertical finger midpoint anchored (zoom toward fingers, not top)
+    const targetTop  = Math.max(0, startScrollTop * actualScale + startViewportMidY * (actualScale - 1));
     renderGantt();
     // Restore scroll AFTER DOM rebuild in the next animation frame (prevents jump-to-top)
     requestAnimationFrame(() => {
       wrap.scrollLeft = targetLeft;
-      wrap.scrollTop = savedTop;
+      wrap.scrollTop  = targetTop;
       renderMobTaskPanel();
     });
   }, { passive: false });
@@ -5015,39 +5034,9 @@ function renderDependencies(minD) {
   const ELBOW   = 14;
   const GAP     = 5;
   const SPREAD  = 3;   // px offset per overlapping arrow
-  const BRGAP   = 5;   // half-gap size for bridge breaks
   const R       = 5;   // corner curve radius
 
-  // Collect all bar extents so we can cut bridge gaps in vertical segments
-  const allBars = [];
-  getAllTasksFlat().forEach(t => {
-    if (!t.startDate || !t.endDate) return;
-    const bx = dateToX(new Date(t.startDate), minD);
-    const bw = Math.max(4, dateToX(new Date(t.endDate), minD) - bx);
-    const ry = getTaskRowY(t.id);
-    if (ry >= 0) allBars.push({ x: bx, w: bw, ry });
-  });
-
-  // Build vertical path segment at x from ya to yb, inserting M-break gaps at bar row centers.
-  // Gap fires for every row with a bar whose y-center falls in the traversed range —
-  // x overlap is intentionally ignored, matching the standard Gantt "wire underpass" convention.
-  function vSeg(x, ya, yb) {
-    const yMin = Math.min(ya, yb), yMax = Math.max(ya, yb);
-    const mids = new Set();
-    allBars.forEach(b => {
-      const mid = b.ry + rowH / 2;
-      if (mid > yMin + BRGAP && mid < yMax - BRGAP) mids.add(mid);
-    });
-    if (!mids.size) return ` L ${x},${yb}`;
-    const sorted = [...mids].sort((a, b_) => ya <= yb ? a - b_ : b_ - a);
-    let d = '';
-    sorted.forEach(m => {
-      const g1 = ya <= yb ? m - BRGAP : m + BRGAP;
-      const g2 = ya <= yb ? m + BRGAP : m - BRGAP;
-      d += ` L ${x},${g1} M ${x},${g2}`;
-    });
-    return d + ` L ${x},${yb}`;
-  }
+  function vSeg(x, _ya, yb) { return ` L ${x},${yb}`; }
 
   const TYPE_CFG = {
     FS: { color: '#2e7d6e', dash: ''         },
