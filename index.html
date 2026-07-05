@@ -1586,7 +1586,10 @@ html, body {
   cursor: crosshair; z-index: 8; display: none;
   box-shadow: 0 1px 6px rgba(0,0,0,0.3);
 }
-.gantt-bar-wrap:hover .bar-connect-dot { display: block; }
+/* Only show connect dot on hover for real pointer devices — touch devices use dot-active only */
+@media (hover: hover) and (pointer: fine) {
+  .gantt-bar-wrap:hover .bar-connect-dot { display: block; }
+}
 .bar-connect-dot.dot-active { display: block !important; }
 
 /* Dep-drop target highlight — shown while dragging a connect dot over a bar */
@@ -4531,10 +4534,12 @@ function renderGanttTaskRowsRecursive(tasks, phase, pi, minD, totalW, container,
 
         mWrap.addEventListener('touchstart', (e) => {
           if (e.target.classList.contains('bar-connect-dot')) return;
+          _lastBarTouchTs = Date.now();
           showBarDot(mWrap);
           showBarPopup(task, mWrap);
         }, { passive: true });
         mWrap.addEventListener('click', (e) => {
+          if (Date.now() - _lastBarTouchTs < 600) return;
           if (e.target.classList.contains('bar-connect-dot')) return;
           e.stopPropagation();
           showBarDot(mWrap);
@@ -4575,11 +4580,13 @@ function renderGanttTaskRowsRecursive(tasks, phase, pi, minD, totalW, container,
         barWrap.addEventListener('touchstart', (e) => {
           if (e.target.classList.contains('bar-resize-l') || e.target.classList.contains('bar-resize-r')) return;
           if (e.target.classList.contains('bar-connect-dot')) return;
+          _lastBarTouchTs = Date.now();
           showBarDot(barWrap);
           showBarPopup(task, barWrap);
         }, { passive: true });
 
         barWrap.addEventListener('click', (e) => {
+          if (Date.now() - _lastBarTouchTs < 600) return;
           if (e.target.classList.contains('bar-resize-l') || e.target.classList.contains('bar-resize-r')) return;
           if (e.target.classList.contains('bar-connect-dot')) return;
           e.stopPropagation();
@@ -6704,6 +6711,7 @@ function selectTask(taskId) {
 
 // ── Connect-dot + date popup ─────────────────────────────────
 let _activeDotWrap = null;
+let _lastBarTouchTs = 0;
 
 function showBarDot(barWrap) {
   if (_activeDotWrap && _activeDotWrap !== barWrap) {
