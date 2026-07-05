@@ -1903,12 +1903,13 @@ html, body {
   flex-shrink: 0;
 }
 .mob-drag-handle {
-  width: 20px; flex-shrink: 0;
-  display: flex; align-items: center; justify-content: center;
-  color: var(--border); opacity: 0.6; touch-action: none;
-  cursor: grab;
+  width: 26px; flex-shrink: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  color: var(--text-muted); opacity: 0.75; touch-action: none;
+  cursor: grab; gap: 1px; user-select: none;
 }
-.mob-drag-handle svg { width: 12px; height: 12px; }
+.mob-drag-num { font-size: 9px; font-weight: 700; line-height: 1; }
+.mob-drag-handle svg { width: 10px; height: 8px; }
 .mob-task-row.mob-row-dragging { opacity: 0.3; pointer-events: none; }
 .mob-task-row.mob-row-drag-active { background: rgba(74,83,64,0.08); }
 
@@ -2809,7 +2810,7 @@ async function selectProject(projectId, projectName) {
   }
   clearTimeout(safeHideTimer);
   document.getElementById('project-overlay').classList.add('hidden');
-  try { render(); } catch(e) { console.error('render() failed:', e); }
+  try { enforceAllConstraints(); render(); } catch(e) { console.error('render() failed:', e); }
 }
 
 async function recoverFromLocalStorage() {
@@ -4056,11 +4057,11 @@ function renderMobTaskPanel() {
         const mobRowNum = _rowNumMap.get(task.id) || '';
         row.dataset.taskId = task.id;
         row.innerHTML = `
-          <div class="mob-drag-handle"><svg viewBox="0 0 12 12" fill="currentColor"><rect x="1" y="2" width="10" height="1.5" rx="0.75"/><rect x="1" y="5.25" width="10" height="1.5" rx="0.75"/><rect x="1" y="8.5" width="10" height="1.5" rx="0.75"/></svg></div>
+          <div class="mob-drag-handle"><span class="mob-drag-num">${mobRowNum}</span><svg viewBox="0 0 12 10" fill="currentColor"><rect x="1" y="0.5" width="10" height="1.5" rx="0.75"/><rect x="1" y="4" width="10" height="1.5" rx="0.75"/><rect x="1" y="7.5" width="10" height="1.5" rx="0.75"/></svg></div>
           <div class="mob-task-color" style="background:${(!isSummary && cp.has(task.id)) ? '#c0392b' : taskColor};${isMilestone?'clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%)':'border-radius:2px;'}"></div>
           <div class="mob-task-info" style="${indentStyle}">
             <div class="mob-task-name" style="${isSummary?'font-weight:700;':''}">${escHtml(task.name)}</div>
-            <div class="mob-task-dates">${mobRowNum ? mobRowNum + ' · ' : ''}${fmtDate(task.startDate)} — ${isSummary ? (task.children||[]).length + ' úkolů' : dur + 'd'}</div>
+            <div class="mob-task-dates">${fmtDate(task.startDate)} — ${isSummary ? (task.children||[]).length + ' úkolů' : dur + 'd'}</div>
           </div>
           `;
 
@@ -4513,11 +4514,12 @@ function renderGanttTaskRowsRecursive(tasks, phase, pi, minD, totalW, container,
           barWrap.classList.add('is-critical');
         }
 
-        // Mobile: single tap → popup (280ms delay for dbl-tap detection), double-tap → connect dot
-        // Desktop: single click → select, double-click → open panel
+        // Mobile: single tap → date popup + select (280ms delay for dbl-tap detection), double-tap → connect dot
+        // Desktop: single click → date popup + select
         let clickTimer = null;
         let mobLastTap = 0;
         barWrap.addEventListener('click', (e) => {
+          const cx = e.clientX, cy = e.clientY;
           if (e.target.classList.contains('bar-resize-l') || e.target.classList.contains('bar-resize-r') || e.target.classList.contains('bar-connect-dot')) return;
           if (window.innerWidth <= 768) {
             const now = Date.now();
@@ -4530,23 +4532,23 @@ function renderGanttTaskRowsRecursive(tasks, phase, pi, minD, totalW, container,
                 setTimeout(() => dot.classList.remove('mob-dot-active'), 3000);
               }
             } else {
-              // First tap: wait to see if double-tap follows
+              // First tap: select + show date popup
               mobLastTap = now;
               clickTimer = setTimeout(() => {
                 clickTimer = null; mobLastTap = 0;
                 if (Date.now() - _arrowClickTs < 400) return;
-                openTaskDetailPanel(task.id);
+                selectTask(task.id);
+                showBarDatePopup(task, cx, cy);
               }, 280);
             }
             return;
           }
           if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; }
-          clickTimer = setTimeout(() => { selectTask(task.id); clickTimer = null; }, 220);
-        });
-        barWrap.addEventListener('dblclick', (e) => {
-          if (e.target.classList.contains('bar-resize-l') || e.target.classList.contains('bar-resize-r') || e.target.classList.contains('bar-connect-dot')) return;
-          if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; }
-          openTaskDetailPanel(task.id);
+          clickTimer = setTimeout(() => {
+            selectTask(task.id);
+            showBarDatePopup(task, cx, cy);
+            clickTimer = null;
+          }, 220);
         });
 
         makeDraggableBar(barWrap, task, minD);
@@ -4615,6 +4617,24 @@ function addDays(dateStr, n) {
   const d = new Date(dateStr);
   d.setDate(d.getDate() + Math.round(n));
   return d.toISOString().split('T')[0];
+}
+
+// Re-enforce constraints on every auto-scheduled task; call after project load to fix saved violations
+function enforceAllConstraints() {
+  const allTasks = getAllTasksFlat().filter(t => !t.manual && (t.predecessors || []).length > 0);
+  for (let pass = 0; pass < 10; pass++) {
+    let changed = false;
+    allTasks.forEach(task => {
+      const newStart = computeConstrainedStart(task);
+      if (newStart && newStart !== task.startDate) {
+        const dur = daysBetween(task.startDate, task.endDate);
+        task.startDate = newStart;
+        task.endDate   = addDays(newStart, dur);
+        changed = true;
+      }
+    });
+    if (!changed) break;
+  }
 }
 
 /// Enforce predecessor constraints on a single task — strict snap for auto-scheduled tasks
@@ -4914,7 +4934,7 @@ function initDepDraw() {
     const touch = e.touches[0];
     line.setAttribute('x2', touch.clientX);
     line.setAttribute('y2', touch.clientY);
-    highlightArrowAt(touch.clientX, touch.clientY);
+    highlightTargetAt(touch.clientX, touch.clientY);
   }, { passive: false });
 
   document.addEventListener('touchend', (e) => {
@@ -5167,10 +5187,13 @@ function renderDependencies(minD) {
         labelX = (outerX+arrSide)/2; labelY = yChan-6;
       }
 
+      const isRelated = selectedTaskId && (predTask.id === selectedTaskId || task.id === selectedTaskId);
+      const opacity = isRelated ? '0.97' : selectedTaskId ? '0.12' : isCPLink ? '0.92' : '0.4';
+
       const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
       g.dataset.fromId = predTask.id;
       g.dataset.toId   = task.id;
-      g.setAttribute('opacity', isCPLink ? '0.92' : '0.4');
+      g.setAttribute('opacity', opacity);
 
       const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
       dot.setAttribute('cx', x1); dot.setAttribute('cy', y1); dot.setAttribute('r', '3');
@@ -5181,7 +5204,7 @@ function renderDependencies(minD) {
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       path.setAttribute('d', d);
       path.setAttribute('stroke', cfg.color);
-      path.setAttribute('stroke-width', isCPLink ? '2.2' : '1.6');
+      path.setAttribute('stroke-width', isRelated ? '2.5' : isCPLink ? '2.2' : '1.6');
       path.setAttribute('stroke-linecap', 'round');
       path.setAttribute('stroke-linejoin', 'round');
       path.setAttribute('fill', 'none');
@@ -5985,6 +6008,8 @@ function confirmEditTask(taskId) {
     newPhase.tasks.push(task);
   }
 
+  enforceConstraints(task);
+  cascadeSuccessors(taskId);
   closeModal();
   saveProject(true);
   render();
@@ -6641,6 +6666,26 @@ function selectTask(taskId) {
   renderGantt();
 }
 
+function showBarDatePopup(task, clientX, clientY) {
+  let pop = document.getElementById('bar-date-popup');
+  if (!pop) {
+    pop = document.createElement('div');
+    pop.id = 'bar-date-popup';
+    pop.style.cssText = 'position:fixed;background:#1a1a1a;color:#fff;padding:6px 13px;border-radius:10px;font-size:13px;font-weight:600;z-index:2000;pointer-events:none;box-shadow:0 4px 18px rgba(0,0,0,0.35);white-space:nowrap;transition:opacity 0.18s;';
+    document.body.appendChild(pop);
+  }
+  pop.textContent = formatDateShort(task.startDate) + ' — ' + formatDateShort(task.endDate);
+  pop.style.opacity = '0';
+  // Position above the tap point, clamped to viewport
+  const est = 180;
+  const left = Math.max(8, Math.min(clientX - est / 2, window.innerWidth - est - 8));
+  pop.style.left = left + 'px';
+  pop.style.top  = Math.max(8, clientY - 46) + 'px';
+  requestAnimationFrame(() => { pop.style.opacity = '1'; });
+  clearTimeout(pop._t);
+  pop._t = setTimeout(() => { pop.style.opacity = '0'; }, 2800);
+}
+
 function handleRowSelect(taskId, e) {
   e.stopPropagation();
   if (e.ctrlKey || e.metaKey) {
@@ -6852,6 +6897,7 @@ function handleJSONImport(e) {
   reader.onload = (ev) => {
     try {
       project = JSON.parse(ev.target.result);
+      enforceAllConstraints();
       saveProject(true);
       render();
       showToast('Projekt importován');
@@ -8000,6 +8046,7 @@ function saveTaskDetailPanel(taskId) {
     else if (task.type === 'milestone') delete task.type;
   }
   pushUndo();
+  enforceConstraints(task);
   cascadeSuccessors(taskId);
   saveProject(true);
   render();
