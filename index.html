@@ -2149,6 +2149,12 @@ html, body {
     border: none; border-radius: var(--radius);
     font-weight: 700; font-size: 12px; cursor: pointer; letter-spacing: 0.3px;
   }
+  .tdp-mob-delete-btn {
+    display: block; width: 100%; margin-top: 6px;
+    padding: 10px; background: none; color: var(--danger);
+    border: 1px solid var(--danger); border-radius: var(--radius);
+    font-weight: 700; font-size: 12px; cursor: pointer; letter-spacing: 0.3px;
+  }
   /* Compact nav buttons when 6 fit */
   .mob-nav-btn { padding: 6px 8px; }
 
@@ -3991,6 +3997,8 @@ function renderGantt() {
 
   // Restore scroll — DOM rebuild resets scrollTop to 0
   if (wrap) { wrap.scrollTop = savedTop; wrap.scrollLeft = savedLeft; }
+  const _mobBody = document.getElementById('mob-task-panel-body');
+  if (_mobBody) _mobBody.scrollTop = savedTop;
   requestAnimationFrame(() => { _renderDepth = Math.max(0, _renderDepth - 1); });
 }
 
@@ -4265,7 +4273,11 @@ function initPinchZoom() {
     // Override scroll immediately (renderGantt restores old position; we need the zoom-anchored one)
     wrap.scrollLeft = targetLeft;
     wrap.scrollTop  = targetTop;
-    requestAnimationFrame(() => { renderMobTaskPanel(); });
+    requestAnimationFrame(() => {
+      renderMobTaskPanel();
+      const mb = document.getElementById('mob-task-panel-body');
+      if (mb) mb.scrollTop = targetTop;
+    });
   }, { passive: false });
 
   wrap.addEventListener('touchcancel', () => {
@@ -4472,14 +4484,39 @@ function renderGanttTaskRowsRecursive(tasks, phase, pi, minD, totalW, container,
         tRow.appendChild(barWrap);
       }
     } else if (task.type === 'milestone') {
-      // Milestone diamond
+      // Milestone diamond — wrapped in bar-wrap so dot + popup work identically to regular bars
       if (task.startDate) {
         const x = dateToX(new Date(task.startDate), minD);
+        const mWrap = document.createElement('div');
+        mWrap.className = 'gantt-bar-wrap';
+        mWrap.dataset.taskId = task.id;
+        mWrap.style.cssText = `left:${x - 12}px;width:24px;`;
+
         const diamond = document.createElement('div');
         diamond.className = 'gantt-milestone';
-        diamond.style.left = x + 'px';
+        diamond.style.cssText = 'left:50%;';
         diamond.title = task.name;
-        tRow.appendChild(diamond);
+
+        const dot = document.createElement('div');
+        dot.className = 'bar-connect-dot';
+        dot.dataset.taskid = task.id;
+
+        mWrap.appendChild(diamond);
+        mWrap.appendChild(dot);
+
+        mWrap.addEventListener('touchstart', (e) => {
+          if (e.target.classList.contains('bar-connect-dot')) return;
+          showBarDot(mWrap);
+          showBarPopup(task, mWrap);
+        }, { passive: true });
+        mWrap.addEventListener('click', (e) => {
+          if (e.target.classList.contains('bar-connect-dot')) return;
+          e.stopPropagation();
+          showBarDot(mWrap);
+          showBarPopup(task, mWrap);
+        });
+
+        tRow.appendChild(mWrap);
       }
     } else if (task.startDate && task.endDate) {
       if (taskMatchesFilter(task)) {
@@ -4509,20 +4546,20 @@ function renderGanttTaskRowsRecursive(tasks, phase, pi, minD, totalW, container,
           barWrap.classList.add('is-critical');
         }
 
-        // Bar tap → show connect dot. touchstart for immediate mobile response.
-        // No stopPropagation so dep-drawing touchstart on document still fires when dot is tapped.
+        // Bar tap → show connect dot + date popup. touchstart for immediate mobile response.
         barWrap.addEventListener('touchstart', (e) => {
           if (e.target.classList.contains('bar-resize-l') || e.target.classList.contains('bar-resize-r')) return;
-          if (e.target.classList.contains('bar-connect-dot')) return; // dot touchstart handled by dep-draw listener
+          if (e.target.classList.contains('bar-connect-dot')) return;
           showBarDot(barWrap);
+          showBarPopup(task, barWrap);
         }, { passive: true });
 
-        // Desktop: also react on click
         barWrap.addEventListener('click', (e) => {
           if (e.target.classList.contains('bar-resize-l') || e.target.classList.contains('bar-resize-r')) return;
           if (e.target.classList.contains('bar-connect-dot')) return;
           e.stopPropagation();
           showBarDot(barWrap);
+          showBarPopup(task, barWrap);
         });
 
         makeDraggableBar(barWrap, task, minD);
@@ -6640,7 +6677,7 @@ function selectTask(taskId) {
   renderGantt();
 }
 
-// ── Connect-dot tap ─────────────────────────────────────────
+// ── Connect-dot + date popup ─────────────────────────────────
 let _activeDotWrap = null;
 
 function showBarDot(barWrap) {
@@ -6654,9 +6691,37 @@ function showBarDot(barWrap) {
 function hideBarDot() {
   _activeDotWrap?.querySelector('.bar-connect-dot')?.classList.remove('dot-active');
   _activeDotWrap = null;
+  const pop = document.getElementById('bar-date-popup');
+  if (pop) pop.style.visibility = 'hidden';
 }
 
-// Tap / click outside any bar → hide dot
+function showBarPopup(task, barWrap) {
+  let pop = document.getElementById('bar-date-popup');
+  if (!pop) {
+    pop = document.createElement('div');
+    pop.id = 'bar-date-popup';
+    pop.style.cssText = 'position:fixed;background:#1a1a1a;color:#fff;padding:6px 14px;border-radius:10px;font-size:13px;font-weight:600;z-index:9999;pointer-events:none;box-shadow:0 4px 18px rgba(0,0,0,0.4);white-space:nowrap;visibility:hidden;left:-9999px;top:-9999px;';
+    document.body.appendChild(pop);
+  }
+  const fmtD = s => { if (!s) return '—'; const p = s.split('-'); return p[2]+'.'+p[1]+'.'+p[0].slice(2); };
+  pop.textContent = fmtD(task.startDate) + (task.startDate !== task.endDate ? ' — ' + fmtD(task.endDate) : '');
+  pop.style.visibility = 'hidden';
+  pop.style.left = '-9999px';
+  requestAnimationFrame(() => {
+    const r = barWrap.getBoundingClientRect();
+    const cx = r.left + r.width / 2;
+    const cy = r.top + r.height / 2;
+    const pw = pop.offsetWidth || 160;
+    const ph = pop.offsetHeight || 32;
+    const left = Math.max(8, Math.min(cx - pw / 2, window.innerWidth - pw - 8));
+    const top = cy - ph - 10 > 60 ? cy - ph - 10 : cy + 18;
+    pop.style.left = left + 'px';
+    pop.style.top = Math.max(60, top) + 'px';
+    requestAnimationFrame(() => { pop.style.visibility = 'visible'; });
+  });
+}
+
+// Tap / click outside any bar → hide dot + popup
 document.addEventListener('click', (e) => {
   if (!e.target.closest('.gantt-bar-wrap')) hideBarDot();
 }, true);
@@ -6797,11 +6862,31 @@ function deleteTask(taskId) {
   if (ref) {
     ref.container.splice(ref.index, 1);
   } else {
-    // Fallback for top-level tasks
     project.phases.forEach(ph => { ph.tasks = ph.tasks.filter(t => t.id !== taskId); });
   }
   if (selectedTaskId === taskId) { selectedTaskId = null; }
   selectedTaskIds.delete(taskId);
+  saveProject(true);
+  render();
+}
+
+function deleteTaskFromPanel(taskId) {
+  const task = findTask(taskId);
+  if (!task) return;
+  const succsCount = getAllTasksFlat().filter(t => (t.predecessors || []).some(p => p.taskId === taskId)).length;
+  const msg = `Opravdu chcete odstranit úkol "${task.name}"?\n\nZtratí se i všechny vazby${succsCount > 0 ? ' (' + succsCount + ' následovník' + (succsCount > 1 ? 'ů' : '') + ')' : ''}.`;
+  if (!confirm(msg)) return;
+  // Remove dep references in other tasks
+  getAllTasksFlat().forEach(t => {
+    if (t.predecessors) t.predecessors = t.predecessors.filter(p => p.taskId !== taskId);
+  });
+  // Remove the task itself
+  const ref = findParent(taskId);
+  if (ref) ref.container.splice(ref.index, 1);
+  else project.phases.forEach(ph => { ph.tasks = ph.tasks.filter(t => t.id !== taskId); });
+  if (selectedTaskId === taskId) selectedTaskId = null;
+  selectedTaskIds.delete(taskId);
+  closeTaskDetailPanel();
   saveProject(true);
   render();
 }
@@ -7847,6 +7932,7 @@ function openTaskDetailPanel(taskId) {
         <span class="tdp-mob-row-val">${escHtml(phase ? phase.name : '—')}</span>
       </div>
       <button class="tdp-mob-save-btn" onclick="saveTaskDetailPanel('${taskId}')">Uložit</button>
+      <button class="tdp-mob-delete-btn" onclick="deleteTaskFromPanel('${taskId}')">Smazat úkol</button>
     </div>
     <div class="tdp-body">
       <div class="tdp-field">
