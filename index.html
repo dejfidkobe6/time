@@ -1586,7 +1586,10 @@ html, body {
   cursor: crosshair; z-index: 8; display: none;
   box-shadow: 0 1px 6px rgba(0,0,0,0.3);
 }
-.gantt-bar-wrap:hover .bar-connect-dot { display: block; }
+/* Only show connect dot on hover for real pointer devices — touch devices use dot-active only */
+@media (hover: hover) and (pointer: fine) {
+  .gantt-bar-wrap:hover .bar-connect-dot { display: block; }
+}
 .bar-connect-dot.dot-active { display: block !important; }
 
 /* Dep-drop target highlight — shown while dragging a connect dot over a bar */
@@ -1813,6 +1816,8 @@ html, body {
 }
 .mob-nav-btn svg { width: 20px; height: 20px; }
 .mob-nav-btn.active { color: var(--olive); }
+.mob-nav-btn.cp-active { color: #c0392b; }
+.mob-nav-btn.cp-active svg { stroke: #c0392b; }
 
 /* ═══════════════════════════════════════
    MOBILE TASK PANEL (slim left column)
@@ -2820,7 +2825,7 @@ async function selectProject(projectId, projectName) {
   }
   clearTimeout(safeHideTimer);
   document.getElementById('project-overlay').classList.add('hidden');
-  try { enforceAllConstraints(); render(); } catch(e) { console.error('render() failed:', e); }
+  try { enforceAllConstraints(); render(); syncCriticalPathBtn(); } catch(e) { console.error('render() failed:', e); }
 }
 
 async function recoverFromLocalStorage() {
@@ -4531,10 +4536,12 @@ function renderGanttTaskRowsRecursive(tasks, phase, pi, minD, totalW, container,
 
         mWrap.addEventListener('touchstart', (e) => {
           if (e.target.classList.contains('bar-connect-dot')) return;
+          _lastBarTouchTs = Date.now();
           showBarDot(mWrap);
           showBarPopup(task, mWrap);
         }, { passive: true });
         mWrap.addEventListener('click', (e) => {
+          if (Date.now() - _lastBarTouchTs < 600) return;
           if (e.target.classList.contains('bar-connect-dot')) return;
           e.stopPropagation();
           showBarDot(mWrap);
@@ -4575,11 +4582,13 @@ function renderGanttTaskRowsRecursive(tasks, phase, pi, minD, totalW, container,
         barWrap.addEventListener('touchstart', (e) => {
           if (e.target.classList.contains('bar-resize-l') || e.target.classList.contains('bar-resize-r')) return;
           if (e.target.classList.contains('bar-connect-dot')) return;
+          _lastBarTouchTs = Date.now();
           showBarDot(barWrap);
           showBarPopup(task, barWrap);
         }, { passive: true });
 
         barWrap.addEventListener('click', (e) => {
+          if (Date.now() - _lastBarTouchTs < 600) return;
           if (e.target.classList.contains('bar-resize-l') || e.target.classList.contains('bar-resize-r')) return;
           if (e.target.classList.contains('bar-connect-dot')) return;
           e.stopPropagation();
@@ -4657,20 +4666,47 @@ function addDays(dateStr, n) {
 
 // Re-enforce constraints on every auto-scheduled task; call after project load to fix saved violations
 function enforceAllConstraints() {
-  const allTasks = getAllTasksFlat().filter(t => !t.manual && (t.predecessors || []).length > 0);
-  for (let pass = 0; pass < 10; pass++) {
-    let changed = false;
-    allTasks.forEach(task => {
-      const newStart = computeConstrainedStart(task);
-      if (newStart && newStart !== task.startDate) {
-        const dur = daysBetween(task.startDate, task.endDate);
-        task.startDate = newStart;
-        task.endDate   = addDays(newStart, dur);
-        changed = true;
-      }
+  const allTasks = getAllTasksFlat();
+  if (!allTasks.length) return;
+  const taskById = new Map(allTasks.map(t => [t.id, t]));
+
+  // Build task-to-task successor graph and compute in-degrees for topological sort
+  const succIds = new Map(allTasks.map(t => [t.id, []]));
+  const inDeg   = new Map(allTasks.map(t => [t.id, 0]));
+  allTasks.forEach(t => {
+    (t.predecessors || []).forEach(p => {
+      if (!p.taskId || !taskById.has(p.taskId)) return;
+      succIds.get(p.taskId).push(t.id);
+      inDeg.set(t.id, inDeg.get(t.id) + 1);
     });
-    if (!changed) break;
+  });
+
+  // Kahn's topological sort — tasks in cycles never reach in-degree 0 and are excluded
+  const queue = [];
+  inDeg.forEach((deg, id) => { if (deg === 0) queue.push(id); });
+  const topo = [];
+  while (queue.length) {
+    const id = queue.shift();
+    topo.push(id);
+    succIds.get(id).forEach(sid => {
+      const d = inDeg.get(sid) - 1;
+      inDeg.set(sid, d);
+      if (d === 0) queue.push(sid);
+    });
   }
+  // Tasks still with inDeg > 0 are in cycles — append once at end (no repeated passes)
+  inDeg.forEach((deg, id) => { if (deg > 0) { topo.push(id); console.warn('[BeSix] Circular dependency detected for task', id); } });
+
+  // Single forward pass in topological order — guaranteed no runaway for DAGs, one-pass for cycles
+  topo.forEach(id => {
+    const task = taskById.get(id);
+    if (!task || task.manual || !(task.predecessors || []).length) return;
+    const newStart = computeConstrainedStart(task);
+    if (!newStart || newStart === task.startDate) return;
+    const dur = daysBetween(task.startDate, task.endDate);
+    task.startDate = newStart;
+    task.endDate   = addDays(newStart, dur);
+  });
 }
 
 /// Enforce predecessor constraints on a single task — strict snap for auto-scheduled tasks
@@ -4725,6 +4761,21 @@ function computeConstrainedStart(task) {
     if (s && (!latestStart || s > latestStart)) latestStart = s;
   });
   return latestStart;
+}
+
+// Returns true if adding predId as a predecessor of succId would create a cycle
+function wouldCreateCycle(predId, succId) {
+  if (predId === succId) return true;
+  const visited = new Set();
+  function canReach(taskId, target) {
+    if (taskId === target) return true;
+    if (visited.has(taskId)) return false;
+    visited.add(taskId);
+    const task = findTask(taskId);
+    if (!task) return false;
+    return (task.predecessors || []).some(p => p.taskId && canReach(p.taskId, target));
+  }
+  return canReach(predId, succId);
 }
 
 // Cascade: when a task's dates change, snap all auto-scheduled successors (BFS, cycle-safe)
@@ -4913,13 +4964,16 @@ function initDepDraw() {
       if (toTask) {
         if (!toTask.predecessors) toTask.predecessors = [];
         if (!toTask.predecessors.some(p => p.taskId === drawingFrom)) {
-          toTask.predecessors.push({ taskId: drawingFrom, type: 'FS', lag: 0 });
-          enforceConstraints(toTask);
-          cascadeSuccessors(toTask.id);
-          saveProject(true); render();
-          // Open dep editor immediately so user can tweak type/lag
-          const fresh = findTask(toTask.id);
-          if (fresh) openDepEditor(fresh, fresh.predecessors.length - 1);
+          if (wouldCreateCycle(drawingFrom, toTask.id)) {
+            showToast('Cyklická závislost není povolena');
+          } else {
+            toTask.predecessors.push({ taskId: drawingFrom, type: 'FS', lag: 0 });
+            enforceConstraints(toTask);
+            cascadeSuccessors(toTask.id);
+            saveProject(true); render();
+            const fresh = findTask(toTask.id);
+            if (fresh) openDepEditor(fresh, fresh.predecessors.length - 1);
+          }
         }
       }
     }
@@ -6704,6 +6758,7 @@ function selectTask(taskId) {
 
 // ── Connect-dot + date popup ─────────────────────────────────
 let _activeDotWrap = null;
+let _lastBarTouchTs = 0;
 
 function showBarDot(barWrap) {
   if (_activeDotWrap && _activeDotWrap !== barWrap) {
@@ -7509,18 +7564,25 @@ function removePredRow(idx, taskId) {
 
 function collectPreds(taskId) {
   const task = findTask(taskId);
-  if (!task) return;
+  if (!task) return true;
   const rows = document.querySelectorAll('#pred-edit-list .pred-edit-row');
   const preds = [];
+  let hasCycle = false;
   rows.forEach(row => {
     const sel  = row.querySelector('[data-field="taskId"]')?.value;
     const type = row.querySelector('[data-field="type"]')?.value || 'FS';
     const lag  = parseInt(row.querySelector('[data-field="lag"]')?.value) || 0;
     if (!sel) return;
+    if (!sel.startsWith('phase:') && wouldCreateCycle(sel, taskId)) {
+      showToast('Cyklická závislost není povolena — vazba přeskočena');
+      hasCycle = true;
+      return;
+    }
     if (sel.startsWith('phase:')) preds.push({ phaseId: sel.slice(6), type, lag });
     else preds.push({ taskId: sel, type, lag });
   });
   task.predecessors = preds;
+  return !hasCycle;
 }
 
 /* ═══════════════════════════════════════════════════
@@ -8162,10 +8224,25 @@ function saveTaskDetailPanel(taskId) {
    MOBILE SIDEBAR
 ═══════════════════════════════════════════════════ */
 function setMobNav(active) {
-  ['gantt','cashflow','add','undo','save'].forEach(id => {
+  ['gantt','cp','add','undo','save'].forEach(id => {
     const el = document.getElementById('mobnav-' + id);
     if (el) el.classList.toggle('active', id === active);
   });
+}
+
+function toggleCriticalPath() {
+  if (!project.settings) project.settings = {};
+  project.settings.showCriticalPath = !project.settings.showCriticalPath;
+  _criticalPathCache = null;
+  const btn = document.getElementById('mobnav-cp');
+  if (btn) btn.classList.toggle('cp-active', !!project.settings.showCriticalPath);
+  saveProject(true);
+  renderGantt();
+}
+
+function syncCriticalPathBtn() {
+  const btn = document.getElementById('mobnav-cp');
+  if (btn) btn.classList.toggle('cp-active', !!getSettings().showCriticalPath);
 }
 
 function openMobileSidebar() {
@@ -8584,9 +8661,9 @@ init();
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="3" rx="1"/><rect x="3" y="10.5" width="12" height="3" rx="1"/><rect x="3" y="17" width="15" height="3" rx="1"/></svg>
     Plán
   </button>
-  <button class="mob-nav-btn" id="mobnav-cashflow" onclick="switchMainView('cashflow');setMobNav('cashflow')">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-    Cashflow
+  <button class="mob-nav-btn" id="mobnav-cp" onclick="toggleCriticalPath()" title="Kritická cesta">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+    Krit. cesta
   </button>
   <button class="mob-nav-btn" id="mobnav-add" onclick="openAddTaskModal()">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
