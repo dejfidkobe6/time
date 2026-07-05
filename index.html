@@ -3430,6 +3430,7 @@ function buildRowNumMap() {
   _rowNumMap = new Map(getAllTasksFlat().map((t, i) => [t.id, i + 1]));
 }
 function renderWBS() {
+  _renderDepth++;
   buildRowNumMap();
   renderWBSHeader();
   const body = document.getElementById('wbs-body');
@@ -3447,6 +3448,7 @@ function renderWBS() {
   });
 
   body.scrollTop = savedWbsTop;
+  requestAnimationFrame(() => { _renderDepth = Math.max(0, _renderDepth - 1); });
 }
 
 function getColWidth(id) {
@@ -3969,7 +3971,8 @@ function dateToX(date, minD) {
 }
 
 function renderGantt() {
-  _criticalPathCache = null; // invalidate on each render
+  _renderDepth++;
+  _criticalPathCache = null;
   const wrap = document.getElementById('gantt-scroll-wrap');
   const savedTop  = wrap ? wrap.scrollTop  : 0;
   const savedLeft = wrap ? wrap.scrollLeft : 0;
@@ -3986,8 +3989,9 @@ function renderGantt() {
   renderDependencies(minD);
   if (window.innerWidth <= 768) renderMobTaskPanel();
 
-  // Restore scroll — innerHTML rebuild may have reset scrollTop to 0
+  // Restore scroll — DOM rebuild resets scrollTop to 0
   if (wrap) { wrap.scrollTop = savedTop; wrap.scrollLeft = savedLeft; }
+  requestAnimationFrame(() => { _renderDepth = Math.max(0, _renderDepth - 1); });
 }
 
 /* ═══════════════════════════════════════════════════
@@ -4094,16 +4098,16 @@ function renderMobTaskPanel() {
     body._scrollBound = true;
     let syncing = false;
     ganttScroll.addEventListener('scroll', () => {
-      if (syncing) return;
+      if (syncing || _renderDepth > 0) return;
       syncing = true;
       body.scrollTop = ganttScroll.scrollTop;
-      requestAnimationFrame(() => syncing = false);
+      requestAnimationFrame(() => { syncing = false; });
     });
     body.addEventListener('scroll', () => {
-      if (syncing) return;
+      if (syncing || _renderDepth > 0) return;
       syncing = true;
       ganttScroll.scrollTop = body.scrollTop;
-      requestAnimationFrame(() => syncing = false);
+      requestAnimationFrame(() => { syncing = false; });
     });
   }
 }
@@ -4209,11 +4213,13 @@ function initPinchZoom() {
     startViewportMidY = mid.y - wrapRect.top;
     startContentMidX = startViewportMidX + startScrollLeft;
     startRowH = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--row-h')) || 40;
-    // Set transform origin once — it stays fixed for the entire gesture
-    canvas.style.transformOrigin = `${startContentMidX}px 0`;
+    // Set transform origin at finger midpoint in content space (both X and Y)
+    const originX = startContentMidX;
+    const originY = startScrollTop + startViewportMidY;
+    canvas.style.transformOrigin = `${originX}px ${originY}px`;
     canvas.style.willChange = 'transform';
     const svg = document.getElementById('gantt-dep-svg');
-    if (svg) { svg.style.transformOrigin = `${startContentMidX}px 0`; svg.style.willChange = 'transform'; }
+    if (svg) { svg.style.transformOrigin = `${originX}px ${originY}px`; svg.style.willChange = 'transform'; }
     e.preventDefault();
   }, { passive: false });
 
@@ -4226,9 +4232,9 @@ function initPinchZoom() {
     if (!rafPending) {
       rafPending = true;
       requestAnimationFrame(() => {
-        canvas.style.transform = `scaleX(${lastRatio})`;
+        canvas.style.transform = `scale(${lastRatio})`;
         const svg = document.getElementById('gantt-dep-svg');
-        if (svg) svg.style.transform = `scaleX(${lastRatio})`;
+        if (svg) svg.style.transform = `scale(${lastRatio})`;
         rafPending = false;
       });
     }
@@ -4245,26 +4251,21 @@ function initPinchZoom() {
     canvas.style.willChange = '';
     const svgEl = document.getElementById('gantt-dep-svg');
     if (svgEl) { svgEl.style.transform = ''; svgEl.style.transformOrigin = ''; svgEl.style.willChange = ''; }
-    // Snap cellW to even-pixel grid
+    // Snap cellW to nearest pixel (no coarser grid — keeps zoom continuous)
     const raw = startCellW * scale;
-    const stepped = Math.round(raw / 2) * 2;
-    cellW = Math.max(6, Math.min(140, stepped));
+    cellW = Math.max(6, Math.min(140, Math.round(raw)));
     const actualScale = cellW / startCellW;
-    // Scale row height proportionally with zoom so more tasks are visible when zoomed out
+    // Scale row height proportionally
     const newRowH = Math.max(20, Math.min(72, Math.round(startRowH * actualScale)));
     document.documentElement.style.setProperty('--row-h', newRowH + 'px');
-    // Compute target scroll position BEFORE DOM rebuild
-    // X: keep the horizontal finger midpoint anchored
+    // Compute target scroll anchored to finger midpoint (both axes)
     const targetLeft = Math.max(0, startContentMidX * actualScale - startViewportMidX);
-    // Y: keep the vertical finger midpoint anchored (zoom toward fingers, not top)
-    const targetTop  = Math.max(0, startScrollTop * actualScale + startViewportMidY * (actualScale - 1));
+    const targetTop  = Math.max(0, startScrollTop  * actualScale + startViewportMidY * (actualScale - 1));
     renderGantt();
-    // Restore scroll AFTER DOM rebuild in the next animation frame (prevents jump-to-top)
-    requestAnimationFrame(() => {
-      wrap.scrollLeft = targetLeft;
-      wrap.scrollTop  = targetTop;
-      renderMobTaskPanel();
-    });
+    // Override scroll immediately (renderGantt restores old position; we need the zoom-anchored one)
+    wrap.scrollLeft = targetLeft;
+    wrap.scrollTop  = targetTop;
+    requestAnimationFrame(() => { renderMobTaskPanel(); });
   }, { passive: false });
 
   wrap.addEventListener('touchcancel', () => {
@@ -7068,21 +7069,22 @@ const wbsBody = document.getElementById('wbs-body');
 const ganttScroll = document.getElementById('gantt-scroll-wrap');
 
 let syncingScroll = false;
+let _renderDepth = 0; // >0 during DOM rebuilds — suppresses scroll sync to prevent jump-to-top
 
 wbsBody.addEventListener('scroll', () => {
-  if (syncingScroll) return;
+  if (syncingScroll || _renderDepth > 0) return;
   syncingScroll = true;
   ganttScroll.scrollTop = wbsBody.scrollTop;
-  requestAnimationFrame(() => syncingScroll = false);
+  requestAnimationFrame(() => { syncingScroll = false; });
 });
 
 const ganttTimeHdr = document.getElementById('gantt-time-header');
 ganttScroll.addEventListener('scroll', () => {
-  if (syncingScroll) return;
+  if (syncingScroll || _renderDepth > 0) return;
   syncingScroll = true;
   wbsBody.scrollTop = ganttScroll.scrollTop;
   if (ganttTimeHdr) ganttTimeHdr.scrollLeft = ganttScroll.scrollLeft;
-  requestAnimationFrame(() => syncingScroll = false);
+  requestAnimationFrame(() => { syncingScroll = false; });
 });
 
 // Ctrl+scroll or pinch-zoom on Gantt canvas = zoom timeline
