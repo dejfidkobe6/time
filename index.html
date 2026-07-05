@@ -4565,7 +4565,7 @@ function renderGanttTaskRowsRecursive(tasks, phase, pi, minD, totalW, container,
 
         barWrap.innerHTML = `
           <div class="gantt-bar" style="background:${barColor};">
-            ${ganttOpts.progress ? `<div class="gantt-bar-progress" style="width:${pct}%;"></div>` : ''}
+            ${ganttOpts.progress && pct > 0 ? `<div class="gantt-bar-progress" style="width:${pct}%;"></div>` : ''}
             ${ganttOpts.labels && w > 40 ? `<div class="gantt-bar-label">${escHtml(task.name)}</div>` : ''}
           </div>
           <div class="bar-resize-l" data-taskid="${task.id}" data-edge="left"></div>
@@ -5330,9 +5330,10 @@ function renderDependencies(minD) {
       hit.setAttribute('stroke', 'transparent');
       hit.setAttribute('stroke-width', '14');
       hit.setAttribute('fill', 'none');
-      hit.style.pointerEvents = 'stroke';
-      hit.style.cursor = 'pointer';
-      hit.addEventListener('dblclick', (e) => { e.stopPropagation(); openDepEditor(task, predIndex); });
+      const _isMobile = window.innerWidth <= 768;
+      hit.style.pointerEvents = _isMobile ? 'none' : 'stroke';
+      hit.style.cursor = _isMobile ? 'default' : 'pointer';
+      if (!_isMobile) hit.addEventListener('dblclick', (e) => { e.stopPropagation(); openDepEditor(task, predIndex); });
       g.appendChild(hit);
 
       svg.appendChild(g);
