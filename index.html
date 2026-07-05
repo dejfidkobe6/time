@@ -451,7 +451,7 @@ html, body {
 .wbs-col-head.col-selected { background: rgba(143,186,110,0.15) !important; color: #8fba6e !important; border-radius: 4px; }
 
 /* Day-of-week abbreviation inside day cells */
-.day-dow { font-size: 7px; display: block; color: rgba(255,255,255,0.3); line-height: 1.2; text-transform: uppercase; }
+.day-dow { font-size: 7px; display: block; color: rgba(201,168,76,0.55); line-height: 1.2; text-transform: uppercase; }
 .time-unit-cell.has-dow { flex-direction: column; justify-content: center; gap: 0; }
 
 /* Column resize handle */
@@ -760,7 +760,7 @@ html, body {
 
 /* Time header */
 #gantt-time-header {
-  background: var(--charcoal);
+  background: #fff;
   z-index: 10;
   display: flex;
   flex-direction: column;
@@ -771,7 +771,7 @@ html, body {
 .time-months-row {
   display: flex;
   height: 24px;
-  border-bottom: 1px solid var(--charcoal-soft);
+  border-bottom: 1px solid var(--border);
 }
 
 .time-month-cell {
@@ -782,8 +782,8 @@ html, body {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.6px;
-  color: rgba(255,255,255,0.6);
-  border-right: 1px solid var(--charcoal-soft);
+  color: var(--warning);
+  border-right: 1px solid var(--border);
   overflow: hidden;
   white-space: nowrap;
 }
@@ -799,8 +799,8 @@ html, body {
   justify-content: center;
   font-size: 8px;
   font-weight: 600;
-  color: rgba(255,255,255,0.35);
-  border-right: 1px solid rgba(255,255,255,0.06);
+  color: var(--warning);
+  border-right: 1px solid rgba(201,168,76,0.18);
   overflow: hidden;
   white-space: nowrap;
   flex-shrink: 0;
@@ -2642,6 +2642,7 @@ let project = {
 let timescale = 'weeks';
 let cellW = 28; // px per unit
 let selectedTaskId = null;
+let _lastGanttMinD = null;
 let selectedTaskIds = new Set();
 let lastSelectedTaskId = null;
 let currentMainView = 'gantt';
@@ -3980,6 +3981,7 @@ function renderGantt() {
   const savedLeft = wrap ? wrap.scrollLeft : 0;
 
   const { minD, maxD } = getGanttBounds();
+  _lastGanttMinD = minD;
   const totalUnits = timescale === 'days' ? daysBetween(minD, maxD) :
                      timescale === 'weeks' ? Math.ceil(daysBetween(minD, maxD)/7) + 1 :
                      Math.ceil(daysBetween(minD, maxD)/30.44) + 1;
@@ -4319,8 +4321,8 @@ function renderGanttHeader(minD, maxD, totalW) {
       const s = getSettings();
       const dateStr = d.toISOString().split('T')[0];
       const isNonWork = (ganttOpts.wknd && !s.workDays.includes(dow)) || s.holidays.includes(dateStr);
-      if (isNonWork) cell.style.background = 'rgba(255,255,255,0.05)';
-      if (dow === 1) cell.style.borderLeft = '1px solid rgba(255,255,255,0.12)'; // week boundary
+      if (isNonWork) cell.style.background = 'rgba(201,168,76,0.07)';
+      if (dow === 1) cell.style.borderLeft = '1px solid rgba(201,168,76,0.25)'; // week boundary
       cell.innerHTML = `<span class="day-dow">${CZ_DAY[dow]}</span><span>${d.getDate()}</span>`;
       unitsRow.appendChild(cell);
       d.setDate(d.getDate() + 1);
@@ -4398,23 +4400,19 @@ function renderGanttRows(minD, totalW) {
       d.setMonth(d.getMonth() + 1);
     }
   } else if (timescale === 'weeks') {
+    // Snap to Monday matching the header cells, one line per week
     let d = new Date(minD);
+    const dow0 = d.getDay();
+    d.setDate(d.getDate() - (dow0 === 0 ? 6 : dow0 - 1));
     while (dateToX(d, minD) < totalW) {
-      const line = document.createElement('div');
-      line.className = 'gantt-grid-line' + (d.getDay() === 1 ? ' month' : '');
-      line.style.left = dateToX(d, minD) + 'px';
-      bgGrid.appendChild(line);
+      const x = dateToX(d, minD);
+      if (x >= 0) {
+        const line = document.createElement('div');
+        line.className = 'gantt-grid-line';
+        line.style.left = x + 'px';
+        bgGrid.appendChild(line);
+      }
       d.setDate(d.getDate() + 7);
-    }
-    // Month lines
-    let dm = new Date(minD); dm.setDate(1);
-    while (dateToX(dm, minD) < totalW) {
-      const line = document.createElement('div');
-      line.className = 'gantt-grid-line';
-      line.style.left = dateToX(dm, minD) + 'px';
-      line.style.background = 'rgba(74,83,64,0.15)';
-      bgGrid.appendChild(line);
-      dm.setMonth(dm.getMonth() + 1);
     }
   }
 
@@ -4515,7 +4513,7 @@ function renderGanttTaskRowsRecursive(tasks, phase, pi, minD, totalW, container,
           barWrap.classList.add('is-critical');
         }
 
-        // Bar click: show date popup + connect dot. Click outside dismisses both.
+        // Bar click: show date popup + connect dot + highlight dep arrows. Click outside dismisses.
         barWrap.addEventListener('click', (e) => {
           if (e.target.classList.contains('bar-resize-l') || e.target.classList.contains('bar-resize-r') || e.target.classList.contains('bar-connect-dot')) return;
           if (Date.now() - _arrowClickTs < 400) return;
@@ -4523,6 +4521,9 @@ function renderGanttTaskRowsRecursive(tasks, phase, pi, minD, totalW, container,
           // Use bounding rect — iOS synthetic click events have clientX/Y = 0
           const r = barWrap.getBoundingClientRect();
           activateBarDot(barWrap, task, r.left + r.width / 2, r.top + r.height / 2);
+          // Update dep arrow highlighting without full re-render
+          selectedTaskId = task.id;
+          if (_lastGanttMinD) renderDependencies(_lastGanttMinD);
         });
 
         makeDraggableBar(barWrap, task, minD);
@@ -6661,7 +6662,7 @@ function dismissBarDot() {
     _activeDotWrap = null;
   }
   const pop = document.getElementById('bar-date-popup');
-  if (pop) pop.style.opacity = '0';
+  if (pop) pop.style.visibility = 'hidden';
 }
 
 // One-time global dismiss listener — hides dot + popup when clicking outside any bar
@@ -6675,12 +6676,13 @@ function showBarDatePopup(task, barCX, barCY) {
   if (!pop) {
     pop = document.createElement('div');
     pop.id = 'bar-date-popup';
-    pop.style.cssText = 'position:fixed;background:#1a1a1a;color:#fff;padding:6px 14px;border-radius:10px;font-size:13px;font-weight:600;z-index:9999;pointer-events:none;box-shadow:0 4px 18px rgba(0,0,0,0.4);white-space:nowrap;opacity:0;transition:opacity 0.15s;';
+    pop.style.cssText = 'position:fixed;background:#1a1a1a;color:#fff;padding:6px 14px;border-radius:10px;font-size:13px;font-weight:600;z-index:9999;pointer-events:none;box-shadow:0 4px 18px rgba(0,0,0,0.4);white-space:nowrap;visibility:hidden;left:-9999px;top:-9999px;';
     document.body.appendChild(pop);
   }
   pop.textContent = formatDateShort(task.startDate) + ' — ' + formatDateShort(task.endDate);
-  pop.style.opacity = '0';
-  // Measure after text set, then position centered on bar, above or below
+  pop.style.visibility = 'hidden';
+  pop.style.left = '-9999px';
+  // Frame 1: measure size; Frame 2: position and show
   requestAnimationFrame(() => {
     const pw = pop.offsetWidth  || 160;
     const ph = pop.offsetHeight || 32;
@@ -6691,7 +6693,7 @@ function showBarDatePopup(task, barCX, barCY) {
     const top = topAbove > 105 ? topAbove : topBelow;
     pop.style.left = left + 'px';
     pop.style.top  = Math.max(60, top) + 'px';
-    pop.style.opacity = '1';
+    requestAnimationFrame(() => { pop.style.visibility = 'visible'; });
   });
 }
 
