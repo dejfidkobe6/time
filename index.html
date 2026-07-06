@@ -3638,6 +3638,7 @@ function openBaselinePanel() {
               ? `<span class="baseline-chip">Aktivní</span>`
               : `<button class="btn btn-secondary" style="font-size:10px;padding:3px 8px;" onclick="activateBaseline('${bl.id}')">Zobrazit</button>`
             }
+            <button class="btn btn-ghost" title="Přeuložit aktuální stav" style="font-size:13px;padding:3px 6px;color:var(--text-muted);" onclick="resaveBaseline('${bl.id}')">↺</button>
             <button class="btn btn-ghost" style="font-size:10px;padding:3px 6px;color:var(--text-muted);" onclick="deleteBaseline('${bl.id}')">✕</button>
           </div>`;
       }).join('');
@@ -3735,6 +3736,20 @@ function deleteBaseline(id) {
   closeModal();
   saveProject(true);
   updateBaselineChip();
+  render();
+  openBaselinePanel();
+}
+
+function resaveBaseline(id) {
+  const bl = (project.baselines || []).find(b => b.id === id);
+  if (!bl) return;
+  bl.savedAt = new Date().toISOString().split('T')[0];
+  bl.phases = project.phases.map(ph => ({
+    id: ph.id,
+    tasks: (ph.tasks || []).map(t => ({ id: t.id, startDate: t.startDate, endDate: t.endDate, duration: t.duration }))
+  }));
+  closeModal();
+  saveProject(true);
   render();
   openBaselinePanel();
 }
@@ -8602,6 +8617,7 @@ function mobRefreshBaselineList() {
            <button onclick="mobDeactivateBaseline()" style="padding:4px 8px;border-radius:8px;background:var(--bg);border:1.5px solid var(--border);font-size:11px;font-weight:600;cursor:pointer;color:var(--text-muted);">Skrýt</button>`
         : `<button onclick="mobActivateBaseline('${bl.id}')" style="padding:4px 10px;border-radius:8px;background:var(--bg);border:1.5px solid var(--border);font-size:11px;font-weight:600;cursor:pointer;">Zobrazit</button>`
       }
+      <button onclick="mobResaveBaseline('${bl.id}')" title="Přeuložit aktuální stav" style="background:none;border:none;color:var(--text-muted);font-size:15px;cursor:pointer;padding:2px 4px;line-height:1;">↺</button>
       <button onclick="mobDeleteBaseline('${bl.id}')" style="background:none;border:none;color:var(--text-muted);font-size:18px;cursor:pointer;padding:2px 4px;line-height:1;">✕</button>
     </div>`;
   }).join('');
@@ -8640,6 +8656,19 @@ function mobDeactivateBaseline() {
 function mobDeleteBaseline(id) {
   project.baselines = (project.baselines || []).filter(b => b.id !== id);
   if (project.activeBaselineId === id) { project.activeBaselineId = null; updateBaselineChip(); }
+  saveProject(true); renderGantt();
+  mobRefreshBaselineList();
+}
+
+function mobResaveBaseline(id) {
+  const bl = (project.baselines || []).find(b => b.id === id);
+  if (!bl) return;
+  const today = new Date().toISOString().split('T')[0];
+  bl.savedAt = today;
+  bl.phases = project.phases.map(ph => ({
+    id: ph.id,
+    tasks: (ph.tasks || []).map(t => ({ id: t.id, startDate: t.startDate, endDate: t.endDate, duration: t.duration }))
+  }));
   saveProject(true); renderGantt();
   mobRefreshBaselineList();
 }
