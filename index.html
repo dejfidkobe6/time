@@ -1652,7 +1652,7 @@ html, body {
 .wbs-row-content { align-items: center; }
 
 /* Row height control */
-:root { --row-h: 40px; --toolbar-h: 45px; --colhdr-h: 44px; }
+:root { --row-h: 30px; --toolbar-h: 45px; --colhdr-h: 44px; }
 #wbs-toolbar, #gantt-toolbar   { height: var(--toolbar-h); box-sizing: border-box; }
 .wbs-header-cols               { height: var(--colhdr-h);  box-sizing: border-box; }
 #gantt-time-header             { height: var(--colhdr-h);  box-sizing: border-box; }
@@ -2002,7 +2002,7 @@ html, body {
 @media (max-width: 768px), (orientation: landscape) and (max-height: 500px) {
   :root {
     --sidebar-w: 0px;
-    --row-h: 46px;
+    --row-h: 35px;
     --toolbar-h: 44px;
     --colhdr-h: 38px;
   }
@@ -2483,8 +2483,8 @@ html, body {
                   <div class="gantt-opts-section">
                     <div class="gantt-opts-heading">Výška řádků</div>
                     <div class="gantt-opts-row">
-                      <input type="range" min="28" max="72" value="40" id="row-h-slider" oninput="setRowHeight(this.value)">
-                      <span id="row-h-val" style="font-size:10px;font-weight:700;color:var(--olive);min-width:28px;">40px</span>
+                      <input type="range" min="22" max="72" value="30" id="row-h-slider" oninput="setRowHeight(this.value)">
+                      <span id="row-h-val" style="font-size:10px;font-weight:700;color:var(--olive);min-width:28px;">30px</span>
                     </div>
                   </div>
                 </div>
