@@ -6754,6 +6754,7 @@ let _activeDotWrap = null;
 
 function showBarDot(barWrap, taskId) {
   _arrowsDimmed = false;
+  hideDepPopup();
   if (_activeDotWrap && _activeDotWrap !== barWrap) {
     _activeDotWrap.querySelector('.bar-connect-dot')?.classList.remove('dot-active');
   }
@@ -6772,6 +6773,7 @@ function hideBarDot() {
   if (_popupRafId) { cancelAnimationFrame(_popupRafId); _popupRafId = null; }
   const pop = document.getElementById('bar-date-popup');
   if (pop) pop.style.visibility = 'hidden';
+  hideDepPopup();
   // Dim all arrows (same suppression as non-related arrows when a bar is active)
   _arrowsDimmed = true;
   const svg = document.getElementById('gantt-dep-svg');
@@ -6821,6 +6823,75 @@ function showBarPopup(task, barWrap) {
 document.addEventListener('pointerdown', (e) => {
   if (!e.target.closest('.gantt-bar-wrap')) hideBarDot();
 }, { capture: true });
+
+/* ── Dependency arrow info popup ───────────────────── */
+let _depPopupRafId = null;
+let _suppressDepClick = false;
+
+function hitTestArrow(clientX, clientY) {
+  const svg = document.getElementById('gantt-dep-svg');
+  if (!svg || !svg.getScreenCTM) return null;
+  try {
+    const inv = svg.getScreenCTM().inverse();
+    const pt = svg.createSVGPoint();
+    pt.x = clientX; pt.y = clientY;
+    const svgPt = pt.matrixTransform(inv);
+    for (const g of svg.querySelectorAll('g[data-from-id]')) {
+      const hitPath = [...g.children].find(el => el.tagName === 'path' && el.getAttribute('stroke') === 'transparent');
+      if (hitPath && hitPath.isPointInStroke && hitPath.isPointInStroke(svgPt)) return g;
+    }
+  } catch (_) {}
+  return null;
+}
+
+function showDepPopup(fromId, toId, clientX, clientY) {
+  const fromTask = findTask(fromId);
+  const toTask   = findTask(toId);
+  if (!fromTask || !toTask) return;
+  const pred = (toTask.predecessors || []).find(p => p.taskId === fromId);
+  if (!pred) return;
+  const type = pred.type || 'FS';
+  const lag  = pred.lag  || 0;
+  const fromNum = _rowNumMap.get(fromId) || '';
+  const toNum   = _rowNumMap.get(toId)   || '';
+  const typeLabel = { FS:'Konec → Začátek', SS:'Začátek → Začátek', FF:'Konec → Konec', SF:'Začátek → Konec' }[type] || type;
+  const lagStr = lag !== 0 ? ` &nbsp;<span style="opacity:.55">${lag > 0 ? '+' : ''}${lag}&nbsp;d</span>` : '';
+
+  let pop = document.getElementById('dep-info-popup');
+  if (!pop) {
+    pop = document.createElement('div');
+    pop.id = 'dep-info-popup';
+    pop.style.cssText = 'position:fixed;background:#1a1a1a;color:#fff;padding:10px 16px;border-radius:12px;font-size:13px;z-index:9999;pointer-events:none;box-shadow:0 4px 18px rgba(0,0,0,0.45);visibility:hidden;left:-9999px;top:-9999px;min-width:190px;max-width:290px;line-height:1.55;';
+    document.body.appendChild(pop);
+  }
+  pop.innerHTML =
+    `<div style="font-size:10px;font-weight:700;letter-spacing:.07em;opacity:.45;margin-bottom:7px;">VAZBA</div>` +
+    `<div style="margin-bottom:3px;"><span style="opacity:.45;margin-right:5px;">${fromNum}.</span>${fromTask.name}</div>` +
+    `<div style="font-size:11px;opacity:.5;margin:3px 0 3px 20px;">${typeLabel}${lagStr}</div>` +
+    `<div><span style="opacity:.45;margin-right:5px;">${toNum}.</span>${toTask.name}</div>`;
+  pop.style.visibility = 'hidden';
+  pop.style.left = '-9999px';
+  pop.style.top  = '-9999px';
+  if (_depPopupRafId) { cancelAnimationFrame(_depPopupRafId); _depPopupRafId = null; }
+  _depPopupRafId = requestAnimationFrame(() => {
+    _depPopupRafId = null;
+    const pw = pop.offsetWidth || 220, ph = pop.offsetHeight || 80;
+    const left = Math.max(8, Math.min(clientX - pw / 2, window.innerWidth - pw - 8));
+    let top = clientY - ph - 14;
+    if (top < 54) top = clientY + 14;
+    if (top + ph > window.innerHeight - 8) top = clientY - ph - 14;
+    top = Math.max(54, top);
+    pop.style.left = left + 'px';
+    pop.style.top  = top  + 'px';
+    _depPopupRafId = requestAnimationFrame(() => { _depPopupRafId = null; pop.style.visibility = 'visible'; });
+  });
+}
+
+function hideDepPopup() {
+  if (_depPopupRafId) { cancelAnimationFrame(_depPopupRafId); _depPopupRafId = null; }
+  const pop = document.getElementById('dep-info-popup');
+  if (pop) pop.style.visibility = 'hidden';
+}
 
 
 function handleRowSelect(taskId, e) {
@@ -8460,8 +8531,20 @@ function initArrowHighlighting() {
     }
   });
 
+  // Click (desktop) or tap (mobile) on dep arrow → highlight + show info popup.
+  // SVG has pointer-events:none; use geometric isPointInStroke hit-testing.
+  canvas.addEventListener('click', (e) => {
+    if (e.target.closest('.gantt-bar-wrap')) return;
+    if (_suppressDepClick) { _suppressDepClick = false; return; }
+    const g = hitTestArrow(e.clientX, e.clientY);
+    if (!g) return;
+    const svg = document.getElementById('gantt-dep-svg');
+    if (svg) _highlightArrowsFor(svg, g.dataset.fromId);
+    _arrowsDimmed = false;
+    showDepPopup(g.dataset.fromId, g.dataset.toId, e.clientX, e.clientY);
+  });
+
   // Mobile: double-tap on dep arrow area → open dep editor.
-  // SVG has pointer-events:none so we use geometric isPointInStroke hit-testing.
   // Delay editor open by 350ms so the synthetic click from the tap fires before
   // the editor renders (prevents the click from immediately closing the backdrop).
   canvas.addEventListener('touchstart', (e) => {
@@ -8473,27 +8556,18 @@ function initArrowHighlighting() {
     const dy = touch.clientY - _depDblTapState.y;
     if (now - _depDblTapState.ts < 500 && dx * dx + dy * dy < 2500) {
       _depDblTapState = { ts: 0, x: 0, y: 0 };
-      const svg = document.getElementById('gantt-dep-svg');
-      if (svg && svg.getScreenCTM) {
-        try {
-          const inv = svg.getScreenCTM().inverse();
-          const pt = svg.createSVGPoint();
-          pt.x = touch.clientX; pt.y = touch.clientY;
-          const svgPt = pt.matrixTransform(inv);
-          for (const g of svg.querySelectorAll('g[data-from-id]')) {
-            const hitPath = [...g.children].find(el => el.tagName === 'path' && el.getAttribute('stroke') === 'transparent');
-            if (hitPath && hitPath.isPointInStroke && hitPath.isPointInStroke(svgPt)) {
-              const toTask = findTask(g.dataset.toId);
-              if (toTask) {
-                const predIndex = (toTask.predecessors || []).findIndex(p => p.taskId === g.dataset.fromId);
-                if (predIndex >= 0) {
-                  setTimeout(() => openDepEditor(toTask, predIndex), 350);
-                  return;
-                }
-              }
-            }
+      const g = hitTestArrow(touch.clientX, touch.clientY);
+      if (g) {
+        const toTask = findTask(g.dataset.toId);
+        if (toTask) {
+          const predIndex = (toTask.predecessors || []).findIndex(p => p.taskId === g.dataset.fromId);
+          if (predIndex >= 0) {
+            _suppressDepClick = true;
+            hideDepPopup();
+            setTimeout(() => openDepEditor(toTask, predIndex), 350);
+            return;
           }
-        } catch (_) {}
+        }
       }
     } else {
       _depDblTapState = { ts: now, x: touch.clientX, y: touch.clientY };
