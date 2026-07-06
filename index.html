@@ -4760,9 +4760,14 @@ function renderGanttTaskRowsRecursive(tasks, phase, pi, minD, totalW, container,
           const floatEnd = fsSuccStarts.length
             ? fsSuccStarts.reduce((a,b) => a < b ? a : b)
             : (projectEndDate || '');
-          if (floatEnd && floatEnd > task.endDate) {
+          // endDate is the last day of the task; a successor starting the next day is zero float.
+          // Add 1 day to endDate before comparing so a 1-day gap doesn't appear as float.
+          const taskEndNext = new Date(task.endDate);
+          taskEndNext.setDate(taskEndNext.getDate() + 1);
+          const floatEndNext = floatEnd ? new Date(floatEnd) : null;
+          if (floatEndNext && floatEndNext > taskEndNext) {
             const fx1 = x2;
-            const fx2 = Math.round(dateToX(new Date(floatEnd), minD));
+            const fx2 = Math.round(dateToX(floatEndNext, minD));
             const fw  = fx2 - fx1;
             if (fw > 2) {
               const floatBar = document.createElement('div');
