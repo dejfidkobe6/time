@@ -6030,7 +6030,7 @@ function addTaskAfterSelected() {
   const foundPhase = findPhaseForTask(selectedTaskId);
   const ref = foundPhase ? foundPhase.tasks.findIndex(t => t.id === selectedTaskId) : -1;
   if (!foundPhase) { openAddTaskModal(); return; }
-  _insertAfter = { phaseId: foundPhase.id, afterIdx: ref >= 0 ? ref : foundPhase.tasks.length - 1 };
+  _insertAfter = { phaseId: foundPhase.id, beforeIdx: ref >= 0 ? ref : foundPhase.tasks.length };
   openAddTaskModal(foundPhase.id);
 }
 
@@ -6126,7 +6126,7 @@ function confirmAddTask() {
   const phase = project.phases.find(p => p.id === phaseId);
   if (phase) {
     if (_insertAfter && _insertAfter.phaseId === phaseId) {
-      phase.tasks.splice(_insertAfter.afterIdx + 1, 0, task);
+      phase.tasks.splice(_insertAfter.beforeIdx, 0, task);
     } else {
       phase.tasks.push(task);
     }
@@ -9202,7 +9202,7 @@ init();
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07M8.46 8.46a5 5 0 0 0 0 7.07"/></svg>
     Nastavení
   </button>
-  <button class="mob-nav-btn" id="mobnav-add" onclick="openAddTaskModal()">
+  <button class="mob-nav-btn" id="mobnav-add" onclick="addTaskAfterSelected()">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
     Přidat
   </button>
