@@ -8976,15 +8976,14 @@ function initArrowHighlighting() {
     }
   });
 
-  // Click (desktop) or tap (mobile) on dep arrow → highlight + show info popup.
-  // SVG has pointer-events:none; use geometric isPointInStroke hit-testing.
+  // Click (desktop) or tap (mobile) on dep arrow → highlight only that arrow + show info popup.
   canvas.addEventListener('click', (e) => {
     if (e.target.closest('.gantt-bar-wrap')) return;
     if (_suppressDepClick) { _suppressDepClick = false; return; }
     const g = hitTestArrow(e.clientX, e.clientY);
     if (!g) return;
     const svg = document.getElementById('gantt-dep-svg');
-    if (svg) _highlightArrowsFor(svg, g.dataset.fromId);
+    if (svg) svg.querySelectorAll('g[data-from-id]').forEach(ag => ag.setAttribute('opacity', ag === g ? '1' : '0.15'));
     _arrowsDimmed = false;
     showDepPopup(g.dataset.fromId, g.dataset.toId, e.clientX, e.clientY);
   });
