@@ -1707,11 +1707,22 @@ html, body {
 }
 .gantt-bl-label.is-delay { color: #c0392b; }
 .gantt-bl-label.is-save  { color: #1e8449; }
+/* Float bar (time reserve) */
+.gantt-float-bar {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 22px;
+  border-radius: 0 4px 4px 0;
+  pointer-events: none;
+  box-sizing: border-box;
+}
 /* On mobile, match the bar's 50%-of-row-height rule */
 @media (max-width: 768px) {
   .gantt-row:not(.is-phase):not(.is-summary) > .gantt-bl-outline,
   .gantt-row:not(.is-phase):not(.is-summary) > .gantt-bl-delay,
-  .gantt-row:not(.is-phase):not(.is-summary) > .gantt-bl-save {
+  .gantt-row:not(.is-phase):not(.is-summary) > .gantt-bl-save,
+  .gantt-row:not(.is-phase):not(.is-summary) > .gantt-float-bar {
     height: 50% !important;
     top: 50% !important;
     transform: translateY(-50%) !important;
@@ -4748,7 +4759,8 @@ function renderGanttTaskRowsRecursive(tasks, phase, pi, minD, totalW, container,
             const fw  = fx2 - fx1;
             if (fw > 2) {
               const floatBar = document.createElement('div');
-              floatBar.style.cssText = `position:absolute;left:${fx1}px;width:${fw}px;top:50%;transform:translateY(-50%);height:22px;background:${barColor};opacity:0.35;border-radius:0 6px 6px 0;pointer-events:none;border:1px dashed ${barColor};box-sizing:border-box;`;
+              floatBar.className = 'gantt-float-bar';
+              floatBar.style.cssText = `left:${fx1}px;width:${fw}px;background:${barColor};opacity:0.35;border:1.5px dashed ${barColor};`;
               tRow.appendChild(floatBar);
             }
           }
@@ -6018,7 +6030,7 @@ function addTaskAfterSelected() {
   const foundPhase = findPhaseForTask(selectedTaskId);
   const ref = foundPhase ? foundPhase.tasks.findIndex(t => t.id === selectedTaskId) : -1;
   if (!foundPhase) { openAddTaskModal(); return; }
-  _insertAfter = { phaseId: foundPhase.id, afterIdx: ref >= 0 ? ref : foundPhase.tasks.length - 1 };
+  _insertAfter = { phaseId: foundPhase.id, beforeIdx: ref >= 0 ? ref : foundPhase.tasks.length };
   openAddTaskModal(foundPhase.id);
 }
 
@@ -6114,7 +6126,7 @@ function confirmAddTask() {
   const phase = project.phases.find(p => p.id === phaseId);
   if (phase) {
     if (_insertAfter && _insertAfter.phaseId === phaseId) {
-      phase.tasks.splice(_insertAfter.afterIdx + 1, 0, task);
+      phase.tasks.splice(_insertAfter.beforeIdx, 0, task);
     } else {
       phase.tasks.push(task);
     }
@@ -8976,15 +8988,14 @@ function initArrowHighlighting() {
     }
   });
 
-  // Click (desktop) or tap (mobile) on dep arrow → highlight + show info popup.
-  // SVG has pointer-events:none; use geometric isPointInStroke hit-testing.
+  // Click (desktop) or tap (mobile) on dep arrow → highlight only that arrow + show info popup.
   canvas.addEventListener('click', (e) => {
     if (e.target.closest('.gantt-bar-wrap')) return;
     if (_suppressDepClick) { _suppressDepClick = false; return; }
     const g = hitTestArrow(e.clientX, e.clientY);
     if (!g) return;
     const svg = document.getElementById('gantt-dep-svg');
-    if (svg) _highlightArrowsFor(svg, g.dataset.fromId);
+    if (svg) svg.querySelectorAll('g[data-from-id]').forEach(ag => ag.setAttribute('opacity', ag === g ? '1' : '0.15'));
     _arrowsDimmed = false;
     showDepPopup(g.dataset.fromId, g.dataset.toId, e.clientX, e.clientY);
   });
@@ -9191,7 +9202,7 @@ init();
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07M8.46 8.46a5 5 0 0 0 0 7.07"/></svg>
     Nastavení
   </button>
-  <button class="mob-nav-btn" id="mobnav-add" onclick="openAddTaskModal()">
+  <button class="mob-nav-btn" id="mobnav-add" onclick="addTaskAfterSelected()">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
     Přidat
   </button>
