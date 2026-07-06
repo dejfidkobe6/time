@@ -505,6 +505,13 @@ html, body {
 .wbs-row.multi-selected { background: rgba(74,83,64,0.1) !important; outline: 1px solid rgba(74,83,64,0.3); outline-offset: -1px; }
 .wbs-row.row-dragging { opacity: 0.35; pointer-events: none; }
 .row-drop-indicator { position: fixed; left: 0; right: 0; height: 2px; background: var(--olive); pointer-events: none; z-index: 1000; border-radius: 1px; box-shadow: 0 0 4px rgba(143,186,110,0.6); }
+/* Animated gap that opens between rows to show the drop target */
+#wbs-body.wbs-drag-active .wbs-row,
+#mob-task-panel-body.mob-drag-active .mob-task-row {
+  transition: margin-top 0.13s ease, margin-bottom 0.13s ease, background 0.1s;
+}
+.wbs-row.drag-gap-top,    .mob-task-row.drag-gap-top    { margin-top: calc(var(--row-h) * 0.9) !important; }
+.wbs-row.drag-gap-bottom, .mob-task-row.drag-gap-bottom { margin-bottom: calc(var(--row-h) * 0.9) !important; }
 .row-selector {
   position: absolute; left: 0; top: 0; bottom: 0; width: 14px;
   display: flex; align-items: center; justify-content: center;
@@ -4753,9 +4760,14 @@ function renderGanttTaskRowsRecursive(tasks, phase, pi, minD, totalW, container,
           const floatEnd = fsSuccStarts.length
             ? fsSuccStarts.reduce((a,b) => a < b ? a : b)
             : (projectEndDate || '');
-          if (floatEnd && floatEnd > task.endDate) {
+          // endDate is the last day of the task; a successor starting the next day is zero float.
+          // Add 1 day to endDate before comparing so a 1-day gap doesn't appear as float.
+          const taskEndNext = new Date(task.endDate);
+          taskEndNext.setDate(taskEndNext.getDate() + 1);
+          const floatEndNext = floatEnd ? new Date(floatEnd) : null;
+          if (floatEndNext && floatEndNext > taskEndNext) {
             const fx1 = x2;
-            const fx2 = Math.round(dateToX(new Date(floatEnd), minD));
+            const fx2 = Math.round(dateToX(floatEndNext, minD));
             const fw  = fx2 - fx1;
             if (fw > 2) {
               const floatBar = document.createElement('div');
@@ -8121,12 +8133,15 @@ function initRowDrag() {
       if (Math.abs(e.clientY - state.startY) < 5 && Math.abs(e.clientX - state.startX) < 5) return;
       state.dragging = true;
       state.row.classList.add('row-dragging');
+      document.getElementById('wbs-body')?.classList.add('wbs-drag-active');
       state.indicator = document.createElement('div');
       state.indicator.className = 'row-drop-indicator';
       document.body.appendChild(state.indicator);
     }
 
     const allRows = [...document.querySelectorAll('#wbs-body .wbs-row[data-task-id]')];
+    // Clear gap classes before reading positions (avoid stale rects)
+    allRows.forEach(r => r.classList.remove('drag-gap-top', 'drag-gap-bottom'));
     state.dropPos = null;
     let lastAbove = null;
 
@@ -8137,6 +8152,7 @@ function initRowDrag() {
       if (e.clientY < rect.top + rect.height / 2) {
         state.dropPos = { taskId: r.dataset.taskId, before: true };
         state.indicator.style.top = (rect.top - 1) + 'px';
+        r.classList.add('drag-gap-top');
         break;
       }
       lastAbove = r;
@@ -8145,11 +8161,14 @@ function initRowDrag() {
       const rect = lastAbove.getBoundingClientRect();
       state.dropPos = { taskId: lastAbove.dataset.taskId, before: false };
       state.indicator.style.top = (rect.bottom - 1) + 'px';
+      lastAbove.classList.add('drag-gap-bottom');
     }
   });
 
   document.addEventListener('mouseup', (e) => {
     if (!state) return;
+    document.querySelectorAll('#wbs-body .wbs-row').forEach(r => r.classList.remove('drag-gap-top', 'drag-gap-bottom'));
+    document.getElementById('wbs-body')?.classList.remove('wbs-drag-active');
     if (state.indicator) { state.indicator.remove(); state.indicator = null; }
 
     if (!state.dragging) {
@@ -8211,6 +8230,7 @@ function initMobRowDrag() {
         if (!state) return;
         state.dragging = true;
         row.classList.add('mob-row-dragging');
+        body.classList.add('mob-drag-active');
         if (navigator.vibrate) navigator.vibrate(40);
         state.indicator = document.createElement('div');
         state.indicator.className = 'row-drop-indicator';
@@ -8232,6 +8252,8 @@ function initMobRowDrag() {
     }
     e.preventDefault();
     const allRows = [...document.querySelectorAll('#mob-task-panel-body .mob-task-row[data-task-id]')];
+    // Clear gap classes before reading positions
+    allRows.forEach(r => r.classList.remove('drag-gap-top', 'drag-gap-bottom'));
     state.dropPos = null;
     let lastAbove = null;
     for (const r of allRows) {
@@ -8240,6 +8262,7 @@ function initMobRowDrag() {
       if (touch.clientY < rect.top + rect.height / 2) {
         state.dropPos = { taskId: r.dataset.taskId, before: true };
         state.indicator.style.top = (rect.top - 1) + 'px';
+        r.classList.add('drag-gap-top');
         break;
       }
       lastAbove = r;
@@ -8248,12 +8271,15 @@ function initMobRowDrag() {
       const rect = lastAbove.getBoundingClientRect();
       state.dropPos = { taskId: lastAbove.dataset.taskId, before: false };
       state.indicator.style.top = (rect.bottom - 1) + 'px';
+      lastAbove.classList.add('drag-gap-bottom');
     }
   }, { passive: false });
 
   body.addEventListener('touchend', () => {
     if (!state) return;
     clearTimeout(state.timer);
+    document.querySelectorAll('#mob-task-panel-body .mob-task-row').forEach(r => r.classList.remove('drag-gap-top', 'drag-gap-bottom'));
+    body.classList.remove('mob-drag-active');
     if (state.indicator) { state.indicator.remove(); state.indicator = null; }
     if (state.row) state.row.classList.remove('mob-row-dragging');
     if (state.dragging && state.dropPos && state.dropPos.taskId !== state.taskId) {
