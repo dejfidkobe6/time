@@ -882,9 +882,9 @@ html, body {
 
 .gantt-bar-progress {
   position: absolute;
-  left: 0; bottom: 0;
-  height: 4px;
-  background: rgba(0,0,0,0.35);
+  left: 0; top: 0; bottom: 0;
+  background: rgba(0,0,0,0.18);
+  border-radius: 4px 0 0 4px;
   pointer-events: none;
 }
 
@@ -1662,10 +1662,10 @@ html, body {
 #wbs-body .wbs-row.is-phase     { height: calc(var(--row-h) + 4px); overflow: visible; }
 
 /* ═══════════════════════════════════════
-   GANTT BAR — NO ROUNDED CORNERS
+   GANTT BAR — SMALL ROUNDED CORNERS
 ═══════════════════════════════════════ */
 .gantt-bar {
-  border-radius: 0 !important;
+  border-radius: 4px !important;
 }
 .gantt-bar-wrap.is-critical .gantt-bar {
   background: #c0392b !important;
@@ -2059,13 +2059,11 @@ html, body {
   .bar-resize-l, .bar-resize-r { display: none; }
   .bar-connect-dot { width: 24px; height: 24px; }
 
-  /* Regular task bars fill the full row height on mobile — eliminates white gap above/below
-     and maximises tap area for narrow bars when zoomed out. Phase and summary bars keep
-     their own positioning (set inline or via their own rules). */
+  /* Task bars: half row height, vertically centred. Phase/summary keep their own sizing. */
   .gantt-row:not(.is-phase):not(.is-summary) > .gantt-bar-wrap {
-    height: 100% !important;
-    top: 0 !important;
-    transform: none !important;
+    height: 50% !important;
+    top: 50% !important;
+    transform: translateY(-50%) !important;
   }
 
   /* Task detail panel — bottom sheet on mobile */
@@ -6773,9 +6771,9 @@ function hideBarDot() {
   if (_popupRafId) { cancelAnimationFrame(_popupRafId); _popupRafId = null; }
   const pop = document.getElementById('bar-date-popup');
   if (pop) pop.style.visibility = 'hidden';
-  // Reset dep arrow highlighting
+  // Dim all arrows (same suppression as non-related arrows when a bar is active)
   const svg = document.getElementById('gantt-dep-svg');
-  if (svg) _resetArrows(svg);
+  if (svg) svg.querySelectorAll('g[data-from-id]').forEach(g => g.setAttribute('opacity', '0.15'));
 }
 
 let _popupRafId = null;
