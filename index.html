@@ -4691,14 +4691,14 @@ function renderGanttTaskRowsRecursive(tasks, phase, pi, minD, totalW, container,
             const blX  = Math.round(dateToX(new Date(blTask.startDate), minD));
             const blX2 = Math.round(dateToX(new Date(blTask.endDate),   minD));
             const blW  = Math.max(4, blX2 - blX);
-            // Outline rendered first → sits behind the task bar
+            // Bar first, then outline on top (transparent fill → only border visible)
+            tRow.appendChild(barWrap);
             const blOut = document.createElement('div');
             blOut.className = 'gantt-bl-outline';
             blOut.style.left = blX + 'px';
             blOut.style.width = blW + 'px';
             blOut.title = `Směrný plán: ${blTask.startDate} – ${blTask.endDate}`;
             tRow.appendChild(blOut);
-            tRow.appendChild(barWrap);
             // Delay / saving
             const dayDiff = Math.round((new Date(task.endDate) - new Date(blTask.endDate)) / 86400000);
             if (dayDiff > 0) {
