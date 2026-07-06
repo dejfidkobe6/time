@@ -3638,6 +3638,7 @@ function openBaselinePanel() {
               ? `<span class="baseline-chip">Aktivní</span>`
               : `<button class="btn btn-secondary" style="font-size:10px;padding:3px 8px;" onclick="activateBaseline('${bl.id}')">Zobrazit</button>`
             }
+            <button class="btn btn-ghost" title="Přeuložit aktuální stav" style="font-size:13px;padding:3px 6px;color:var(--text-muted);" onclick="resaveBaseline('${bl.id}')">↺</button>
             <button class="btn btn-ghost" style="font-size:10px;padding:3px 6px;color:var(--text-muted);" onclick="deleteBaseline('${bl.id}')">✕</button>
           </div>`;
       }).join('');
@@ -3735,6 +3736,20 @@ function deleteBaseline(id) {
   closeModal();
   saveProject(true);
   updateBaselineChip();
+  render();
+  openBaselinePanel();
+}
+
+function resaveBaseline(id) {
+  const bl = (project.baselines || []).find(b => b.id === id);
+  if (!bl) return;
+  bl.savedAt = new Date().toISOString().split('T')[0];
+  bl.phases = project.phases.map(ph => ({
+    id: ph.id,
+    tasks: (ph.tasks || []).map(t => ({ id: t.id, startDate: t.startDate, endDate: t.endDate, duration: t.duration }))
+  }));
+  closeModal();
+  saveProject(true);
   render();
   openBaselinePanel();
 }
@@ -4635,21 +4650,46 @@ function renderGanttTaskRowsRecursive(tasks, phase, pi, minD, totalW, container,
         makeResizableBar(barWrap, task, minD);
         addTouchDrag(barWrap, task, minD);
         addTouchResize(barWrap, task, minD);
-        tRow.appendChild(barWrap);
 
-        // Baseline bar — shows original planned position
-        const activeBaseline = getActiveBaseline();
-        if (activeBaseline) {
-          const blTask = findBaselineTask(activeBaseline, task.id);
+        // Baseline visualization: outline behind bar, delay/saving overlay + label in front
+        {
+          const activeBaseline = getActiveBaseline();
+          const blTask = activeBaseline ? findBaselineTask(activeBaseline, task.id) : null;
           if (blTask && blTask.startDate && blTask.endDate) {
-            const blX = Math.round(dateToX(new Date(blTask.startDate), minD));
-            const blX2 = Math.round(dateToX(new Date(blTask.endDate), minD));
-            const blW = Math.max(4, blX2 - blX);
-            const blBar = document.createElement('div');
-            blBar.className = 'gantt-baseline-bar';
-            blBar.style.cssText = `left:${blX}px;width:${blW}px;`;
-            blBar.title = `Směrný plán: ${blTask.startDate} – ${blTask.endDate}`;
-            tRow.appendChild(blBar);
+            const blX  = Math.round(dateToX(new Date(blTask.startDate), minD));
+            const blX2 = Math.round(dateToX(new Date(blTask.endDate),   minD));
+            const blW  = Math.max(4, blX2 - blX);
+            // Outline rendered first → sits behind the task bar
+            const blOut = document.createElement('div');
+            blOut.title = `Směrný plán: ${blTask.startDate} – ${blTask.endDate}`;
+            blOut.style.cssText = `position:absolute;left:${blX}px;width:${blW}px;top:50%;transform:translateY(-50%);height:22px;border:1.5px solid var(--text);opacity:0.7;border-radius:4px;box-sizing:border-box;pointer-events:none;`;
+            tRow.appendChild(blOut);
+            tRow.appendChild(barWrap);
+            // Delay / saving
+            const dayDiff = Math.round((new Date(task.endDate) - new Date(blTask.endDate)) / 86400000);
+            if (dayDiff > 0) {
+              // Task ends later than baseline → red overlay on the excess
+              const ow = Math.max(2, x2 - blX2);
+              const ov = document.createElement('div');
+              ov.style.cssText = `position:absolute;left:${blX2}px;width:${ow}px;top:50%;transform:translateY(-50%);height:22px;background:rgba(192,57,43,0.82);border-radius:0 4px 4px 0;pointer-events:none;`;
+              tRow.appendChild(ov);
+              const lb = document.createElement('div');
+              lb.style.cssText = `position:absolute;left:${(blX2 + ow / 2).toFixed(0)}px;transform:translateX(-50%);top:1px;font-size:9px;font-weight:800;color:#c0392b;pointer-events:none;white-space:nowrap;line-height:1;`;
+              lb.textContent = '+' + dayDiff;
+              tRow.appendChild(lb);
+            } else if (dayDiff < 0) {
+              // Task ends earlier than baseline → green fill shows saved portion
+              const sw = Math.max(2, blX2 - x2);
+              const sv = document.createElement('div');
+              sv.style.cssText = `position:absolute;left:${x2}px;width:${sw}px;top:50%;transform:translateY(-50%);height:22px;background:rgba(39,174,96,0.62);border-radius:0 4px 4px 0;pointer-events:none;`;
+              tRow.appendChild(sv);
+              const lb = document.createElement('div');
+              lb.style.cssText = `position:absolute;left:${(x2 + sw / 2).toFixed(0)}px;transform:translateX(-50%);top:1px;font-size:9px;font-weight:800;color:#1e8449;pointer-events:none;white-space:nowrap;line-height:1;`;
+              lb.textContent = '-' + Math.abs(dayDiff);
+              tRow.appendChild(lb);
+            }
+          } else {
+            tRow.appendChild(barWrap);
           }
         }
 
@@ -8602,6 +8642,7 @@ function mobRefreshBaselineList() {
            <button onclick="mobDeactivateBaseline()" style="padding:4px 8px;border-radius:8px;background:var(--bg);border:1.5px solid var(--border);font-size:11px;font-weight:600;cursor:pointer;color:var(--text-muted);">Skrýt</button>`
         : `<button onclick="mobActivateBaseline('${bl.id}')" style="padding:4px 10px;border-radius:8px;background:var(--bg);border:1.5px solid var(--border);font-size:11px;font-weight:600;cursor:pointer;">Zobrazit</button>`
       }
+      <button onclick="mobResaveBaseline('${bl.id}')" title="Přeuložit aktuální stav" style="background:none;border:none;color:var(--text-muted);font-size:15px;cursor:pointer;padding:2px 4px;line-height:1;">↺</button>
       <button onclick="mobDeleteBaseline('${bl.id}')" style="background:none;border:none;color:var(--text-muted);font-size:18px;cursor:pointer;padding:2px 4px;line-height:1;">✕</button>
     </div>`;
   }).join('');
@@ -8640,6 +8681,19 @@ function mobDeactivateBaseline() {
 function mobDeleteBaseline(id) {
   project.baselines = (project.baselines || []).filter(b => b.id !== id);
   if (project.activeBaselineId === id) { project.activeBaselineId = null; updateBaselineChip(); }
+  saveProject(true); renderGantt();
+  mobRefreshBaselineList();
+}
+
+function mobResaveBaseline(id) {
+  const bl = (project.baselines || []).find(b => b.id === id);
+  if (!bl) return;
+  const today = new Date().toISOString().split('T')[0];
+  bl.savedAt = today;
+  bl.phases = project.phases.map(ph => ({
+    id: ph.id,
+    tasks: (ph.tasks || []).map(t => ({ id: t.id, startDate: t.startDate, endDate: t.endDate, duration: t.duration }))
+  }));
   saveProject(true); renderGantt();
   mobRefreshBaselineList();
 }
