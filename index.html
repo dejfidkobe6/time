@@ -1665,10 +1665,10 @@ html, body {
    GANTT BAR — ROUNDED CORNERS
 ═══════════════════════════════════════ */
 .gantt-bar {
-  border-radius: 7px !important;
+  border-radius: 3px !important;
 }
 .gantt-bar-progress {
-  border-radius: 7px 0 0 7px !important;
+  border-radius: 3px 0 0 3px !important;
 }
 .gantt-bar-wrap.is-critical .gantt-bar {
   background: #c0392b !important;
@@ -4819,6 +4819,7 @@ function cascadeSuccessors(changedTaskId) {
 }
 
 function makeDraggableBar(barWrap, task, minD) {
+  if (window.innerWidth <= 768) return;
   barWrap.addEventListener('mousedown', (e) => {
     if (e.button !== 0) return;
     if (e.target.classList.contains('bar-resize-l') || e.target.classList.contains('bar-resize-r')) return;
@@ -4852,6 +4853,7 @@ function makeDraggableBar(barWrap, task, minD) {
 }
 
 function makeResizableBar(barWrap, task, minD) {
+  if (window.innerWidth <= 768) return;
   const handleL = barWrap.querySelector('.bar-resize-l');
   const handleR = barWrap.querySelector('.bar-resize-r');
   if (!handleL || !handleR) return;
@@ -7920,7 +7922,6 @@ function initMobRowDrag() {
    TASK DETAIL PANEL (slide-in, double-click on bar)
 ═══════════════════════════════════════════════════ */
 function openTaskDetailPanel(taskId) {
-  if (Date.now() - _arrowClickTs < 400) return;
   const task = findTask(taskId);
   if (!task) return;
   const existingToast = document.getElementById('toast');
