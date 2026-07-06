@@ -6753,6 +6753,7 @@ function selectTask(taskId) {
 let _activeDotWrap = null;
 
 function showBarDot(barWrap, taskId) {
+  _arrowsDimmed = false;
   if (_activeDotWrap && _activeDotWrap !== barWrap) {
     _activeDotWrap.querySelector('.bar-connect-dot')?.classList.remove('dot-active');
   }
@@ -6772,6 +6773,7 @@ function hideBarDot() {
   const pop = document.getElementById('bar-date-popup');
   if (pop) pop.style.visibility = 'hidden';
   // Dim all arrows (same suppression as non-related arrows when a bar is active)
+  _arrowsDimmed = true;
   const svg = document.getElementById('gantt-dep-svg');
   if (svg) svg.querySelectorAll('g[data-from-id]').forEach(g => g.setAttribute('opacity', '0.15'));
 }
@@ -8397,6 +8399,7 @@ if ('serviceWorker' in navigator) {
    ARROW HOVER HIGHLIGHTING
 ═══════════════════════════════════════════════════ */
 let _depDblTapState = { ts: 0, x: 0, y: 0 };
+let _arrowsDimmed = false;
 
 function _resetArrows(svg) {
   if (!svg) return;
@@ -8419,6 +8422,7 @@ function initArrowHighlighting() {
   canvas.addEventListener('mouseover', (e) => {
     const g = e.target.closest('g[data-from-id]');
     if (g) {
+      _arrowsDimmed = false;
       const svg = document.getElementById('gantt-dep-svg');
       if (!svg) return;
       svg.querySelectorAll('g[data-from-id]').forEach(ag => {
@@ -8428,6 +8432,7 @@ function initArrowHighlighting() {
     }
     const bar = e.target.closest('.gantt-bar-wrap');
     if (!bar) return;
+    _arrowsDimmed = false;
     const tid = bar.dataset.taskId;
     if (tid === hoverTid) return;
     hoverTid = tid;
@@ -8438,16 +8443,18 @@ function initArrowHighlighting() {
   canvas.addEventListener('mouseout', (e) => {
     const gEl = e.target.closest('g[data-from-id]');
     if (gEl && !e.relatedTarget?.closest('g[data-from-id]')) {
-      const svg = document.getElementById('gantt-dep-svg');
-      if (svg) _resetArrows(svg);
+      if (!_arrowsDimmed) {
+        const svg = document.getElementById('gantt-dep-svg');
+        if (svg) _resetArrows(svg);
+      }
       return;
     }
     const bar = e.target.closest('.gantt-bar-wrap');
     if (!bar) return;
     if (e.relatedTarget?.closest('.gantt-bar-wrap')) return;
     hoverTid = null;
-    // Don't reset if a bar tap is active (mobile tap keeps arrows highlighted)
-    if (!_activeDotWrap) {
+    // Don't reset if a bar tap is active or arrows were intentionally dimmed
+    if (!_activeDotWrap && !_arrowsDimmed) {
       const svg = document.getElementById('gantt-dep-svg');
       if (svg) _resetArrows(svg);
     }
