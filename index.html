@@ -1652,7 +1652,7 @@ html, body {
 .wbs-row-content { align-items: center; }
 
 /* Row height control */
-:root { --row-h: 30px; --toolbar-h: 45px; --colhdr-h: 44px; }
+:root { --row-h: 22px; --toolbar-h: 45px; --colhdr-h: 44px; }
 #wbs-toolbar, #gantt-toolbar   { height: var(--toolbar-h); box-sizing: border-box; }
 .wbs-header-cols               { height: var(--colhdr-h);  box-sizing: border-box; }
 #gantt-time-header             { height: var(--colhdr-h);  box-sizing: border-box; }
@@ -1808,6 +1808,47 @@ html, body {
 .mob-nav-btn.active { color: var(--olive); }
 .mob-nav-btn.cp-active { color: #c0392b; }
 .mob-nav-btn.cp-active svg { stroke: #c0392b; }
+
+/* ═══════════════════════════════════════
+   MOBILE SETTINGS SHEET
+═══════════════════════════════════════ */
+#mob-sett-overlay {
+  position: fixed; inset: 0; z-index: 5500;
+  background: rgba(0,0,0,0.52);
+  display: flex; align-items: flex-end;
+}
+#mob-sett-overlay.hidden { display: none; }
+#mob-sett-sheet {
+  background: var(--bg-card);
+  border-radius: 18px 18px 0 0;
+  width: 100%;
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+.mob-sett-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.mob-sett-row:last-child { border-bottom: none; }
+.mob-sett-label { font-size: 15px; font-weight: 600; color: var(--text); }
+.mob-sett-sub { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+/* Toggle switch */
+.mob-toggle { position: relative; width: 44px; height: 26px; flex-shrink: 0; }
+.mob-toggle input { opacity: 0; width: 0; height: 0; }
+.mob-toggle-slider {
+  position: absolute; inset: 0; border-radius: 13px;
+  background: var(--border); transition: background 0.2s;
+  cursor: pointer;
+}
+.mob-toggle-slider::before {
+  content: ''; position: absolute;
+  width: 20px; height: 20px; border-radius: 50%;
+  background: #fff; left: 3px; top: 3px;
+  transition: transform 0.2s; box-shadow: 0 1px 4px rgba(0,0,0,0.25);
+}
+.mob-toggle input:checked + .mob-toggle-slider { background: var(--olive); }
+.mob-toggle input:checked + .mob-toggle-slider::before { transform: translateX(18px); }
+.mob-toggle-cp input:checked + .mob-toggle-slider { background: #c0392b; }
 
 /* ═══════════════════════════════════════
    MOBILE TASK PANEL (slim left column)
@@ -2002,7 +2043,7 @@ html, body {
 @media (max-width: 768px), (orientation: landscape) and (max-height: 500px) {
   :root {
     --sidebar-w: 0px;
-    --row-h: 35px;
+    --row-h: 26px;
     --toolbar-h: 44px;
     --colhdr-h: 38px;
   }
@@ -2483,8 +2524,8 @@ html, body {
                   <div class="gantt-opts-section">
                     <div class="gantt-opts-heading">Výška řádků</div>
                     <div class="gantt-opts-row">
-                      <input type="range" min="22" max="72" value="30" id="row-h-slider" oninput="setRowHeight(this.value)">
-                      <span id="row-h-val" style="font-size:10px;font-weight:700;color:var(--olive);min-width:28px;">30px</span>
+                      <input type="range" min="22" max="72" value="22" id="row-h-slider" oninput="setRowHeight(this.value)">
+                      <span id="row-h-val" style="font-size:10px;font-weight:700;color:var(--olive);min-width:28px;">22px</span>
                     </div>
                   </div>
                 </div>
@@ -6830,15 +6871,29 @@ let _suppressDepClick = false;
 
 function hitTestArrow(clientX, clientY) {
   const svg = document.getElementById('gantt-dep-svg');
-  if (!svg || !svg.getScreenCTM) return null;
+  if (!svg) return null;
   try {
-    const inv = svg.getScreenCTM().inverse();
-    const pt = svg.createSVGPoint();
-    pt.x = clientX; pt.y = clientY;
-    const svgPt = pt.matrixTransform(inv);
+    // Map click to SVG coordinate space via bounding rect (reliable across all zoom levels)
+    const svgRect = svg.getBoundingClientRect();
+    if (!svgRect.width || !svgRect.height) return null;
+    const svgW = svg.width?.baseVal?.value || svgRect.width;
+    const svgH = svg.height?.baseVal?.value || svgRect.height;
+    const scaleX = svgW / svgRect.width;
+    const scaleY = svgH / svgRect.height;
+    const svgX = (clientX - svgRect.left) * scaleX;
+    const svgY = (clientY - svgRect.top)  * scaleY;
+    const tol  = 22 * scaleX; // ~22 CSS-pixel tolerance in SVG units
+
     for (const g of svg.querySelectorAll('g[data-from-id]')) {
       const hitPath = [...g.children].find(el => el.tagName === 'path' && el.getAttribute('stroke') === 'transparent');
-      if (hitPath && hitPath.isPointInStroke && hitPath.isPointInStroke(svgPt)) return g;
+      if (!hitPath) continue;
+      const len = hitPath.getTotalLength();
+      const steps = Math.max(16, Math.ceil(len / 8));
+      for (let i = 0; i <= steps; i++) {
+        const p = hitPath.getPointAtLength((i / steps) * len);
+        const dx = p.x - svgX, dy = p.y - svgY;
+        if (dx * dx + dy * dy < tol * tol) return g;
+      }
     }
   } catch (_) {}
   return null;
@@ -8293,25 +8348,42 @@ function saveTaskDetailPanel(taskId) {
    MOBILE SIDEBAR
 ═══════════════════════════════════════════════════ */
 function setMobNav(active) {
-  ['gantt','cp','add','undo','save'].forEach(id => {
+  ['gantt','sett','add','undo','save'].forEach(id => {
     const el = document.getElementById('mobnav-' + id);
     if (el) el.classList.toggle('active', id === active);
   });
 }
 
-function toggleCriticalPath() {
+function openMobSettings() {
   const s = getSettings();
-  s.showCriticalPath = !s.showCriticalPath;
+  const cpEl = document.getElementById('mob-sett-cp');
+  const floatEl = document.getElementById('mob-sett-float');
+  if (cpEl) cpEl.checked = !!s.showCriticalPath;
+  if (floatEl) floatEl.checked = !!s.showFloat;
+  document.getElementById('mob-sett-overlay').classList.remove('hidden');
+}
+
+function closeMobSettings() {
+  document.getElementById('mob-sett-overlay').classList.add('hidden');
+}
+
+function onMobSettCp(val) {
+  const s = getSettings();
+  s.showCriticalPath = val;
   _criticalPathCache = null;
-  const btn = document.getElementById('mobnav-cp');
-  if (btn) btn.classList.toggle('cp-active', !!s.showCriticalPath);
+  saveProject(true);
+  renderGantt();
+}
+
+function onMobSettFloat(val) {
+  const s = getSettings();
+  s.showFloat = val;
   saveProject(true);
   renderGantt();
 }
 
 function syncCriticalPathBtn() {
-  const btn = document.getElementById('mobnav-cp');
-  if (btn) btn.classList.toggle('cp-active', !!getSettings().showCriticalPath);
+  // No longer a standalone button; sync handled when opening settings sheet
 }
 
 function openMobileSidebar() {
@@ -8742,9 +8814,9 @@ init();
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="3" rx="1"/><rect x="3" y="10.5" width="12" height="3" rx="1"/><rect x="3" y="17" width="15" height="3" rx="1"/></svg>
     Plán
   </button>
-  <button class="mob-nav-btn" id="mobnav-cp" onclick="toggleCriticalPath()" title="Kritická cesta">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-    Krit. cesta
+  <button class="mob-nav-btn" id="mobnav-sett" onclick="openMobSettings()" title="Nastavení">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07M8.46 8.46a5 5 0 0 0 0 7.07"/></svg>
+    Nastavení
   </button>
   <button class="mob-nav-btn" id="mobnav-add" onclick="openAddTaskModal()">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
@@ -8759,6 +8831,36 @@ init();
     Uložit
   </button>
 </nav>
+
+<!-- MOBILE SETTINGS SHEET -->
+<div id="mob-sett-overlay" class="hidden" onclick="if(event.target===this)closeMobSettings()">
+  <div id="mob-sett-sheet">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px 12px;border-bottom:1px solid var(--border);">
+      <span style="font-size:16px;font-weight:800;letter-spacing:-.2px;">Nastavení</span>
+      <button onclick="closeMobSettings()" style="background:none;border:none;font-size:22px;color:var(--text-muted);padding:2px 6px;cursor:pointer;line-height:1;">✕</button>
+    </div>
+    <div class="mob-sett-row">
+      <div>
+        <div class="mob-sett-label">Kritická cesta</div>
+        <div class="mob-sett-sub">Zobrazit kritické úkoly červeně</div>
+      </div>
+      <label class="mob-toggle mob-toggle-cp">
+        <input type="checkbox" id="mob-sett-cp" onchange="onMobSettCp(this.checked)">
+        <span class="mob-toggle-slider"></span>
+      </label>
+    </div>
+    <div class="mob-sett-row">
+      <div>
+        <div class="mob-sett-label">Kritický plán</div>
+        <div class="mob-sett-sub">Zobrazit časovou rezervu za úkolem</div>
+      </div>
+      <label class="mob-toggle">
+        <input type="checkbox" id="mob-sett-float" onchange="onMobSettFloat(this.checked)">
+        <span class="mob-toggle-slider"></span>
+      </label>
+    </div>
+  </div>
+</div>
 
 <!-- DATE RANGE PICKER MODAL -->
 <div id="drp-overlay" class="hidden" onclick="if(event.target===this)closeDRP()">
