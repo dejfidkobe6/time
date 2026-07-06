@@ -1671,20 +1671,52 @@ html, body {
   background: #c0392b !important;
 }
 
-/* Baseline bar — shown below task bar in Gantt */
-.gantt-baseline-bar {
+/* Baseline outline — same vertical sizing as .gantt-bar-wrap */
+.gantt-bl-outline {
   position: absolute;
-  height: 4px;
-  bottom: 3px;
-  border-radius: 2px;
-  background: var(--charcoal);
-  opacity: 0.55;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 22px;
+  border: 1.5px solid var(--text);
+  opacity: 0.65;
+  border-radius: 4px;
+  box-sizing: border-box;
   pointer-events: none;
 }
-@media (prefers-color-scheme: dark) {
-  .gantt-baseline-bar { background: rgba(255,255,255,0.45); opacity: 1; }
+/* Delay (red) / saving (green) overlays — same vertical sizing as bar */
+.gantt-bl-delay, .gantt-bl-save {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 22px;
+  border-radius: 0 4px 4px 0;
+  pointer-events: none;
 }
-:root[data-theme="dark"] .gantt-baseline-bar { background: rgba(255,255,255,0.45); opacity: 1; }
+.gantt-bl-delay { background: rgba(192,57,43,0.82); }
+.gantt-bl-save  { background: rgba(39,174,96,0.62); }
+/* Day-count label above bar */
+.gantt-bl-label {
+  position: absolute;
+  top: 1px;
+  font-size: 9px;
+  font-weight: 800;
+  pointer-events: none;
+  white-space: nowrap;
+  line-height: 1;
+  transform: translateX(-50%);
+}
+.gantt-bl-label.is-delay { color: #c0392b; }
+.gantt-bl-label.is-save  { color: #1e8449; }
+/* On mobile, match the bar's 50%-of-row-height rule */
+@media (max-width: 768px) {
+  .gantt-row:not(.is-phase):not(.is-summary) > .gantt-bl-outline,
+  .gantt-row:not(.is-phase):not(.is-summary) > .gantt-bl-delay,
+  .gantt-row:not(.is-phase):not(.is-summary) > .gantt-bl-save {
+    height: 50% !important;
+    top: 50% !important;
+    transform: translateY(-50%) !important;
+  }
+}
 /* Delay cell colors */
 .delay-pos { color: #c0392b; font-weight: 700; }  /* late */
 .delay-neg { color: #27ae60; font-weight: 700; }  /* early */
@@ -4661,30 +4693,36 @@ function renderGanttTaskRowsRecursive(tasks, phase, pi, minD, totalW, container,
             const blW  = Math.max(4, blX2 - blX);
             // Outline rendered first → sits behind the task bar
             const blOut = document.createElement('div');
+            blOut.className = 'gantt-bl-outline';
+            blOut.style.left = blX + 'px';
+            blOut.style.width = blW + 'px';
             blOut.title = `Směrný plán: ${blTask.startDate} – ${blTask.endDate}`;
-            blOut.style.cssText = `position:absolute;left:${blX}px;width:${blW}px;top:50%;transform:translateY(-50%);height:22px;border:1.5px solid var(--text);opacity:0.7;border-radius:4px;box-sizing:border-box;pointer-events:none;`;
             tRow.appendChild(blOut);
             tRow.appendChild(barWrap);
             // Delay / saving
             const dayDiff = Math.round((new Date(task.endDate) - new Date(blTask.endDate)) / 86400000);
             if (dayDiff > 0) {
-              // Task ends later than baseline → red overlay on the excess
               const ow = Math.max(2, x2 - blX2);
               const ov = document.createElement('div');
-              ov.style.cssText = `position:absolute;left:${blX2}px;width:${ow}px;top:50%;transform:translateY(-50%);height:22px;background:rgba(192,57,43,0.82);border-radius:0 4px 4px 0;pointer-events:none;`;
+              ov.className = 'gantt-bl-delay';
+              ov.style.left = blX2 + 'px';
+              ov.style.width = ow + 'px';
               tRow.appendChild(ov);
               const lb = document.createElement('div');
-              lb.style.cssText = `position:absolute;left:${(blX2 + ow / 2).toFixed(0)}px;transform:translateX(-50%);top:1px;font-size:9px;font-weight:800;color:#c0392b;pointer-events:none;white-space:nowrap;line-height:1;`;
+              lb.className = 'gantt-bl-label is-delay';
+              lb.style.left = (blX2 + ow / 2).toFixed(0) + 'px';
               lb.textContent = '+' + dayDiff;
               tRow.appendChild(lb);
             } else if (dayDiff < 0) {
-              // Task ends earlier than baseline → green fill shows saved portion
               const sw = Math.max(2, blX2 - x2);
               const sv = document.createElement('div');
-              sv.style.cssText = `position:absolute;left:${x2}px;width:${sw}px;top:50%;transform:translateY(-50%);height:22px;background:rgba(39,174,96,0.62);border-radius:0 4px 4px 0;pointer-events:none;`;
+              sv.className = 'gantt-bl-save';
+              sv.style.left = x2 + 'px';
+              sv.style.width = sw + 'px';
               tRow.appendChild(sv);
               const lb = document.createElement('div');
-              lb.style.cssText = `position:absolute;left:${(x2 + sw / 2).toFixed(0)}px;transform:translateX(-50%);top:1px;font-size:9px;font-weight:800;color:#1e8449;pointer-events:none;white-space:nowrap;line-height:1;`;
+              lb.className = 'gantt-bl-label is-save';
+              lb.style.left = (x2 + sw / 2).toFixed(0) + 'px';
               lb.textContent = '-' + Math.abs(dayDiff);
               tRow.appendChild(lb);
             }
