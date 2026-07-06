@@ -882,9 +882,9 @@ html, body {
 
 .gantt-bar-progress {
   position: absolute;
-  left: 0; top: 0; bottom: 0;
-  background: rgba(0,0,0,0.2);
-  border-radius: 4px 0 0 4px;
+  left: 0; bottom: 0;
+  height: 4px;
+  background: rgba(0,0,0,0.35);
   pointer-events: none;
 }
 
@@ -1665,9 +1665,6 @@ html, body {
    GANTT BAR — NO ROUNDED CORNERS
 ═══════════════════════════════════════ */
 .gantt-bar {
-  border-radius: 0 !important;
-}
-.gantt-bar-progress {
   border-radius: 0 !important;
 }
 .gantt-bar-wrap.is-critical .gantt-bar {
