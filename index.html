@@ -1675,10 +1675,7 @@ html, body {
 }
 .gantt-bar-wrap.is-critical .gantt-bar {
   background: #c0392b !important;
-  box-shadow: 0 0 0 2px rgba(192,57,43,0.25);
-}
-.gantt-bar-wrap.is-critical {
-  filter: drop-shadow(0 2px 6px rgba(192,57,43,0.4));
+  box-shadow: 0 0 0 2px rgba(192,57,43,0.5), 0 1px 3px rgba(0,0,0,0.2);
 }
 
 /* Baseline bar — shown below task bar in Gantt */
@@ -2065,7 +2062,7 @@ html, body {
   .gantt-bar-label { display: none !important; }
 
   /* Touch-friendly bars — bigger handles */
-  .gantt-bar-wrap { touch-action: pan-x pan-y; }
+  .gantt-bar-wrap { touch-action: pan-x pan-y; cursor: pointer; }
   .bar-resize-l, .bar-resize-r { width: 16px; opacity: 0.7; }
   .bar-connect-dot { width: 24px; height: 24px; }
 
@@ -4534,17 +4531,16 @@ function renderGanttTaskRowsRecursive(tasks, phase, pi, minD, totalW, container,
         mWrap.appendChild(diamond);
         mWrap.appendChild(dot);
 
-        mWrap.addEventListener('touchstart', (e) => {
+        mWrap.addEventListener('pointerdown', (e) => {
+          if (e.pointerType === 'mouse') return;
           if (e.target.classList.contains('bar-connect-dot')) return;
-          _lastBarTouchTs = Date.now();
-          showBarDot(mWrap);
+          showBarDot(mWrap, task.id);
           showBarPopup(task, mWrap);
-        }, { passive: true });
+        });
         mWrap.addEventListener('click', (e) => {
-          if (Date.now() - _lastBarTouchTs < 600) return;
           if (e.target.classList.contains('bar-connect-dot')) return;
           e.stopPropagation();
-          showBarDot(mWrap);
+          showBarDot(mWrap, task.id);
           showBarPopup(task, mWrap);
         });
 
@@ -4578,21 +4574,22 @@ function renderGanttTaskRowsRecursive(tasks, phase, pi, minD, totalW, container,
           barWrap.classList.add('is-critical');
         }
 
-        // Bar tap → show connect dot + date popup. touchstart for immediate mobile response.
-        barWrap.addEventListener('touchstart', (e) => {
+        // Bar tap → show connect dot + date popup.
+        // pointerdown fires immediately for touch (bypasses iOS scroll-detection delay)
+        // and is skipped for mouse (mouse uses click instead to avoid showing popup on drag start).
+        barWrap.addEventListener('pointerdown', (e) => {
+          if (e.pointerType === 'mouse') return;
           if (e.target.classList.contains('bar-resize-l') || e.target.classList.contains('bar-resize-r')) return;
           if (e.target.classList.contains('bar-connect-dot')) return;
-          _lastBarTouchTs = Date.now();
-          showBarDot(barWrap);
+          showBarDot(barWrap, task.id);
           showBarPopup(task, barWrap);
-        }, { passive: true });
+        });
 
         barWrap.addEventListener('click', (e) => {
-          if (Date.now() - _lastBarTouchTs < 600) return;
           if (e.target.classList.contains('bar-resize-l') || e.target.classList.contains('bar-resize-r')) return;
           if (e.target.classList.contains('bar-connect-dot')) return;
           e.stopPropagation();
-          showBarDot(barWrap);
+          showBarDot(barWrap, task.id);
           showBarPopup(task, barWrap);
         });
 
@@ -6770,14 +6767,18 @@ function selectTask(taskId) {
 
 // ── Connect-dot + date popup ─────────────────────────────────
 let _activeDotWrap = null;
-let _lastBarTouchTs = 0;
 
-function showBarDot(barWrap) {
+function showBarDot(barWrap, taskId) {
   if (_activeDotWrap && _activeDotWrap !== barWrap) {
     _activeDotWrap.querySelector('.bar-connect-dot')?.classList.remove('dot-active');
   }
   _activeDotWrap = barWrap;
   barWrap.querySelector('.bar-connect-dot')?.classList.add('dot-active');
+  // Highlight related dep arrows
+  if (taskId) {
+    const svg = document.getElementById('gantt-dep-svg');
+    if (svg) _highlightArrowsFor(svg, taskId);
+  }
 }
 
 function hideBarDot() {
@@ -6786,6 +6787,9 @@ function hideBarDot() {
   if (_popupRafId) { cancelAnimationFrame(_popupRafId); _popupRafId = null; }
   const pop = document.getElementById('bar-date-popup');
   if (pop) pop.style.visibility = 'hidden';
+  // Reset dep arrow highlighting
+  const svg = document.getElementById('gantt-dep-svg');
+  if (svg) _resetArrows(svg);
 }
 
 let _popupRafId = null;
@@ -6827,13 +6831,10 @@ function showBarPopup(task, barWrap) {
   });
 }
 
-// Tap / click outside any bar → hide dot + popup
-document.addEventListener('click', (e) => {
+// Pointer down outside any bar → hide dot + popup
+document.addEventListener('pointerdown', (e) => {
   if (!e.target.closest('.gantt-bar-wrap')) hideBarDot();
-}, true);
-document.addEventListener('touchstart', (e) => {
-  if (!e.target.closest('.gantt-bar-wrap')) hideBarDot();
-}, { capture: true, passive: true });
+}, { capture: true });
 
 
 function handleRowSelect(taskId, e) {
