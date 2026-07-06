@@ -878,10 +878,7 @@ html, body {
   border-radius: 4px;
   position: relative;
   overflow: hidden;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
-  transition: filter 0.15s;
 }
-.gantt-bar:hover { filter: brightness(1.08); }
 
 .gantt-bar-progress {
   position: absolute;
@@ -1675,7 +1672,6 @@ html, body {
 }
 .gantt-bar-wrap.is-critical .gantt-bar {
   background: #c0392b !important;
-  box-shadow: 0 0 0 2px rgba(192,57,43,0.5), 0 1px 3px rgba(0,0,0,0.2);
 }
 
 /* Baseline bar — shown below task bar in Gantt */
@@ -4531,12 +4527,6 @@ function renderGanttTaskRowsRecursive(tasks, phase, pi, minD, totalW, container,
         mWrap.appendChild(diamond);
         mWrap.appendChild(dot);
 
-        mWrap.addEventListener('pointerdown', (e) => {
-          if (e.pointerType === 'mouse') return;
-          if (e.target.classList.contains('bar-connect-dot')) return;
-          showBarDot(mWrap, task.id);
-          showBarPopup(task, mWrap);
-        });
         mWrap.addEventListener('click', (e) => {
           if (e.target.classList.contains('bar-connect-dot')) return;
           e.stopPropagation();
@@ -4574,17 +4564,8 @@ function renderGanttTaskRowsRecursive(tasks, phase, pi, minD, totalW, container,
           barWrap.classList.add('is-critical');
         }
 
-        // Bar tap → show connect dot + date popup.
-        // pointerdown fires immediately for touch (bypasses iOS scroll-detection delay)
-        // and is skipped for mouse (mouse uses click instead to avoid showing popup on drag start).
-        barWrap.addEventListener('pointerdown', (e) => {
-          if (e.pointerType === 'mouse') return;
-          if (e.target.classList.contains('bar-resize-l') || e.target.classList.contains('bar-resize-r')) return;
-          if (e.target.classList.contains('bar-connect-dot')) return;
-          showBarDot(barWrap, task.id);
-          showBarPopup(task, barWrap);
-        });
-
+        // Single click/tap on bar → show connect dot + popup + highlight related deps.
+        // viewport has user-scalable=no so iOS fires click without 300ms delay.
         barWrap.addEventListener('click', (e) => {
           if (e.target.classList.contains('bar-resize-l') || e.target.classList.contains('bar-resize-r')) return;
           if (e.target.classList.contains('bar-connect-dot')) return;
@@ -8413,21 +8394,18 @@ if ('serviceWorker' in navigator) {
 /* ═══════════════════════════════════════════════════
    ARROW HOVER HIGHLIGHTING
 ═══════════════════════════════════════════════════ */
-let _selectedArrow = null;
-let _arrowClickTs = 0;
-let _lastDepTap = { g: null, ts: 0 };
 let _depDblTapState = { ts: 0, x: 0, y: 0 };
 
 function _resetArrows(svg) {
   if (!svg) return;
-  svg.querySelectorAll('g[data-from-id]').forEach(g => g.setAttribute('opacity', '0.4'));
+  svg.querySelectorAll('g[data-from-id]').forEach(g => g.setAttribute('opacity', '1'));
 }
 
 function _highlightArrowsFor(svg, tid) {
   if (!svg) return;
   svg.querySelectorAll('g[data-from-id]').forEach(g => {
-    const hit = g.dataset.fromId === tid || g.dataset.toId === tid;
-    g.setAttribute('opacity', hit ? '1' : '0.1');
+    const related = g.dataset.fromId === tid || g.dataset.toId === tid;
+    g.setAttribute('opacity', related ? '1' : '0.15');
   });
 }
 
@@ -8435,14 +8413,14 @@ function initArrowHighlighting() {
   const canvas = document.getElementById('gantt-canvas-wrap');
   let hoverTid = null;
 
+  // Desktop: hover over bar → highlight related dep arrows
   canvas.addEventListener('mouseover', (e) => {
-    if (_selectedArrow) return;
     const g = e.target.closest('g[data-from-id]');
     if (g) {
       const svg = document.getElementById('gantt-dep-svg');
       if (!svg) return;
       svg.querySelectorAll('g[data-from-id]').forEach(ag => {
-        ag.setAttribute('opacity', ag === g ? '1' : '0.1');
+        ag.setAttribute('opacity', ag === g ? '1' : '0.15');
       });
       return;
     }
@@ -8452,12 +8430,10 @@ function initArrowHighlighting() {
     if (tid === hoverTid) return;
     hoverTid = tid;
     const svg = document.getElementById('gantt-dep-svg');
-    if (!svg) return;
-    _highlightArrowsFor(svg, tid);
+    if (svg) _highlightArrowsFor(svg, tid);
   });
 
   canvas.addEventListener('mouseout', (e) => {
-    if (_selectedArrow) return;
     const gEl = e.target.closest('g[data-from-id]');
     if (gEl && !e.relatedTarget?.closest('g[data-from-id]')) {
       const svg = document.getElementById('gantt-dep-svg');
@@ -8468,57 +8444,26 @@ function initArrowHighlighting() {
     if (!bar) return;
     if (e.relatedTarget?.closest('.gantt-bar-wrap')) return;
     hoverTid = null;
-    const svg = document.getElementById('gantt-dep-svg');
-    if (svg) _resetArrows(svg);
-  });
-
-  canvas.addEventListener('click', (e) => {
-    const g = e.target.closest('g[data-from-id]');
-    if (g) {
-      e.stopPropagation();
-      _arrowClickTs = Date.now();
-      closeTaskDetailPanelInstant();
-      const svg = document.getElementById('gantt-dep-svg');
-      if (_selectedArrow && _selectedArrow === g) {
-        _selectedArrow = null;
-        if (svg) _resetArrows(svg);
-      } else {
-        _selectedArrow = g;
-        if (svg) {
-          svg.querySelectorAll('g[data-from-id]').forEach(ag => {
-            ag.setAttribute('opacity', ag === g ? '1' : '0.1');
-          });
-        }
-        const fromId = g.dataset.fromId;
-        const toId = g.dataset.toId;
-        const fromTask = findTask(fromId);
-        const toTask = findTask(toId);
-        const fromNum = _rowNumMap.get(fromId) || '?';
-        const toNum = _rowNumMap.get(toId) || '?';
-        const fromName = fromTask ? fromTask.name : fromId;
-        const toName = toTask ? toTask.name : toId;
-        showToast(`#${fromNum} ${fromName} → #${toNum} ${toName}`, 2500);
-      }
-      return;
-    }
-    if (_selectedArrow && !e.target.closest('g[data-from-id]')) {
-      _selectedArrow = null;
+    // Don't reset if a bar tap is active (mobile tap keeps arrows highlighted)
+    if (!_activeDotWrap) {
       const svg = document.getElementById('gantt-dep-svg');
       if (svg) _resetArrows(svg);
     }
   });
 
-  // Mobile double-tap on dep arrows: SVG has pointer-events:none so we do geometric hit-testing.
-  // Two touchstart within 400ms at the same spot → check isPointInStroke on all hit paths.
+  // Mobile: double-tap on dep arrow area → open dep editor.
+  // SVG has pointer-events:none so we use geometric isPointInStroke hit-testing.
+  // Delay editor open by 350ms so the synthetic click from the tap fires before
+  // the editor renders (prevents the click from immediately closing the backdrop).
   canvas.addEventListener('touchstart', (e) => {
-    if (e.target.closest('.gantt-bar-wrap')) return; // bars handle their own taps
+    if (e.target.closest('.gantt-bar-wrap')) return;
     if (e.touches.length !== 1) return;
     const touch = e.touches[0];
     const now = Date.now();
     const dx = touch.clientX - _depDblTapState.x;
     const dy = touch.clientY - _depDblTapState.y;
-    if (now - _depDblTapState.ts < 400 && dx * dx + dy * dy < 900) {
-      // Second tap at same location — check dep paths geometrically
+    if (now - _depDblTapState.ts < 500 && dx * dx + dy * dy < 2500) {
+      _depDblTapState = { ts: 0, x: 0, y: 0 };
       const svg = document.getElementById('gantt-dep-svg');
       if (svg && svg.getScreenCTM) {
         try {
@@ -8529,17 +8474,18 @@ function initArrowHighlighting() {
           for (const g of svg.querySelectorAll('g[data-from-id]')) {
             const hitPath = [...g.children].find(el => el.tagName === 'path' && el.getAttribute('stroke') === 'transparent');
             if (hitPath && hitPath.isPointInStroke && hitPath.isPointInStroke(svgPt)) {
-              _depDblTapState = { ts: 0, x: 0, y: 0 };
               const toTask = findTask(g.dataset.toId);
               if (toTask) {
                 const predIndex = (toTask.predecessors || []).findIndex(p => p.taskId === g.dataset.fromId);
-                if (predIndex >= 0) { openDepEditor(toTask, predIndex); return; }
+                if (predIndex >= 0) {
+                  setTimeout(() => openDepEditor(toTask, predIndex), 350);
+                  return;
+                }
               }
             }
           }
         } catch (_) {}
       }
-      _depDblTapState = { ts: 0, x: 0, y: 0 };
     } else {
       _depDblTapState = { ts: now, x: touch.clientX, y: touch.clientY };
     }
