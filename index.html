@@ -4650,21 +4650,46 @@ function renderGanttTaskRowsRecursive(tasks, phase, pi, minD, totalW, container,
         makeResizableBar(barWrap, task, minD);
         addTouchDrag(barWrap, task, minD);
         addTouchResize(barWrap, task, minD);
-        tRow.appendChild(barWrap);
 
-        // Baseline bar — shows original planned position
-        const activeBaseline = getActiveBaseline();
-        if (activeBaseline) {
-          const blTask = findBaselineTask(activeBaseline, task.id);
+        // Baseline visualization: outline behind bar, delay/saving overlay + label in front
+        {
+          const activeBaseline = getActiveBaseline();
+          const blTask = activeBaseline ? findBaselineTask(activeBaseline, task.id) : null;
           if (blTask && blTask.startDate && blTask.endDate) {
-            const blX = Math.round(dateToX(new Date(blTask.startDate), minD));
-            const blX2 = Math.round(dateToX(new Date(blTask.endDate), minD));
-            const blW = Math.max(4, blX2 - blX);
-            const blBar = document.createElement('div');
-            blBar.className = 'gantt-baseline-bar';
-            blBar.style.cssText = `left:${blX}px;width:${blW}px;`;
-            blBar.title = `Směrný plán: ${blTask.startDate} – ${blTask.endDate}`;
-            tRow.appendChild(blBar);
+            const blX  = Math.round(dateToX(new Date(blTask.startDate), minD));
+            const blX2 = Math.round(dateToX(new Date(blTask.endDate),   minD));
+            const blW  = Math.max(4, blX2 - blX);
+            // Outline rendered first → sits behind the task bar
+            const blOut = document.createElement('div');
+            blOut.title = `Směrný plán: ${blTask.startDate} – ${blTask.endDate}`;
+            blOut.style.cssText = `position:absolute;left:${blX}px;width:${blW}px;top:50%;transform:translateY(-50%);height:22px;border:1.5px solid var(--text);opacity:0.7;border-radius:4px;box-sizing:border-box;pointer-events:none;`;
+            tRow.appendChild(blOut);
+            tRow.appendChild(barWrap);
+            // Delay / saving
+            const dayDiff = Math.round((new Date(task.endDate) - new Date(blTask.endDate)) / 86400000);
+            if (dayDiff > 0) {
+              // Task ends later than baseline → red overlay on the excess
+              const ow = Math.max(2, x2 - blX2);
+              const ov = document.createElement('div');
+              ov.style.cssText = `position:absolute;left:${blX2}px;width:${ow}px;top:50%;transform:translateY(-50%);height:22px;background:rgba(192,57,43,0.82);border-radius:0 4px 4px 0;pointer-events:none;`;
+              tRow.appendChild(ov);
+              const lb = document.createElement('div');
+              lb.style.cssText = `position:absolute;left:${(blX2 + ow / 2).toFixed(0)}px;transform:translateX(-50%);top:1px;font-size:9px;font-weight:800;color:#c0392b;pointer-events:none;white-space:nowrap;line-height:1;`;
+              lb.textContent = '+' + dayDiff;
+              tRow.appendChild(lb);
+            } else if (dayDiff < 0) {
+              // Task ends earlier than baseline → green fill shows saved portion
+              const sw = Math.max(2, blX2 - x2);
+              const sv = document.createElement('div');
+              sv.style.cssText = `position:absolute;left:${x2}px;width:${sw}px;top:50%;transform:translateY(-50%);height:22px;background:rgba(39,174,96,0.62);border-radius:0 4px 4px 0;pointer-events:none;`;
+              tRow.appendChild(sv);
+              const lb = document.createElement('div');
+              lb.style.cssText = `position:absolute;left:${(x2 + sw / 2).toFixed(0)}px;transform:translateX(-50%);top:1px;font-size:9px;font-weight:800;color:#1e8449;pointer-events:none;white-space:nowrap;line-height:1;`;
+              lb.textContent = '-' + Math.abs(dayDiff);
+              tRow.appendChild(lb);
+            }
+          } else {
+            tRow.appendChild(barWrap);
           }
         }
 
