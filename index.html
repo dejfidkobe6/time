@@ -1662,13 +1662,13 @@ html, body {
 #wbs-body .wbs-row.is-phase     { height: calc(var(--row-h) + 4px); overflow: visible; }
 
 /* ═══════════════════════════════════════
-   GANTT BAR — ROUNDED CORNERS
+   GANTT BAR — NO ROUNDED CORNERS
 ═══════════════════════════════════════ */
 .gantt-bar {
-  border-radius: 3px !important;
+  border-radius: 0 !important;
 }
 .gantt-bar-progress {
-  border-radius: 3px 0 0 3px !important;
+  border-radius: 0 !important;
 }
 .gantt-bar-wrap.is-critical .gantt-bar {
   background: #c0392b !important;
@@ -2062,8 +2062,14 @@ html, body {
   .bar-resize-l, .bar-resize-r { width: 16px; opacity: 0.7; }
   .bar-connect-dot { width: 24px; height: 24px; }
 
-  /* Gantt bar height adapts to row height on mobile — avoids overflow when pinch-zoomed out */
-  .gantt-bar-wrap { height: min(28px, calc(var(--row-h) - 10px)) !important; top: 50% !important; transform: translateY(-50%) !important; }
+  /* Regular task bars fill the full row height on mobile — eliminates white gap above/below
+     and maximises tap area for narrow bars when zoomed out. Phase and summary bars keep
+     their own positioning (set inline or via their own rules). */
+  .gantt-row:not(.is-phase):not(.is-summary) > .gantt-bar-wrap {
+    height: 100% !important;
+    top: 0 !important;
+    transform: none !important;
+  }
 
   /* Task detail panel — bottom sheet on mobile */
   #task-detail-panel {
