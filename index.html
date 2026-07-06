@@ -1609,6 +1609,36 @@ html, body {
 }
 
 /* ═══════════════════════════════════════
+   VIEWER MODE
+═══════════════════════════════════════ */
+.viewer-mode .bar-resize-l,
+.viewer-mode .bar-resize-r,
+.viewer-mode .bar-connect-dot,
+.viewer-mode .row-selector,
+.viewer-mode .mob-drag-handle,
+.viewer-mode .row-fill-handle { display: none !important; }
+
+.viewer-mode .wbs-name-input,
+.viewer-mode #project-name { pointer-events: none; cursor: default; }
+
+.viewer-mode .gantt-bar-wrap { cursor: default !important; }
+
+/* Viewer badge shown in header */
+#viewer-badge {
+  display: none;
+  background: var(--border);
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 20px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.viewer-mode #viewer-badge { display: inline-flex; align-items: center; }
+
+/* ═══════════════════════════════════════
    GANTT OPTIONS PANEL
 ═══════════════════════════════════════ */
 .gantt-opts-wrap { position: relative; }
@@ -2406,6 +2436,7 @@ html, body {
         <div class="project-meta">
           <span class="meta-chip" id="project-code-chip" onclick="editProjectMeta()">PRJ-001</span>
           <span class="meta-chip status-realizace" id="status-chip" onclick="cycleStatus()">Realizace</span>
+          <span id="viewer-badge">Prohlížeč</span>
         </div>
       </div>
     </div>
@@ -2767,6 +2798,9 @@ let bottomCfChartInstance = null;
 
 let currentUser = null;
 let currentProjectId = null;
+let currentProjectRole = null; // 'owner' | 'admin' | 'member' | 'viewer'
+function isViewer() { return currentProjectRole === 'viewer'; }
+function _viewerBlock() { if (isViewer()) { showToast('Pouze prohlížení'); return true; } return false; }
 
 /* ═══════════════════════════════════════════════════
    COLUMNS CONFIG
@@ -2877,7 +2911,7 @@ function renderProjectList(projects) {
     return;
   }
   el.innerHTML = projects.map(p => `
-    <div class="proj-sel-item" data-pid="${p.id}" data-name="${_esc(p.name)}">
+    <div class="proj-sel-item" data-pid="${p.id}" data-name="${_esc(p.name)}" data-role="${_esc(p.role)}">
       <div class="proj-sel-dot" style="background:${p.bg_color || 'var(--olive)'}"></div>
       <span class="proj-sel-name">${_esc(p.name)}</span>
       <span class="proj-sel-role">${_esc(p.role)}</span>
@@ -2891,13 +2925,15 @@ function renderProjectList(projects) {
         <span style="font-weight:600;font-size:14px;">Načítám ${_esc(div.dataset.name)}…</span>
       </div>`;
       div.style.pointerEvents = 'none';
-      selectProject(+div.dataset.pid, div.dataset.name);
+      selectProject(+div.dataset.pid, div.dataset.name, div.dataset.role);
     });
   });
 }
 
-async function selectProject(projectId, projectName) {
+async function selectProject(projectId, projectName, role) {
   currentProjectId = projectId;
+  currentProjectRole = role || null;
+  document.body.classList.toggle('viewer-mode', currentProjectRole === 'viewer');
   // Guarantee overlay hides after 14s no matter what (belt-and-suspenders)
   const safeHideTimer = setTimeout(() => {
     const ov = document.getElementById('project-overlay');
@@ -3036,7 +3072,7 @@ async function confirmCreateProject() {
     });
     const data = await res.json();
     if (data.ok) {
-      await selectProject(data.project.id, data.project.name);
+      await selectProject(data.project.id, data.project.name, data.project.role || 'owner');
     } else {
       alert('Chyba: ' + (data.error || 'Nepodařilo se vytvořit projekt'));
     }
@@ -3183,7 +3219,7 @@ async function duplicateProject() {
     if (data.ok) {
       closeModal();
       // Switch to the new duplicated project
-      await selectProject(data.project.id, data.project.name);
+      await selectProject(data.project.id, data.project.name, data.project.role || 'owner');
     } else {
       alert(data.error || 'Chyba při duplikování projektu');
       if (btn) { btn.disabled = false; btn.textContent = 'Duplikovat'; }
@@ -3740,6 +3776,7 @@ function saveBaselinePrompt() {
 }
 
 function confirmSaveBaseline() {
+  if (_viewerBlock()) return;
   const inp = document.getElementById('bl-name-input');
   const name = inp ? inp.value.trim() : '';
   if (!name) return;
@@ -3772,6 +3809,7 @@ function confirmSaveBaseline() {
 }
 
 function activateBaseline(id) {
+  if (_viewerBlock()) return;
   project.activeBaselineId = id || null;
   closeModal();
   saveProject(true);
@@ -3780,6 +3818,7 @@ function activateBaseline(id) {
 }
 
 function deleteBaseline(id) {
+  if (_viewerBlock()) return;
   if (!confirm('Smazat tento směrný plán?')) return;
   project.baselines = (project.baselines || []).filter(b => b.id !== id);
   if (project.activeBaselineId === id) project.activeBaselineId = null;
@@ -3791,6 +3830,7 @@ function deleteBaseline(id) {
 }
 
 function resaveBaseline(id) {
+  if (_viewerBlock()) return;
   const bl = (project.baselines || []).find(b => b.id === id);
   if (!bl) return;
   bl.savedAt = new Date().toISOString().split('T')[0];
@@ -4161,7 +4201,8 @@ function renderMobTaskPanel() {
     phRow.addEventListener('click', () => {
       if (phClickTimer) return; // part of dblclick, ignore
       phClickTimer = setTimeout(() => {
-        phase.collapsed = !phase.collapsed; saveProject(true); render();
+        if (!isViewer()) { phase.collapsed = !phase.collapsed; saveProject(true); }
+        render();
         phClickTimer = null;
       }, 250);
     });
@@ -4202,7 +4243,8 @@ function renderMobTaskPanel() {
           row.addEventListener('click', () => {
             if (sumClickTimer) return;
             sumClickTimer = setTimeout(() => {
-              task.collapsed = !task.collapsed; saveProject(true); render();
+              if (!isViewer()) { task.collapsed = !task.collapsed; saveProject(true); }
+              render();
               sumClickTimer = null;
             }, 250);
           });
@@ -4869,6 +4911,7 @@ function enforceConstraints(task) {
 }
 
 function toggleTaskSchedule(taskId) {
+  if (_viewerBlock()) return;
   const task = findTask(taskId);
   if (!task) return;
   task.manual = !task.manual;
@@ -4978,6 +5021,7 @@ function cascadeSuccessors(changedTaskId) {
 }
 
 function makeDraggableBar(barWrap, task, minD) {
+  if (isViewer()) return;
   if (window.innerWidth <= 768) return;
   barWrap.addEventListener('mousedown', (e) => {
     if (e.button !== 0) return;
@@ -5012,6 +5056,7 @@ function makeDraggableBar(barWrap, task, minD) {
 }
 
 function makeResizableBar(barWrap, task, minD) {
+  if (isViewer()) return;
   if (window.innerWidth <= 768) return;
   const handleL = barWrap.querySelector('.bar-resize-l');
   const handleR = barWrap.querySelector('.bar-resize-r');
@@ -5134,6 +5179,7 @@ function initDepDraw() {
   document.addEventListener('mousedown', (e) => {
     const dot = e.target.closest('.bar-connect-dot');
     if (!dot) return;
+    if (isViewer()) return;
     e.preventDefault(); e.stopPropagation();
     drawingFrom = dot.dataset.taskid;
     const rect = dot.getBoundingClientRect();
@@ -5159,6 +5205,7 @@ function initDepDraw() {
   document.addEventListener('touchstart', (e) => {
     const dot = e.target.closest('.bar-connect-dot');
     if (!dot) return;
+    if (isViewer()) return;
     e.preventDefault(); e.stopPropagation();
     drawingFrom = dot.dataset.taskid;
     const rect = dot.getBoundingClientRect();
@@ -5207,6 +5254,7 @@ function initFillHandle() {
   wbsBody.addEventListener('mousedown', (e) => {
     const handle = e.target.closest('.row-fill-handle');
     if (!handle) return;
+    if (isViewer()) return;
     e.preventDefault(); e.stopPropagation();
     dragging = true;
     fromTaskId = handle.dataset.taskid;
@@ -5925,6 +5973,7 @@ function closeModal() {
 }
 
 function openAddPhaseModal() {
+  if (_viewerBlock()) return;
   openModal(`
     <div class="modal">
       <div class="modal-header">
@@ -5962,6 +6011,7 @@ function selectSwatch(el, color) {
 }
 
 function confirmAddPhase() {
+  if (_viewerBlock()) return;
   const name = document.getElementById('m-phase-name').value.trim();
   if (!name) return;
   const selSwatch = document.querySelector('#active-modal .color-swatch.selected');
@@ -5979,6 +6029,7 @@ function confirmAddPhase() {
 }
 
 function openEditPhaseModal(phaseId) {
+  if (_viewerBlock()) return;
   const phase = project.phases.find(ph => ph.id === phaseId);
   if (!phase) return;
   const pi = project.phases.indexOf(phase);
@@ -6015,6 +6066,7 @@ function openEditPhaseModal(phaseId) {
 }
 
 function confirmEditPhase(phaseId) {
+  if (_viewerBlock()) return;
   const phase = project.phases.find(ph => ph.id === phaseId);
   if (!phase) return;
   const nameEl = document.getElementById('m-edit-phase-name');
@@ -6038,6 +6090,7 @@ const COL_TO_FIELD  = { start:'startDate', end:'endDate', progress:'progress', b
 const COL_EDIT_TYPE = { start:'date', end:'date', progress:'number', budget:'number', assignee:'text' };
 
 function addTaskAfterSelected() {
+  if (_viewerBlock()) return;
   if (!selectedTaskId) { openAddTaskModal(); return; }
   const foundPhase = findPhaseForTask(selectedTaskId);
   const ref = foundPhase ? foundPhase.tasks.findIndex(t => t.id === selectedTaskId) : -1;
@@ -6047,6 +6100,7 @@ function addTaskAfterSelected() {
 }
 
 function openAddTaskModal(phaseId) {
+  if (_viewerBlock()) return;
   const phaseOptions = project.phases.map(p => `<option value="${p.id}" ${p.id === phaseId ? 'selected' : ''}>${escHtml(p.name)}</option>`).join('');
   const today = new Date().toISOString().split('T')[0];
   const in30 = new Date(Date.now() + 30*86400000).toISOString().split('T')[0];
@@ -6119,6 +6173,7 @@ function openAddTaskModal(phaseId) {
 }
 
 function confirmAddTask() {
+  if (_viewerBlock()) return;
   const name = document.getElementById('m-task-name').value.trim();
   const phaseId = document.getElementById('m-task-phase').value;
   if (!name || !phaseId) { alert('Vyplňte název a fázi.'); return; }
@@ -6151,6 +6206,7 @@ function confirmAddTask() {
 }
 
 function openEditTaskModal(taskId) {
+  if (_viewerBlock()) return;
   const task = findTask(taskId);
   if (!task) return;
   
@@ -6494,6 +6550,7 @@ function getSettings() {
    DEPENDENCY EDITOR (double-click on arrow)
 ═══════════════════════════════════════════════════ */
 function openDepEditor(toTask, predIndex) {
+  if (_viewerBlock()) return;
   const pred = toTask.predecessors[predIndex];
 
   let predLabel = '';
@@ -6569,6 +6626,7 @@ function deleteDepAndClose(toTaskId, predIndex) {
 }
 
 function openProjectSettings() {
+  if (_viewerBlock()) return;
   const s = getSettings();
   const dayNames = ['Ne','Po','Út','St','Čt','Pá','So'];
   const dayChecks = [1,2,3,4,5,6,0].map(d => `
@@ -6795,6 +6853,7 @@ function renderWeightChart(pfx) {
 }
 
 function toggleWorkDay(day, on) {
+  if (_viewerBlock()) return;
   const s = getSettings();
   if (on) { if (!s.workDays.includes(day)) s.workDays.push(day); }
   else     { s.workDays = s.workDays.filter(d => d !== day); }
@@ -6802,6 +6861,7 @@ function toggleWorkDay(day, on) {
 }
 
 function addHoliday() {
+  if (_viewerBlock()) return;
   const inp = document.getElementById('holiday-add-input');
   const val = inp?.value;
   if (!val) return;
@@ -6822,6 +6882,7 @@ function addHoliday() {
 }
 
 function removeHoliday(idx) {
+  if (_viewerBlock()) return;
   const s = getSettings();
   s.holidays.splice(idx, 1);
   saveProject(true); renderGantt();
@@ -6882,6 +6943,7 @@ function selectTemplate(key) {
 }
 
 function confirmLoadTemplate() {
+  if (_viewerBlock()) return;
   const key = selectedTemplateKey;
   if (!key) { alert('Vyberte šablonu.'); return; }
   const pname = document.getElementById('tpl-project-name').value.trim() || TEMPLATES[key].name;
@@ -7230,6 +7292,7 @@ function handleRowSelect(taskId, e) {
 }
 
 function deleteSelectedTasks() {
+  if (_viewerBlock()) return;
   const ids = selectedTaskIds.size > 0 ? [...selectedTaskIds] : (selectedTaskId ? [selectedTaskId] : []);
   if (!ids.length) return;
   const msg = ids.length === 1 ? 'Smazat tento úkol?' : `Smazat ${ids.length} úkolů?`;
@@ -7275,6 +7338,7 @@ function clearColumnSelection() {
 }
 
 function deleteColumnData() {
+  if (_viewerBlock()) return;
   if (!selectedColId) return;
   const clearable = { progress: 0, budget: 0, assignee: '', predecessors: [] };
   if (!(selectedColId in clearable)) { showToast('Tento sloupec nelze vymazat'); return; }
@@ -7321,6 +7385,7 @@ function togglePhase(phaseId) {
 }
 
 function deletePhase(phaseId) {
+  if (_viewerBlock()) return;
   if (!confirm('Smazat celou fázi včetně všech úkolů?')) return;
   project.phases = project.phases.filter(p => p.id !== phaseId);
   saveProject(true);
@@ -7328,6 +7393,7 @@ function deletePhase(phaseId) {
 }
 
 function deleteTask(taskId) {
+  if (_viewerBlock()) return;
   if (!confirm('Smazat tento úkol?')) return;
   const ref = findParent(taskId);
   if (ref) {
@@ -7342,6 +7408,7 @@ function deleteTask(taskId) {
 }
 
 function deleteTaskFromPanel(taskId) {
+  if (_viewerBlock()) return;
   const task = findTask(taskId);
   if (!task) return;
   const succsCount = getAllTasksFlat().filter(t => (t.predecessors || []).some(p => p.taskId === taskId)).length;
@@ -7363,16 +7430,19 @@ function deleteTaskFromPanel(taskId) {
 }
 
 function updatePhaseName(phaseId, name) {
+  if (_viewerBlock()) return;
   const ph = project.phases.find(p => p.id === phaseId);
   if (ph) { ph.name = name; saveProject(true); }
 }
 
 function updateTaskField(taskId, field, value) {
+  if (_viewerBlock()) return;
   const task = findTask(taskId);
   if (task) { task[field] = value; saveProject(true); renderHeader(); }
 }
 
 function cycleStatus() {
+  if (_viewerBlock()) return;
   const statuses = ['priprava', 'realizace', 'dokonceno'];
   const idx = statuses.indexOf(project.status);
   project.status = statuses[(idx + 1) % statuses.length];
@@ -7381,11 +7451,13 @@ function cycleStatus() {
 }
 
 function editProjectMeta() {
+  if (_viewerBlock()) return;
   const code = prompt('Kód projektu:', project.code || 'PRJ-001');
   if (code !== null) { project.code = code; saveProject(true); renderHeader(); }
 }
 
 document.getElementById('project-name').addEventListener('change', (e) => {
+  if (isViewer()) { e.target.value = project.name; return; }
   project.name = e.target.value.trim() || 'Nový projekt';
   saveProject(true);
 });
@@ -7394,6 +7466,7 @@ document.getElementById('project-name').addEventListener('change', (e) => {
    SAVE / LOAD
 ═══════════════════════════════════════════════════ */
 function saveProject(silent) {
+  if (isViewer()) { if (!silent) showToast('Pouze prohlížení'); return; }
   // Záloha do localStorage
   if (currentProjectId) {
     localStorage.setItem('besixtime_project_' + currentProjectId, JSON.stringify(project));
@@ -7426,6 +7499,7 @@ function importProjectJSON() {
 }
 
 function handleJSONImport(e) {
+  if (_viewerBlock()) return;
   const file = e.target.files[0];
   if (!file) return;
   const reader = new FileReader();
@@ -7631,16 +7705,15 @@ function groupWeeksByMonth(start, end) {
 ═══════════════════════════════════════════════════ */
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') { closeModal(); clearColumnSelection(); }
-  if (e.key === 'n' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); openAddTaskModal(); }
-  if (e.key === 'p' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); openAddPhaseModal(); }
+  if (e.key === 'n' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); if (!isViewer()) openAddTaskModal(); }
+  if (e.key === 'p' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); if (!isViewer()) openAddPhaseModal(); }
   if (e.key === 's' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveProject(); }
-  if ((e.key === '+' || e.key === '=') && (e.ctrlKey || e.metaKey)) { e.preventDefault(); addTaskAfterSelected(); }
+  if ((e.key === '+' || e.key === '=') && (e.ctrlKey || e.metaKey)) { e.preventDefault(); if (!isViewer()) addTaskAfterSelected(); }
   if (e.key === 'Delete' && !e.target.matches('input,textarea,[contenteditable]')) {
     e.preventDefault();
-    if (selectedColId && selectedTaskIds.size === 0 && !selectedTaskId) deleteColumnData();
-    else deleteSelectedTasks();
+    if (!isViewer()) { if (selectedColId && selectedTaskIds.size === 0 && !selectedTaskId) deleteColumnData(); else deleteSelectedTasks(); }
   }
-  if (e.key === '-' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); deleteSelectedTasks(); }
+  if (e.key === '-' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); if (!isViewer()) deleteSelectedTasks(); }
 });
 
 /* ═══════════════════════════════════════════════════
@@ -7752,6 +7825,7 @@ function setRowHeight(val) {
    INLINE EDITING
 ═══════════════════════════════════════════════════ */
 function inlineEdit(span, taskId, field, type) {
+  if (_viewerBlock()) return;
   const task = findTask(taskId);
   if (!task) return;
   const origVal = task[field] ?? '';
@@ -7806,6 +7880,7 @@ function inlineEdit(span, taskId, field, type) {
 }
 
 function inlineEditDuration(span, taskId) {
+  if (_viewerBlock()) return;
   const task = findTask(taskId);
   if (!task || !task.startDate) return;
   const dur = task.endDate ? daysBetween(task.startDate, task.endDate) : 0;
@@ -8018,6 +8093,7 @@ function showTaskContextMenu(x, y, task) {
    SUMMARY TASK OPERATIONS
 ═══════════════════════════════════════════════════ */
 function createSummaryFromSelection() {
+  if (_viewerBlock()) return;
   const ids = [...selectedTaskIds];
   if (ids.length < 1) { showToast('Vyberte alespoň 1 úkol přes Shift+klik nebo Ctrl+klik'); return; }
 
@@ -8060,6 +8136,7 @@ function createSummaryFromSelection() {
 }
 
 function addSubTask(parentId) {
+  if (_viewerBlock()) return;
   const parent = findTask(parentId);
   if (!parent) return;
   // Convert to summary if not already
@@ -8081,11 +8158,13 @@ function addSubTask(parentId) {
 }
 
 function toggleSummaryCollapse(taskId) {
+  if (_viewerBlock()) return;
   const task = findTask(taskId);
   if (task) { task.collapsed = !task.collapsed; saveProject(true); render(); }
 }
 
 function ungroupSummary(taskId) {
+  if (_viewerBlock()) return;
   const ref = findParent(taskId);
   if (!ref) return;
   const summary = ref.container[ref.index];
@@ -8098,6 +8177,7 @@ function ungroupSummary(taskId) {
 }
 
 function moveTaskUpDown(taskId, dir) {
+  if (_viewerBlock()) return;
   const ref = findParent(taskId);
   if (!ref) return;
   const newIdx = ref.index + dir;
@@ -8114,6 +8194,7 @@ function moveTaskUpDown(taskId, dir) {
    ROW DRAG-TO-REORDER
 ═══════════════════════════════════════════════════ */
 function initRowDrag() {
+  if (isViewer()) return;
   const body = document.getElementById('wbs-body');
   let state = null;
 
@@ -8208,6 +8289,7 @@ function initRowDrag() {
    MOBILE ROW DRAG-TO-REORDER (long-press on handle)
 ═══════════════════════════════════════════════════ */
 function initMobRowDrag() {
+  if (isViewer()) return;
   const body = document.getElementById('mob-task-panel-body');
   if (!body) return;
   let state = null;
@@ -8519,6 +8601,7 @@ function closeTaskDetailPanelInstant() {
 }
 
 function tdpInlineEdit(field, taskId) {
+  if (_viewerBlock()) return;
   const task = findTask(taskId);
   if (!task) return;
   const valEl = document.getElementById('tdp-mob-val-' + field);
@@ -8568,6 +8651,7 @@ function tdpInlineEdit(field, taskId) {
 }
 
 function tdpToggleManual(taskId) {
+  if (_viewerBlock()) return;
   const task = findTask(taskId);
   if (!task) return;
   pushUndo();
@@ -8577,6 +8661,7 @@ function tdpToggleManual(taskId) {
 }
 
 function saveTaskDetailPanel(taskId) {
+  if (_viewerBlock()) return;
   const task = findTask(taskId);
   if (!task) return;
   const nameEl = document.getElementById('tdp-name');
@@ -8647,6 +8732,7 @@ function openMobSettings() {
 }
 
 function mobToggleWorkDay(day, el) {
+  if (_viewerBlock()) return;
   const s = getSettings();
   if (s.workDays.includes(day)) {
     s.workDays = s.workDays.filter(d => d !== day);
@@ -8675,6 +8761,7 @@ function mobRefreshHolidayList() {
 }
 
 function mobAddHoliday() {
+  if (_viewerBlock()) return;
   const inp = document.getElementById('mob-holiday-inp');
   const val = inp?.value;
   if (!val) return;
@@ -8690,6 +8777,7 @@ function mobAddHoliday() {
 }
 
 function mobRemoveHoliday(idx) {
+  if (_viewerBlock()) return;
   const s = getSettings();
   s.holidays.splice(idx, 1);
   saveProject(true); renderGantt();
@@ -8725,6 +8813,7 @@ function mobRefreshBaselineList() {
 }
 
 function mobSaveBaseline() {
+  if (_viewerBlock()) return;
   const inp = document.getElementById('mob-baseline-inp');
   const name = inp?.value.trim();
   if (!name) { inp?.focus(); return; }
@@ -8743,18 +8832,21 @@ function mobSaveBaseline() {
 }
 
 function mobActivateBaseline(id) {
+  if (_viewerBlock()) return;
   project.activeBaselineId = id;
   saveProject(true); renderGantt(); updateBaselineChip();
   mobRefreshBaselineList();
 }
 
 function mobDeactivateBaseline() {
+  if (_viewerBlock()) return;
   project.activeBaselineId = null;
   saveProject(true); renderGantt(); updateBaselineChip();
   mobRefreshBaselineList();
 }
 
 function mobDeleteBaseline(id) {
+  if (_viewerBlock()) return;
   project.baselines = (project.baselines || []).filter(b => b.id !== id);
   if (project.activeBaselineId === id) { project.activeBaselineId = null; updateBaselineChip(); }
   saveProject(true); renderGantt();
@@ -8762,6 +8854,7 @@ function mobDeleteBaseline(id) {
 }
 
 function mobResaveBaseline(id) {
+  if (_viewerBlock()) return;
   const bl = (project.baselines || []).find(b => b.id === id);
   if (!bl) return;
   const today = new Date().toISOString().split('T')[0];
@@ -8779,6 +8872,7 @@ function closeMobSettings() {
 }
 
 function onMobSettCp(val) {
+  if (_viewerBlock()) return;
   const s = getSettings();
   s.showCriticalPath = val;
   _criticalPathCache = null;
@@ -8787,6 +8881,7 @@ function onMobSettCp(val) {
 }
 
 function onMobSettFloat(val) {
+  if (_viewerBlock()) return;
   const s = getSettings();
   s.showFloat = val;
   saveProject(true);
@@ -8824,6 +8919,7 @@ function toggleMobileWBS() {
    TOUCH SUPPORT FOR GANTT BARS
 ═══════════════════════════════════════════════════ */
 function addTouchDrag(barWrap, task, minD) {
+  if (isViewer()) return;
   if (window.innerWidth <= 768) return;
   let startX = 0, origLeft = 0, moved = false, active = false;
 
@@ -8874,6 +8970,7 @@ function addTouchDrag(barWrap, task, minD) {
 }
 
 function addTouchResize(barWrap, task, minD) {
+  if (isViewer()) return;
   if (window.innerWidth <= 768) return;
   const handleL = barWrap.querySelector('.bar-resize-l');
   const handleR = barWrap.querySelector('.bar-resize-r');
@@ -9088,6 +9185,7 @@ const CZ_MONTHS_FULL = ['Leden','Únor','Březen','Duben','Květen','Červen','�
 let _drp = null;
 
 function openDRP(taskId, lockStart, startAtEnd) {
+  if (_viewerBlock()) return;
   const task = findTask(taskId);
   if (!task) return;
   const ref = task.startDate ? new Date(task.startDate) : new Date();
