@@ -1707,11 +1707,22 @@ html, body {
 }
 .gantt-bl-label.is-delay { color: #c0392b; }
 .gantt-bl-label.is-save  { color: #1e8449; }
+/* Float bar (time reserve) */
+.gantt-float-bar {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 22px;
+  border-radius: 0 4px 4px 0;
+  pointer-events: none;
+  box-sizing: border-box;
+}
 /* On mobile, match the bar's 50%-of-row-height rule */
 @media (max-width: 768px) {
   .gantt-row:not(.is-phase):not(.is-summary) > .gantt-bl-outline,
   .gantt-row:not(.is-phase):not(.is-summary) > .gantt-bl-delay,
-  .gantt-row:not(.is-phase):not(.is-summary) > .gantt-bl-save {
+  .gantt-row:not(.is-phase):not(.is-summary) > .gantt-bl-save,
+  .gantt-row:not(.is-phase):not(.is-summary) > .gantt-float-bar {
     height: 50% !important;
     top: 50% !important;
     transform: translateY(-50%) !important;
@@ -4748,7 +4759,8 @@ function renderGanttTaskRowsRecursive(tasks, phase, pi, minD, totalW, container,
             const fw  = fx2 - fx1;
             if (fw > 2) {
               const floatBar = document.createElement('div');
-              floatBar.style.cssText = `position:absolute;left:${fx1}px;width:${fw}px;top:50%;transform:translateY(-50%);height:22px;background:${barColor};opacity:0.35;border-radius:0 6px 6px 0;pointer-events:none;border:1px dashed ${barColor};box-sizing:border-box;`;
+              floatBar.className = 'gantt-float-bar';
+              floatBar.style.cssText = `left:${fx1}px;width:${fw}px;background:${barColor};opacity:0.35;border:1.5px dashed ${barColor};`;
               tRow.appendChild(floatBar);
             }
           }
