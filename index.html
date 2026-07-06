@@ -882,9 +882,9 @@ html, body {
 
 .gantt-bar-progress {
   position: absolute;
-  left: 0; top: 0; bottom: 0;
-  background: rgba(0,0,0,0.2);
-  border-radius: 4px 0 0 4px;
+  left: 0; bottom: 0;
+  height: 4px;
+  background: rgba(0,0,0,0.35);
   pointer-events: none;
 }
 
@@ -1667,9 +1667,6 @@ html, body {
 .gantt-bar {
   border-radius: 0 !important;
 }
-.gantt-bar-progress {
-  border-radius: 0 !important;
-}
 .gantt-bar-wrap.is-critical .gantt-bar {
   background: #c0392b !important;
 }
@@ -2059,7 +2056,7 @@ html, body {
 
   /* Touch-friendly bars — bigger handles */
   .gantt-bar-wrap { touch-action: pan-x pan-y; cursor: pointer; }
-  .bar-resize-l, .bar-resize-r { width: 16px; opacity: 0.7; }
+  .bar-resize-l, .bar-resize-r { display: none; }
   .bar-connect-dot { width: 24px; height: 24px; }
 
   /* Regular task bars fill the full row height on mobile — eliminates white gap above/below
