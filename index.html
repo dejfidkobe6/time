@@ -8386,6 +8386,12 @@ function openMobSettings() {
   }
 
   mobRefreshHolidayList();
+  mobRefreshBaselineList();
+  const blInp = document.getElementById('mob-baseline-inp');
+  if (blInp && !blInp.value) {
+    const num = (project.baselines || []).length + 1;
+    blInp.placeholder = 'Název (např. Smluvní ' + String(num).padStart(2,'0') + ')';
+  }
   document.getElementById('mob-sett-overlay').classList.remove('hidden');
 }
 
@@ -8437,6 +8443,70 @@ function mobRemoveHoliday(idx) {
   s.holidays.splice(idx, 1);
   saveProject(true); renderGantt();
   mobRefreshHolidayList();
+}
+
+function mobRefreshBaselineList() {
+  const el = document.getElementById('mob-baseline-list');
+  if (!el) return;
+  const baselines = project.baselines || [];
+  const activeId  = project.activeBaselineId || null;
+  if (!baselines.length) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--text-muted);">Žádný směrný plán zatím nebyl uložen.</div>';
+    return;
+  }
+  el.innerHTML = baselines.map(bl => {
+    const isActive = bl.id === activeId;
+    const taskCount = (bl.phases || []).reduce((s, ph) => s + (ph.tasks || []).length, 0);
+    return `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);">
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:13px;font-weight:700;">${escHtml(bl.name)}</div>
+        <div style="font-size:11px;color:var(--text-muted);">${bl.savedAt||''} · ${taskCount} úkolů</div>
+      </div>
+      ${isActive
+        ? `<span class="baseline-chip" style="font-size:10px;">Aktivní</span>
+           <button onclick="mobDeactivateBaseline()" style="padding:4px 8px;border-radius:8px;background:var(--bg);border:1.5px solid var(--border);font-size:11px;font-weight:600;cursor:pointer;color:var(--text-muted);">Skrýt</button>`
+        : `<button onclick="mobActivateBaseline('${bl.id}')" style="padding:4px 10px;border-radius:8px;background:var(--bg);border:1.5px solid var(--border);font-size:11px;font-weight:600;cursor:pointer;">Zobrazit</button>`
+      }
+      <button onclick="mobDeleteBaseline('${bl.id}')" style="background:none;border:none;color:var(--text-muted);font-size:18px;cursor:pointer;padding:2px 4px;line-height:1;">✕</button>
+    </div>`;
+  }).join('');
+}
+
+function mobSaveBaseline() {
+  const inp = document.getElementById('mob-baseline-inp');
+  const name = inp?.value.trim();
+  if (!name) { inp?.focus(); return; }
+  if (!project.baselines) project.baselines = [];
+  const id = 'bl_' + (project.nextId++);
+  const today = new Date().toISOString().split('T')[0];
+  const snapshot = project.phases.map(ph => ({
+    id: ph.id,
+    tasks: (ph.tasks || []).map(t => ({ id: t.id, startDate: t.startDate, endDate: t.endDate, duration: t.duration }))
+  }));
+  project.baselines.push({ id, name, savedAt: today, phases: snapshot });
+  project.activeBaselineId = id;
+  if (inp) inp.value = '';
+  saveProject(); renderGantt(); updateBaselineChip();
+  mobRefreshBaselineList();
+}
+
+function mobActivateBaseline(id) {
+  project.activeBaselineId = id;
+  saveProject(true); renderGantt(); updateBaselineChip();
+  mobRefreshBaselineList();
+}
+
+function mobDeactivateBaseline() {
+  project.activeBaselineId = null;
+  saveProject(true); renderGantt(); updateBaselineChip();
+  mobRefreshBaselineList();
+}
+
+function mobDeleteBaseline(id) {
+  project.baselines = (project.baselines || []).filter(b => b.id !== id);
+  if (project.activeBaselineId === id) { project.activeBaselineId = null; updateBaselineChip(); }
+  saveProject(true); renderGantt();
+  mobRefreshBaselineList();
 }
 
 function closeMobSettings() {
@@ -8947,6 +9017,15 @@ init();
       <div style="display:flex;gap:8px;">
         <input type="date" id="mob-holiday-inp" style="flex:1;padding:8px 10px;border:1.5px solid var(--border);border-radius:10px;background:var(--bg);color:var(--text);font-size:14px;">
         <button onclick="mobAddHoliday()" style="padding:8px 14px;border-radius:10px;background:var(--olive);color:#fff;border:none;font-size:13px;font-weight:700;cursor:pointer;">Přidat</button>
+      </div>
+    </div>
+    <!-- Směrný plán -->
+    <div style="padding:14px 20px;border-top:1px solid var(--border);">
+      <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--text-muted);margin-bottom:8px;">Směrný plán</div>
+      <div id="mob-baseline-list" style="margin-bottom:10px;"></div>
+      <div style="display:flex;gap:8px;">
+        <input type="text" id="mob-baseline-inp" placeholder="Název (např. Smluvní 01)" style="flex:1;padding:8px 10px;border:1.5px solid var(--border);border-radius:10px;background:var(--bg);color:var(--text);font-size:14px;">
+        <button onclick="mobSaveBaseline()" style="padding:8px 14px;border-radius:10px;background:var(--olive);color:#fff;border:none;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;">Uložit stav</button>
       </div>
     </div>
     <div style="height:env(safe-area-inset-bottom,0);min-height:8px;"></div>
