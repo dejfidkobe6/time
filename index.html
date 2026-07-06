@@ -5975,17 +5975,17 @@ function openAddTaskModal(phaseId) {
         <div class="form-row">
           <div class="form-field">
             <label class="form-label">Zahájení</label>
-            <input class="form-input" type="date" id="m-task-start" value="${today}">
+            <input class="form-input" type="date" id="m-task-start" value="${today}" oninput="renderWeightChart('m')">
           </div>
           <div class="form-field">
             <label class="form-label">Dokončení</label>
-            <input class="form-input" type="date" id="m-task-end" value="${in30}">
+            <input class="form-input" type="date" id="m-task-end" value="${in30}" oninput="renderWeightChart('m')">
           </div>
         </div>
-        <div class="form-row triple">
+        <div class="form-row">
           <div class="form-field">
             <label class="form-label">Rozpočet (Kč)</label>
-            <input class="form-input" type="number" id="m-task-budget" placeholder="0" min="0">
+            <input class="form-input" type="number" id="m-task-budget" placeholder="0" min="0" oninput="renderWeightChart('m')">
           </div>
           <div class="form-field">
             <label class="form-label">Postup %</label>
@@ -5994,17 +5994,18 @@ function openAddTaskModal(phaseId) {
               <span id="m-task-progress-val" style="font-size:11px;font-weight:700;color:var(--olive);min-width:32px;">0%</span>
             </div>
           </div>
-          <div class="form-field">
-            <label class="form-label">Těžiště nákladů %</label>
-            <div class="form-range-wrap">
-              <input type="range" class="form-range" id="m-task-weight" min="0" max="100" value="0" oninput="document.getElementById('m-task-weight-val').textContent=this.value+'%'">
-              <span id="m-task-weight-val" style="font-size:11px;font-weight:700;color:var(--warning);min-width:32px;">0%</span>
-            </div>
+        </div>
+        <div class="form-row single"><div class="form-field">
+          <label class="form-label">Těžiště nákladů</label>
+          <div id="m-weight-chart" style="background:var(--bg);border-radius:8px;padding:6px 4px 2px;margin-bottom:6px;"></div>
+          <input type="range" class="form-range" id="m-task-weight" min="0" max="100" value="0" style="width:100%;" oninput="renderWeightChart('m')">
+          <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text-muted);margin-top:3px;padding:0 2px;">
+            <span>0 Rovnoměrně</span><span style="text-align:center;">50 Uprostřed</span><span>100 Na konci</span>
           </div>
-        </div>
-        <div style="font-size:10px;color:var(--text-muted);padding:6px 8px;background:var(--bg);border-radius:4px;border-left:3px solid var(--olive);">
-          <strong>Těžiště nákladů:</strong> % nákladů, které dopadají až při dokončení úkolu. Zbytek se rovnoměrně rozkládá přes celou dobu trvání.
-        </div>
+          <div style="text-align:right;margin-top:2px;">
+            <span id="m-task-weight-val" style="font-size:11px;font-weight:700;color:var(--warning);">0%</span>
+          </div>
+        </div></div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" onclick="closeModal()">Zrušit</button>
@@ -6012,6 +6013,7 @@ function openAddTaskModal(phaseId) {
       </div>
     </div>
   `);
+  setTimeout(() => renderWeightChart('m'), 30);
 }
 
 function confirmAddTask() {
@@ -6081,17 +6083,17 @@ function openEditTaskModal(taskId) {
         <div class="form-row">
           <div class="form-field">
             <label class="form-label">Zahájení</label>
-            <input class="form-input" type="date" id="e-task-start" value="${task.startDate||''}">
+            <input class="form-input" type="date" id="e-task-start" value="${task.startDate||''}" oninput="renderWeightChart('e')">
           </div>
           <div class="form-field">
             <label class="form-label">Dokončení</label>
-            <input class="form-input" type="date" id="e-task-end" value="${task.endDate||''}">
+            <input class="form-input" type="date" id="e-task-end" value="${task.endDate||''}" oninput="renderWeightChart('e')">
           </div>
         </div>
-        <div class="form-row triple">
+        <div class="form-row">
           <div class="form-field">
             <label class="form-label">Rozpočet (Kč)</label>
-            <input class="form-input" type="number" id="e-task-budget" value="${task.budget||0}">
+            <input class="form-input" type="number" id="e-task-budget" value="${task.budget||0}" oninput="renderWeightChart('e')">
           </div>
           <div class="form-field">
             <label class="form-label">Postup %</label>
@@ -6100,14 +6102,18 @@ function openEditTaskModal(taskId) {
               <span id="e-task-progress-val" style="font-size:11px;font-weight:700;color:var(--olive);min-width:32px;">${task.progress||0}%</span>
             </div>
           </div>
-          <div class="form-field">
-            <label class="form-label">Těžiště nákladů %</label>
-            <div class="form-range-wrap">
-              <input type="range" class="form-range" id="e-task-weight" min="0" max="100" value="${task.completionWeight||0}" oninput="document.getElementById('e-task-weight-val').textContent=this.value+'%'">
-              <span id="e-task-weight-val" style="font-size:11px;font-weight:700;color:var(--warning);min-width:32px;">${task.completionWeight||0}%</span>
-            </div>
-          </div>
         </div>
+        <div class="form-row single"><div class="form-field">
+          <label class="form-label">Těžiště nákladů</label>
+          <div id="e-weight-chart" style="background:var(--bg);border-radius:8px;padding:6px 4px 2px;margin-bottom:6px;"></div>
+          <input type="range" class="form-range" id="e-task-weight" min="0" max="100" value="${task.completionWeight||0}" style="width:100%;" oninput="renderWeightChart('e')">
+          <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text-muted);margin-top:3px;padding:0 2px;">
+            <span>0 Rovnoměrně</span><span style="text-align:center;">50 Uprostřed</span><span>100 Na konci</span>
+          </div>
+          <div style="text-align:right;margin-top:2px;">
+            <span id="e-task-weight-val" style="font-size:11px;font-weight:700;color:var(--warning);">${task.completionWeight||0}%</span>
+          </div>
+        </div></div>
         <div class="form-row single"><div class="form-field">
           <label class="form-label">Poznámka</label>
           <input class="form-input" id="e-task-notes" placeholder="Volitelná poznámka..." value="${escHtml(task.notes||'')}">
@@ -6123,6 +6129,7 @@ function openEditTaskModal(taskId) {
       </div>
     </div>
   `);
+  setTimeout(() => renderWeightChart('e'), 30);
 }
 
 function confirmEditTask(taskId) {
@@ -6555,6 +6562,112 @@ function openProjectSettings() {
       </div>
     </div>
   `);
+}
+
+/* ═══════════════════════════════════════════════════
+   TĚŽIŠTĚ NÁKLADŮ — live cost distribution chart
+═══════════════════════════════════════════════════ */
+function _wCdf(t, s) {
+  const L = t;
+  const M = t * t * (3 - 2 * t);
+  const k = 3;
+  const B = (Math.exp(k * t) - 1) / (Math.exp(k) - 1);
+  if (s <= 50) { const w = s / 50;        return (1 - w) * L + w * M; }
+  else         { const w = (s - 50) / 50; return (1 - w) * M + w * B; }
+}
+
+function renderWeightChart(pfx) {
+  const sliderEl = document.getElementById(pfx + '-task-weight');
+  if (!sliderEl) return;
+  const s = parseInt(sliderEl.value || 0);
+  const valEl = document.getElementById(pfx + '-task-weight-val');
+  if (valEl) valEl.textContent = s + '%';
+
+  const startStr = document.getElementById(pfx + '-task-start')?.value || '';
+  const endStr   = document.getElementById(pfx + '-task-end')?.value   || '';
+  const budget   = parseFloat(document.getElementById(pfx + '-task-budget')?.value) || 0;
+  const container = document.getElementById(pfx + '-weight-chart');
+  if (!container) return;
+
+  // Build period boundaries in normalised 0..1 time
+  let boundaries = [0, 1];
+  let startD = null, endD = null;
+  if (startStr && endStr) {
+    startD = new Date(startStr + 'T00:00:00');
+    endD   = new Date(endStr   + 'T00:00:00');
+    if (endD > startD) {
+      const totalMs = endD - startD;
+      const bounds  = [0];
+      const cur = new Date(startD);
+      cur.setDate(1);
+      cur.setMonth(cur.getMonth() + 1);       // first day of next month
+      while (cur < endD) {
+        const t = (cur - startD) / totalMs;
+        if (t > 0.001 && t < 0.999) bounds.push(t);
+        cur.setMonth(cur.getMonth() + 1);
+      }
+      bounds.push(1);
+      boundaries = bounds;
+    }
+  }
+
+  const numP  = boundaries.length - 1;
+  const fracs = Array.from({ length: numP }, (_, i) =>
+    _wCdf(boundaries[i + 1], s) - _wCdf(boundaries[i], s)
+  );
+  const maxF = Math.max(...fracs, 0.001);
+
+  // SVG layout constants
+  const VW = 320, VH = 120;
+  const mL = 6, mR = 6, mT = 8;
+  const cW = VW - mL - mR;
+  const cH = 58, bH = 24;
+  const axY = mT + cH;
+  const bY  = axY + 6;
+
+  // Cumulative curve
+  const pts = Array.from({ length: 121 }, (_, i) => {
+    const t = i / 120;
+    return [mL + t * cW, mT + cH * (1 - _wCdf(t, s))];
+  });
+  const curvePath = pts.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(2)},${p[1].toFixed(2)}`).join('');
+  const fillPath  = curvePath + ` L${(mL + cW).toFixed(2)},${axY} L${mL},${axY} Z`;
+
+  // Helper formatters
+  const fmtAmt  = n => n >= 1e6 ? (n / 1e6).toFixed(1) + ' M' : n >= 1e3 ? Math.round(n / 1e3) + 'k' : String(Math.round(n));
+  const fmtDate = d => d ? `${d.getDate()}.${d.getMonth() + 1}.` : '';
+
+  // Bars
+  const barsSvg = fracs.map((f, i) => {
+    const x1 = mL + boundaries[i]     * cW;
+    const x2 = mL + boundaries[i + 1] * cW;
+    const bw = x2 - x1 - 1.5;
+    const bh = (f / maxF) * bH;
+    const by = bY + bH - bh;
+    const lbl = (budget > 0 && bw > 24)
+      ? `<text x="${(x1 + bw / 2 + 0.75).toFixed(1)}" y="${(by - 2).toFixed(1)}" text-anchor="middle" font-size="7" font-family="Montserrat,sans-serif" font-weight="600" fill="#C9A84C">${fmtAmt(f * budget)}</text>`
+      : '';
+    return `<rect x="${x1.toFixed(1)}" y="${by.toFixed(1)}" width="${Math.max(bw, 0.5).toFixed(1)}" height="${bh.toFixed(1)}" fill="#C9A84C" rx="1"/>${lbl}`;
+  }).join('');
+
+  // Separator lines between bars
+  const sepsSvg = boundaries.slice(1, -1).map(t => {
+    const x = (mL + t * cW).toFixed(1);
+    return `<line x1="${x}" y1="${bY}" x2="${x}" y2="${bY + bH}" stroke="var(--bg-card)" stroke-width="1.5"/>`;
+  }).join('');
+
+  container.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${VW} ${VH}" style="width:100%;height:auto;display:block;">
+  <defs><linearGradient id="wcg-${pfx}" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#4A5340" stop-opacity=".22"/>
+    <stop offset="100%" stop-color="#4A5340" stop-opacity=".03"/>
+  </linearGradient></defs>
+  <path d="${fillPath}" fill="url(#wcg-${pfx})"/>
+  <path d="${curvePath}" fill="none" stroke="#4A5340" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>
+  <line x1="${mL}" y1="${axY}" x2="${mL + cW}" y2="${axY}" stroke="var(--border)" stroke-width=".5"/>
+  ${barsSvg}${sepsSvg}
+  <text x="${mL}" y="${VH - 3}" font-size="8" fill="var(--text-muted)" font-family="Montserrat,sans-serif">Začátek${startD ? ' ' + fmtDate(startD) : ''}</text>
+  <text x="${mL + cW}" y="${VH - 3}" font-size="8" fill="var(--text-muted)" font-family="Montserrat,sans-serif" text-anchor="end">Dokončení${endD ? ' ' + fmtDate(endD) : ''}</text>
+  </svg>`;
 }
 
 function toggleWorkDay(day, on) {
