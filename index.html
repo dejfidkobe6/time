@@ -6013,7 +6013,7 @@ function openAddTaskModal(phaseId) {
       </div>
     </div>
   `);
-  setTimeout(() => renderWeightChart('m'), 30);
+  renderWeightChart('m');
 }
 
 function confirmAddTask() {
@@ -6129,7 +6129,7 @@ function openEditTaskModal(taskId) {
       </div>
     </div>
   `);
-  setTimeout(() => renderWeightChart('e'), 30);
+  renderWeightChart('e');
 }
 
 function confirmEditTask(taskId) {
@@ -6597,14 +6597,36 @@ function renderWeightChart(pfx) {
     endD   = new Date(endStr   + 'T00:00:00');
     if (endD > startD) {
       const totalMs = endD - startD;
+      const totalDays = totalMs / 86400000;
       const bounds  = [0];
-      const cur = new Date(startD);
-      cur.setDate(1);
-      cur.setMonth(cur.getMonth() + 1);       // first day of next month
-      while (cur < endD) {
-        const t = (cur - startD) / totalMs;
-        if (t > 0.001 && t < 0.999) bounds.push(t);
+      if (totalDays < 14) {
+        // daily boundaries
+        const cur = new Date(startD);
+        cur.setDate(cur.getDate() + 1);
+        while (cur < endD) {
+          const t = (cur - startD) / totalMs;
+          if (t > 0.001 && t < 0.999) bounds.push(t);
+          cur.setDate(cur.getDate() + 1);
+        }
+      } else if (totalDays < 60) {
+        // weekly boundaries
+        const cur = new Date(startD);
+        cur.setDate(cur.getDate() + 7);
+        while (cur < endD) {
+          const t = (cur - startD) / totalMs;
+          if (t > 0.001 && t < 0.999) bounds.push(t);
+          cur.setDate(cur.getDate() + 7);
+        }
+      } else {
+        // monthly boundaries
+        const cur = new Date(startD);
+        cur.setDate(1);
         cur.setMonth(cur.getMonth() + 1);
+        while (cur < endD) {
+          const t = (cur - startD) / totalMs;
+          if (t > 0.001 && t < 0.999) bounds.push(t);
+          cur.setMonth(cur.getMonth() + 1);
+        }
       }
       bounds.push(1);
       boundaries = bounds;
@@ -6653,7 +6675,7 @@ function renderWeightChart(pfx) {
   // Separator lines between bars
   const sepsSvg = boundaries.slice(1, -1).map(t => {
     const x = (mL + t * cW).toFixed(1);
-    return `<line x1="${x}" y1="${bY}" x2="${x}" y2="${bY + bH}" stroke="var(--bg-card)" stroke-width="1.5"/>`;
+    return `<line x1="${x}" y1="${bY}" x2="${x}" y2="${bY + bH}" style="stroke:var(--bg-card)" stroke-width="1.5"/>`;
   }).join('');
 
   container.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${VW} ${VH}" style="width:100%;height:auto;display:block;">
@@ -6663,10 +6685,10 @@ function renderWeightChart(pfx) {
   </linearGradient></defs>
   <path d="${fillPath}" fill="url(#wcg-${pfx})"/>
   <path d="${curvePath}" fill="none" stroke="#4A5340" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>
-  <line x1="${mL}" y1="${axY}" x2="${mL + cW}" y2="${axY}" stroke="var(--border)" stroke-width=".5"/>
+  <line x1="${mL}" y1="${axY}" x2="${mL + cW}" y2="${axY}" style="stroke:var(--border)" stroke-width=".5"/>
   ${barsSvg}${sepsSvg}
-  <text x="${mL}" y="${VH - 3}" font-size="8" fill="var(--text-muted)" font-family="Montserrat,sans-serif">Začátek${startD ? ' ' + fmtDate(startD) : ''}</text>
-  <text x="${mL + cW}" y="${VH - 3}" font-size="8" fill="var(--text-muted)" font-family="Montserrat,sans-serif" text-anchor="end">Dokončení${endD ? ' ' + fmtDate(endD) : ''}</text>
+  <text x="${mL}" y="${VH - 3}" font-size="8" style="fill:var(--text-muted)" font-family="Montserrat,sans-serif">Začátek${startD ? ' ' + fmtDate(startD) : ''}</text>
+  <text x="${mL + cW}" y="${VH - 3}" font-size="8" style="fill:var(--text-muted)" font-family="Montserrat,sans-serif" text-anchor="end">Dokončení${endD ? ' ' + fmtDate(endD) : ''}</text>
   </svg>`;
 }
 
