@@ -4354,7 +4354,7 @@ function renderGanttHeader(minD, maxD, totalW) {
     let _mPtr = new Date(_firstMon), _firstWk = true;
     while (_mPtr <= maxD) {
       const _key = _mPtr.getFullYear() + '-' + _mPtr.getMonth();
-      if (!_mPx[_key]) _mPx[_key] = { label: _mn[_mPtr.getMonth()] + ' ' + _mPtr.getFullYear(), px: 0 };
+      if (!_mPx[_key]) _mPx[_key] = { label: String(_mPtr.getMonth() + 1).padStart(2, '0') + '/' + _mPtr.getFullYear(), px: 0 };
       _mPx[_key].px += _firstWk ? _firstCellW : cellW;
       _firstWk = false;
       _mPtr.setDate(_mPtr.getDate() + 7);
@@ -4377,7 +4377,7 @@ function renderGanttHeader(minD, maxD, totalW) {
       const w = _firstCell ? _firstCellW : cellW;
       cell.style.width = w + 'px';
       cell.style.minWidth = w + 'px';
-      cell.textContent = 'T' + getWeekNumber(_d);
+      cell.textContent = String(getWeekNumber(_d));
       unitsRow.appendChild(cell);
       _firstCell = false;
       _d.setDate(_d.getDate() + 7);
