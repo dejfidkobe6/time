@@ -5995,7 +5995,7 @@ function openAddTaskModal(phaseId) {
             </div>
           </div>
           <div class="form-field">
-            <label class="form-label">Váha dokončení %</label>
+            <label class="form-label">Těžiště nákladů %</label>
             <div class="form-range-wrap">
               <input type="range" class="form-range" id="m-task-weight" min="0" max="100" value="0" oninput="document.getElementById('m-task-weight-val').textContent=this.value+'%'">
               <span id="m-task-weight-val" style="font-size:11px;font-weight:700;color:var(--warning);min-width:32px;">0%</span>
@@ -6003,7 +6003,7 @@ function openAddTaskModal(phaseId) {
           </div>
         </div>
         <div style="font-size:10px;color:var(--text-muted);padding:6px 8px;background:var(--bg);border-radius:4px;border-left:3px solid var(--olive);">
-          <strong>Váha dokončení:</strong> % nákladů, které dopadají až při dokončení úkolu. Zbytek se rovnoměrně rozkládá přes celou dobu trvání.
+          <strong>Těžiště nákladů:</strong> % nákladů, které dopadají až při dokončení úkolu. Zbytek se rovnoměrně rozkládá přes celou dobu trvání.
         </div>
       </div>
       <div class="modal-footer">
@@ -6101,7 +6101,7 @@ function openEditTaskModal(taskId) {
             </div>
           </div>
           <div class="form-field">
-            <label class="form-label">Váha dokončení %</label>
+            <label class="form-label">Těžiště nákladů %</label>
             <div class="form-range-wrap">
               <input type="range" class="form-range" id="e-task-weight" min="0" max="100" value="${task.completionWeight||0}" oninput="document.getElementById('e-task-weight-val').textContent=this.value+'%'">
               <span id="e-task-weight-val" style="font-size:11px;font-weight:700;color:var(--warning);min-width:32px;">${task.completionWeight||0}%</span>
