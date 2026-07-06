@@ -1812,6 +1812,16 @@ html, body {
 /* ═══════════════════════════════════════
    MOBILE SETTINGS SHEET
 ═══════════════════════════════════════ */
+.mob-day-chip {
+  padding: 7px 11px; border-radius: 20px; font-size: 13px; font-weight: 600;
+  border: 1.5px solid var(--border); background: var(--bg);
+  color: var(--text-muted); cursor: pointer; transition: all 0.15s;
+  line-height: 1;
+}
+.mob-day-chip.chip-on { background: var(--olive); border-color: var(--olive); color: #fff; }
+.mob-holiday-row { display:flex;align-items:center;gap:8px;padding:6px 0; }
+.mob-holiday-row span { flex:1; font-size:14px; }
+.mob-holiday-del { background:none;border:none;color:var(--text-muted);font-size:18px;cursor:pointer;padding:2px 4px;line-height:1; }
 #mob-sett-overlay {
   position: fixed; inset: 0; z-index: 5500;
   background: rgba(0,0,0,0.52);
@@ -1822,7 +1832,8 @@ html, body {
   background: var(--bg-card);
   border-radius: 18px 18px 0 0;
   width: 100%;
-  padding-bottom: env(safe-area-inset-bottom, 0);
+  max-height: 88vh;
+  overflow-y: auto;
 }
 .mob-sett-row {
   display: flex; align-items: center; justify-content: space-between;
@@ -2305,6 +2316,10 @@ html, body {
     <button class="nav-btn" onclick="switchMainView('cashflow')" title="">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
       <span class="nav-tooltip">Cashflow</span>
+    </button>
+    <button class="nav-btn" onclick="openProjectSettings()" title="">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      <span class="nav-tooltip">Nastavení projektu</span>
     </button>
     <button class="nav-btn" onclick="openTemplateModal()" title="">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
@@ -8360,7 +8375,138 @@ function openMobSettings() {
   const floatEl = document.getElementById('mob-sett-float');
   if (cpEl) cpEl.checked = !!s.showCriticalPath;
   if (floatEl) floatEl.checked = !!s.showFloat;
+
+  // Build day chips
+  const dayNames = [[1,'Po'],[2,'Út'],[3,'St'],[4,'Čt'],[5,'Pá'],[6,'So'],[0,'Ne']];
+  const chipsEl = document.getElementById('mob-day-chips');
+  if (chipsEl) {
+    chipsEl.innerHTML = dayNames.map(([d, label]) =>
+      `<button class="mob-day-chip${s.workDays.includes(d) ? ' chip-on' : ''}" onclick="mobToggleWorkDay(${d},this)">${label}</button>`
+    ).join('');
+  }
+
+  mobRefreshHolidayList();
+  mobRefreshBaselineList();
+  const blInp = document.getElementById('mob-baseline-inp');
+  if (blInp && !blInp.value) {
+    const num = (project.baselines || []).length + 1;
+    blInp.placeholder = 'Název (např. Smluvní ' + String(num).padStart(2,'0') + ')';
+  }
   document.getElementById('mob-sett-overlay').classList.remove('hidden');
+}
+
+function mobToggleWorkDay(day, el) {
+  const s = getSettings();
+  if (s.workDays.includes(day)) {
+    s.workDays = s.workDays.filter(d => d !== day);
+    el.classList.remove('chip-on');
+  } else {
+    s.workDays.push(day);
+    el.classList.add('chip-on');
+  }
+  saveProject(true); renderGantt();
+}
+
+function mobRefreshHolidayList() {
+  const s = getSettings();
+  const el = document.getElementById('mob-holidays-list');
+  if (!el) return;
+  if (!s.holidays || !s.holidays.length) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--text-muted);">Žádné výjimky</div>';
+    return;
+  }
+  el.innerHTML = s.holidays.map((h, i) =>
+    `<div class="mob-holiday-row">
+      <span>${h}</span>
+      <button class="mob-holiday-del" onclick="mobRemoveHoliday(${i})">✕</button>
+    </div>`
+  ).join('');
+}
+
+function mobAddHoliday() {
+  const inp = document.getElementById('mob-holiday-inp');
+  const val = inp?.value;
+  if (!val) return;
+  const s = getSettings();
+  if (!s.holidays) s.holidays = [];
+  if (!s.holidays.includes(val)) {
+    s.holidays.push(val);
+    s.holidays.sort();
+    saveProject(true); renderGantt();
+  }
+  inp.value = '';
+  mobRefreshHolidayList();
+}
+
+function mobRemoveHoliday(idx) {
+  const s = getSettings();
+  s.holidays.splice(idx, 1);
+  saveProject(true); renderGantt();
+  mobRefreshHolidayList();
+}
+
+function mobRefreshBaselineList() {
+  const el = document.getElementById('mob-baseline-list');
+  if (!el) return;
+  const baselines = project.baselines || [];
+  const activeId  = project.activeBaselineId || null;
+  if (!baselines.length) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--text-muted);">Žádný směrný plán zatím nebyl uložen.</div>';
+    return;
+  }
+  el.innerHTML = baselines.map(bl => {
+    const isActive = bl.id === activeId;
+    const taskCount = (bl.phases || []).reduce((s, ph) => s + (ph.tasks || []).length, 0);
+    return `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);">
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:13px;font-weight:700;">${escHtml(bl.name)}</div>
+        <div style="font-size:11px;color:var(--text-muted);">${bl.savedAt||''} · ${taskCount} úkolů</div>
+      </div>
+      ${isActive
+        ? `<span class="baseline-chip" style="font-size:10px;">Aktivní</span>
+           <button onclick="mobDeactivateBaseline()" style="padding:4px 8px;border-radius:8px;background:var(--bg);border:1.5px solid var(--border);font-size:11px;font-weight:600;cursor:pointer;color:var(--text-muted);">Skrýt</button>`
+        : `<button onclick="mobActivateBaseline('${bl.id}')" style="padding:4px 10px;border-radius:8px;background:var(--bg);border:1.5px solid var(--border);font-size:11px;font-weight:600;cursor:pointer;">Zobrazit</button>`
+      }
+      <button onclick="mobDeleteBaseline('${bl.id}')" style="background:none;border:none;color:var(--text-muted);font-size:18px;cursor:pointer;padding:2px 4px;line-height:1;">✕</button>
+    </div>`;
+  }).join('');
+}
+
+function mobSaveBaseline() {
+  const inp = document.getElementById('mob-baseline-inp');
+  const name = inp?.value.trim();
+  if (!name) { inp?.focus(); return; }
+  if (!project.baselines) project.baselines = [];
+  const id = 'bl_' + (project.nextId++);
+  const today = new Date().toISOString().split('T')[0];
+  const snapshot = project.phases.map(ph => ({
+    id: ph.id,
+    tasks: (ph.tasks || []).map(t => ({ id: t.id, startDate: t.startDate, endDate: t.endDate, duration: t.duration }))
+  }));
+  project.baselines.push({ id, name, savedAt: today, phases: snapshot });
+  project.activeBaselineId = id;
+  if (inp) inp.value = '';
+  saveProject(); renderGantt(); updateBaselineChip();
+  mobRefreshBaselineList();
+}
+
+function mobActivateBaseline(id) {
+  project.activeBaselineId = id;
+  saveProject(true); renderGantt(); updateBaselineChip();
+  mobRefreshBaselineList();
+}
+
+function mobDeactivateBaseline() {
+  project.activeBaselineId = null;
+  saveProject(true); renderGantt(); updateBaselineChip();
+  mobRefreshBaselineList();
+}
+
+function mobDeleteBaseline(id) {
+  project.baselines = (project.baselines || []).filter(b => b.id !== id);
+  if (project.activeBaselineId === id) { project.activeBaselineId = null; updateBaselineChip(); }
+  saveProject(true); renderGantt();
+  mobRefreshBaselineList();
 }
 
 function closeMobSettings() {
@@ -8859,6 +9005,30 @@ init();
         <span class="mob-toggle-slider"></span>
       </label>
     </div>
+    <!-- Pracovní dny -->
+    <div style="padding:14px 20px;border-top:1px solid var(--border);">
+      <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--text-muted);margin-bottom:10px;">Pracovní dny</div>
+      <div id="mob-day-chips" style="display:flex;gap:7px;flex-wrap:wrap;"></div>
+    </div>
+    <!-- Svátky a výjimky -->
+    <div style="padding:14px 20px;border-top:1px solid var(--border);">
+      <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--text-muted);margin-bottom:8px;">Svátky a nepracovní výjimky</div>
+      <div id="mob-holidays-list" style="margin-bottom:8px;"></div>
+      <div style="display:flex;gap:8px;">
+        <input type="date" id="mob-holiday-inp" style="flex:1;padding:8px 10px;border:1.5px solid var(--border);border-radius:10px;background:var(--bg);color:var(--text);font-size:14px;">
+        <button onclick="mobAddHoliday()" style="padding:8px 14px;border-radius:10px;background:var(--olive);color:#fff;border:none;font-size:13px;font-weight:700;cursor:pointer;">Přidat</button>
+      </div>
+    </div>
+    <!-- Směrný plán -->
+    <div style="padding:14px 20px;border-top:1px solid var(--border);">
+      <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--text-muted);margin-bottom:8px;">Směrný plán</div>
+      <div id="mob-baseline-list" style="margin-bottom:10px;"></div>
+      <div style="display:flex;gap:8px;">
+        <input type="text" id="mob-baseline-inp" placeholder="Název (např. Smluvní 01)" style="flex:1;padding:8px 10px;border:1.5px solid var(--border);border-radius:10px;background:var(--bg);color:var(--text);font-size:14px;">
+        <button onclick="mobSaveBaseline()" style="padding:8px 14px;border-radius:10px;background:var(--olive);color:#fff;border:none;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;">Uložit stav</button>
+      </div>
+    </div>
+    <div style="height:env(safe-area-inset-bottom,0);min-height:8px;"></div>
   </div>
 </div>
 
