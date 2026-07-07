@@ -513,25 +513,36 @@ html, body {
 .wbs-row.drag-gap-top,    .mob-task-row.drag-gap-top    { margin-top: calc(var(--row-h) * 0.9) !important; }
 .wbs-row.drag-gap-bottom, .mob-task-row.drag-gap-bottom { margin-bottom: calc(var(--row-h) * 0.9) !important; }
 .row-selector {
-  position: absolute; left: 0; top: 0; bottom: 0; width: 14px;
+  position: absolute; left: 0; top: 0; bottom: 0; width: 18px;
   display: flex; align-items: center; justify-content: center;
-  cursor: pointer; z-index: 3; user-select: none;
+  cursor: grab; z-index: 3; user-select: none;
 }
+.row-selector:active { cursor: grabbing; }
 .row-num {
   position: absolute; left: 0; top: 0; bottom: 0; width: 18px;
   display: flex; align-items: center; justify-content: center;
   font-size: 7px; font-weight: 700; color: var(--text-muted);
   pointer-events: none; user-select: none; letter-spacing: 0;
-  opacity: 0.55;
+  opacity: 0.55; transition: opacity 0.12s;
 }
 .wbs-row.is-phase .row-num { font-size: 8px; font-weight: 800; }
+.wbs-row:hover .row-num { opacity: 0; }
+/* 3-line drag handle replaces row num on hover */
 .row-selector::after {
-  content: ''; width: 7px; height: 7px; border-radius: 50%;
-  border: 1.5px solid transparent; background: transparent;
-  transition: border-color 0.12s, background 0.12s;
+  content: '';
+  width: 10px; height: 8px;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0, transparent 2px,
+    var(--text-muted) 2px, var(--text-muted) 3px
+  );
+  opacity: 0; transition: opacity 0.12s;
 }
-.wbs-row:hover .row-selector::after { border-color: #b0b0b8; }
-.wbs-row.multi-selected .row-selector::after { background: var(--olive); border-color: var(--olive); }
+.wbs-row:hover .row-selector::after { opacity: 0.55; }
+.wbs-row.multi-selected .row-selector::after {
+  background: repeating-linear-gradient(to bottom, transparent 0, transparent 2px, var(--olive) 2px, var(--olive) 3px);
+  opacity: 1;
+}
 .wbs-row.is-phase { background: var(--bg); height: calc(var(--row-h, 40px) + 4px); }
 .wbs-row.is-phase:hover { background: var(--bg-hover); }
 
@@ -865,7 +876,7 @@ html, body {
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
-  height: 22px;
+  height: 18px;
   cursor: grab;
 }
 .gantt-bar-wrap::before {
@@ -1779,7 +1790,7 @@ html, body {
 }
 
 /* ═══════════════════════════════════════
-   TASK DETAIL PANEL (slide-in mobile)
+   TASK DETAIL PANEL (slide-in)
 ═══════════════════════════════════════ */
 #task-detail-panel {
   position: fixed; right: -380px; top: 0; bottom: 0;
@@ -1788,8 +1799,44 @@ html, body {
   display: flex; flex-direction: column;
   transition: right 0.28s cubic-bezier(0.4,0,0.2,1);
   border-left: 1px solid var(--border);
+  overflow-y: auto;
 }
 #task-detail-panel.open { right: 0; }
+/* Always use the compact mobile-style panel (hide full form) */
+#task-detail-panel .tdp-body { display: none !important; }
+#task-detail-panel .tdp-actions { display: none !important; }
+/* Compact panel rows — visible on all screen sizes */
+.tdp-mob-info-v2 { padding: 4px 12px 12px; }
+.tdp-mob-row {
+  display: flex; align-items: center; min-height: 36px;
+  border-bottom: 1px solid var(--border); gap: 8px; cursor: pointer;
+}
+.tdp-mob-row:last-child { border-bottom: none; }
+.tdp-mob-row.no-edit { cursor: default; }
+.tdp-mob-row-lbl {
+  font-size: 8px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.5px; color: var(--text-muted); flex-shrink: 0; width: 76px;
+}
+.tdp-mob-row-val {
+  font-size: 12px; font-weight: 600; color: var(--text);
+  flex: 1; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.tdp-mob-row-hint { font-size: 10px; color: var(--text-muted); flex-shrink: 0; padding-right: 2px; }
+.tdp-mob-inline-input {
+  flex: 1; font-size: 12px; font-weight: 600; min-width: 0;
+  border: 1px solid var(--olive); border-radius: 4px;
+  padding: 3px 6px; background: var(--bg); color: var(--text);
+}
+.tdp-mob-save-btn {
+  display: block; width: 100%; margin-top: 10px; padding: 11px;
+  background: var(--olive); color: #fff; border: none;
+  border-radius: var(--radius); font-weight: 700; font-size: 13px; cursor: pointer;
+}
+.tdp-mob-delete-btn {
+  display: block; width: 100%; margin-top: 6px; padding: 11px;
+  background: none; color: var(--danger); border: 1px solid var(--danger);
+  border-radius: var(--radius); font-weight: 700; font-size: 13px; cursor: pointer;
+}
 #task-detail-panel .tdp-header {
   display: flex; align-items: center; gap: 10px;
   padding: 16px 20px; border-bottom: 1px solid var(--border);
@@ -2211,9 +2258,6 @@ html, body {
     z-index: 300;
   }
   #task-detail-panel.open { transform: translateY(0); }
-  /* Hide full body + actions on mobile — use compact header + mob-info */
-  #task-detail-panel .tdp-body { display: none !important; }
-  #task-detail-panel .tdp-actions { display: none !important; }
   #task-detail-panel .tdp-header {
     padding: 8px 12px 6px; border-bottom: 1px solid var(--border);
     flex-wrap: wrap; align-items: flex-start;
@@ -2252,39 +2296,7 @@ html, body {
   /* Phase cell spans full width */
   .tdp-mob-cell.full { grid-column: span 2; }
 
-  /* Redesigned mobile task popup v2 */
-  .tdp-mob-info-v2 { padding: 4px 12px 12px; }
-  .tdp-mob-row {
-    display: flex; align-items: center; min-height: 34px;
-    border-bottom: 1px solid var(--border); gap: 8px;
-    cursor: pointer;
-  }
-  .tdp-mob-row:last-child { border-bottom: none; }
-  .tdp-mob-row.no-edit { cursor: default; }
-  .tdp-mob-row-lbl {
-    font-size: 8px; font-weight: 700; text-transform: uppercase;
-    letter-spacing: 0.5px; color: var(--text-muted);
-    flex-shrink: 0; width: 72px;
-  }
-  .tdp-mob-row-val {
-    font-size: 11px; font-weight: 600; color: var(--text);
-    flex: 1; line-height: 1.3; overflow: hidden; text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .tdp-mob-row-hint {
-    font-size: 10px; color: var(--text-muted); flex-shrink: 0; padding-right: 2px;
-  }
-  .tdp-mob-inline-input {
-    flex: 1; font-size: 12px; font-weight: 600; min-width: 0;
-    border: 1px solid var(--olive); border-radius: 4px;
-    padding: 3px 6px; background: var(--bg); color: var(--text);
-  }
-  .tdp-mob-save-btn {
-    display: block; width: 100%; margin-top: 10px;
-    padding: 10px; background: var(--olive); color: #fff;
-    border: none; border-radius: var(--radius);
-    font-weight: 700; font-size: 12px; cursor: pointer; letter-spacing: 0.3px;
-  }
+  /* Compact panel rows (overrides for mobile layout) */
   .tdp-mob-delete-btn {
     display: block; width: 100%; margin-top: 6px;
     padding: 10px; background: none; color: var(--danger);
@@ -4609,6 +4621,21 @@ function renderGanttRows(minD, totalW) {
       }
       d.setDate(d.getDate() + 7);
     }
+  } else if (timescale === 'days') {
+    // Draw vertical lines only at Monday (week) boundaries
+    let d = new Date(minD);
+    const dow0 = d.getDay();
+    d.setDate(d.getDate() - (dow0 === 0 ? 6 : dow0 - 1)); // snap back to Monday
+    while (dateToX(d, minD) < totalW) {
+      const x = dateToX(d, minD);
+      if (x >= 0) {
+        const line = document.createElement('div');
+        line.className = 'gantt-grid-line';
+        line.style.left = x + 'px';
+        bgGrid.appendChild(line);
+      }
+      d.setDate(d.getDate() + 7);
+    }
   }
 
   const cp = getSettings().showCriticalPath ? getCriticalPath() : new Set();
@@ -4654,6 +4681,16 @@ function renderGanttTaskRowsRecursive(tasks, phase, pi, minD, totalW, container,
     tRow.dataset.taskId = task.id;
     tRow.style.width = totalW + 'px';
     if (selectedTaskId === task.id) tRow.style.background = 'rgba(74,83,64,0.05)';
+    // Desktop: clicking anywhere in Gantt row selects the task
+    if (window.innerWidth > 768) {
+      tRow.addEventListener('click', (e) => {
+        if (e.target.closest('.gantt-bar-wrap')) return; // bar click handles itself
+        selectedTaskId = task.id;
+        selectedTaskIds.clear(); selectedTaskIds.add(task.id); lastSelectedTaskId = task.id;
+        renderWBS();
+        document.querySelectorAll('#gantt-rows .gantt-row').forEach(r => { r.style.background = r.dataset.taskId === task.id ? 'rgba(74,83,64,0.05)' : ''; });
+      });
+    }
 
     if (task.type === 'summary') {
       // Summary bar: darker wider bar spanning children
@@ -4691,11 +4728,27 @@ function renderGanttTaskRowsRecursive(tasks, phase, pi, minD, totalW, container,
         mWrap.appendChild(diamond);
         mWrap.appendChild(dot);
 
+        mWrap.addEventListener('mouseenter', () => {
+          if (window.innerWidth <= 768) return;
+          showBarPopup(task, mWrap);
+        });
+        mWrap.addEventListener('mouseleave', () => {
+          if (window.innerWidth <= 768) return;
+          if (_popupRafId) { cancelAnimationFrame(_popupRafId); _popupRafId = null; }
+          const pop = document.getElementById('bar-date-popup');
+          if (pop) pop.style.visibility = 'hidden';
+        });
         mWrap.addEventListener('click', (e) => {
           if (e.target.classList.contains('bar-connect-dot')) return;
           e.stopPropagation();
           showBarDot(mWrap, task.id);
-          showBarPopup(task, mWrap);
+          if (window.innerWidth <= 768) {
+            showBarPopup(task, mWrap);
+          } else {
+            selectedTaskId = task.id;
+            selectedTaskIds.clear(); selectedTaskIds.add(task.id); lastSelectedTaskId = task.id;
+            renderWBS();
+          }
         });
 
         tRow.appendChild(mWrap);
@@ -4728,14 +4781,31 @@ function renderGanttTaskRowsRecursive(tasks, phase, pi, minD, totalW, container,
           barWrap.classList.add('is-critical');
         }
 
-        // Single click/tap on bar → show connect dot + popup + highlight related deps.
-        // viewport has user-scalable=no so iOS fires click without 300ms delay.
+        // Desktop: hover → popup; click → select task
+        // Mobile: click → popup (existing behaviour preserved)
+        barWrap.addEventListener('mouseenter', () => {
+          if (window.innerWidth <= 768) return;
+          showBarPopup(task, barWrap);
+        });
+        barWrap.addEventListener('mouseleave', () => {
+          if (window.innerWidth <= 768) return;
+          if (_popupRafId) { cancelAnimationFrame(_popupRafId); _popupRafId = null; }
+          const pop = document.getElementById('bar-date-popup');
+          if (pop) pop.style.visibility = 'hidden';
+        });
         barWrap.addEventListener('click', (e) => {
           if (e.target.classList.contains('bar-resize-l') || e.target.classList.contains('bar-resize-r')) return;
           if (e.target.classList.contains('bar-connect-dot')) return;
           e.stopPropagation();
           showBarDot(barWrap, task.id);
-          showBarPopup(task, barWrap);
+          if (window.innerWidth <= 768) {
+            showBarPopup(task, barWrap); // mobile: click shows popup
+          } else {
+            // Desktop: click selects task (highlights WBS row)
+            selectedTaskId = task.id;
+            selectedTaskIds.clear(); selectedTaskIds.add(task.id); lastSelectedTaskId = task.id;
+            renderWBS();
+          }
         });
 
         makeDraggableBar(barWrap, task, minD);
@@ -7137,17 +7207,41 @@ function hideBarDot() {
 
 let _popupRafId = null;
 
+function _findDrivingPredecessor(task) {
+  if (!task.predecessors || !task.predecessors.length || !task.startDate) return null;
+  const taskStart = new Date(task.startDate);
+  let driving = null, minDiff = Infinity;
+  task.predecessors.forEach(p => {
+    const pred = findTask(p.taskId);
+    if (!pred) return;
+    const type = p.type || 'FS';
+    const lag = p.lag || 0;
+    let cs;
+    if (type === 'FS' && pred.endDate) { const d = new Date(pred.endDate); d.setDate(d.getDate() + 1 + lag); cs = d; }
+    else if (type === 'SS' && pred.startDate) { const d = new Date(pred.startDate); d.setDate(d.getDate() + lag); cs = d; }
+    if (cs) { const diff = Math.abs(cs - taskStart); if (diff < minDiff) { minDiff = diff; driving = pred; } }
+  });
+  return driving;
+}
+
 function showBarPopup(task, barWrap) {
   if (_popupRafId) { cancelAnimationFrame(_popupRafId); _popupRafId = null; }
   let pop = document.getElementById('bar-date-popup');
   if (!pop) {
     pop = document.createElement('div');
     pop.id = 'bar-date-popup';
-    pop.style.cssText = 'position:fixed;background:#1a1a1a;color:#fff;padding:6px 14px;border-radius:10px;font-size:13px;font-weight:600;z-index:9999;pointer-events:none;box-shadow:0 4px 18px rgba(0,0,0,0.4);white-space:nowrap;visibility:hidden;left:-9999px;top:-9999px;';
+    pop.style.cssText = 'position:fixed;background:#1a1a1a;color:#fff;padding:10px 14px;border-radius:10px;font-size:12px;z-index:9999;pointer-events:none;box-shadow:0 4px 18px rgba(0,0,0,0.45);visibility:hidden;left:-9999px;top:-9999px;min-width:160px;max-width:270px;line-height:1.5;';
     document.body.appendChild(pop);
   }
   const fmtD = s => { if (!s) return '—'; const p = s.split('-'); return p[2]+'.'+p[1]+'.'+p[0].slice(2); };
-  pop.textContent = fmtD(task.startDate) + (task.startDate !== task.endDate ? ' — ' + fmtD(task.endDate) : '');
+  const dur = (task.startDate && task.endDate) ? daysBetween(task.startDate, task.endDate) : 0;
+  const driver = _findDrivingPredecessor(task);
+  const driverNum = driver ? (_rowNumMap.get(driver.id) || '') : '';
+  pop.innerHTML =
+    `<div style="font-size:12px;font-weight:800;margin-bottom:5px;word-wrap:break-word;white-space:normal;">${escHtml(task.name)}</div>` +
+    `<div style="font-size:11px;opacity:0.75;">${fmtD(task.startDate)} – ${fmtD(task.endDate)}</div>` +
+    `<div style="font-size:11px;opacity:0.6;">${dur} dní${task.assignee ? ' · ' + escHtml(task.assignee) : ''}${(task.progress||0) > 0 ? ' · ' + task.progress + '%' : ''}</div>` +
+    (driver ? `<div style="font-size:10px;opacity:0.45;margin-top:5px;border-top:1px solid rgba(255,255,255,0.1);padding-top:5px;">↑ limituje: ${driverNum ? driverNum + '. ' : ''}${escHtml(driver.name)}</div>` : '');
   pop.style.visibility = 'hidden';
   pop.style.left = '-9999px';
   pop.style.top = '-9999px';
@@ -9079,6 +9173,8 @@ function initArrowHighlighting() {
       svg.querySelectorAll('g[data-from-id]').forEach(ag => {
         ag.setAttribute('opacity', ag === g ? '1' : '0.15');
       });
+      // Desktop: show dep popup on hover
+      if (window.innerWidth > 768) showDepPopup(g.dataset.fromId, g.dataset.toId, e.clientX, e.clientY);
       return;
     }
     const bar = e.target.closest('.gantt-bar-wrap');
@@ -9098,20 +9194,20 @@ function initArrowHighlighting() {
         const svg = document.getElementById('gantt-dep-svg');
         if (svg) _resetArrows(svg);
       }
+      hideDepPopup();
       return;
     }
     const bar = e.target.closest('.gantt-bar-wrap');
     if (!bar) return;
     if (e.relatedTarget?.closest('.gantt-bar-wrap')) return;
     hoverTid = null;
-    // Don't reset if a bar tap is active or arrows were intentionally dimmed
     if (!_activeDotWrap && !_arrowsDimmed) {
       const svg = document.getElementById('gantt-dep-svg');
       if (svg) _resetArrows(svg);
     }
   });
 
-  // Click (desktop) or tap (mobile) on dep arrow → highlight only that arrow + show info popup.
+  // Click on dep arrow: desktop → open dep editor; mobile → show popup
   canvas.addEventListener('click', (e) => {
     if (e.target.closest('.gantt-bar-wrap')) return;
     if (_suppressDepClick) { _suppressDepClick = false; return; }
@@ -9120,6 +9216,15 @@ function initArrowHighlighting() {
     const svg = document.getElementById('gantt-dep-svg');
     if (svg) svg.querySelectorAll('g[data-from-id]').forEach(ag => ag.setAttribute('opacity', ag === g ? '1' : '0.15'));
     _arrowsDimmed = false;
+    if (window.innerWidth > 768) {
+      // Desktop: click opens dep editor
+      hideDepPopup();
+      const toTask = findTask(g.dataset.toId);
+      if (toTask) {
+        const predIndex = (toTask.predecessors || []).findIndex(p => p.taskId === g.dataset.fromId);
+        if (predIndex >= 0) { setTimeout(() => openDepEditor(toTask, predIndex), 50); return; }
+      }
+    }
     showDepPopup(g.dataset.fromId, g.dataset.toId, e.clientX, e.clientY);
   });
 
