@@ -514,31 +514,36 @@ html, body {
 .wbs-row.drag-gap-bottom, .mob-task-row.drag-gap-bottom { margin-bottom: calc(var(--row-h) * 0.9) !important; }
 .row-selector {
   position: absolute; left: 0; top: 0; bottom: 0; width: 18px;
-  display: flex; align-items: center; justify-content: center;
-  cursor: grab; z-index: 3; user-select: none;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  cursor: grab; z-index: 3; user-select: none; gap: 2px;
 }
 .row-selector:active { cursor: grabbing; }
-.row-num {
-  position: absolute; left: 0; top: 0; bottom: 0; width: 18px;
-  display: flex; align-items: center; justify-content: center;
+/* Row number lives inside row-selector (for task rows) */
+.row-selector > .row-num {
+  position: static;
   font-size: 7px; font-weight: 700; color: var(--text-muted);
   pointer-events: none; user-select: none; letter-spacing: 0;
-  opacity: 0.55; transition: opacity 0.12s;
+  opacity: 0.55; line-height: 1;
 }
-.wbs-row.is-phase .row-num { font-size: 8px; font-weight: 800; }
-.wbs-row:hover .row-num { opacity: 0; }
-/* 3-line drag handle replaces row num on hover */
+/* Phase row number is outside (phases have no row-selector) */
+.wbs-row.is-phase > .row-num {
+  position: absolute; left: 0; top: 0; bottom: 0; width: 18px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 8px; font-weight: 800; color: var(--text-muted);
+  pointer-events: none; user-select: none; opacity: 0.55;
+}
+/* 3-line drag icon below the number, appears on hover */
 .row-selector::after {
   content: '';
-  width: 10px; height: 8px;
+  width: 10px; height: 7px;
   background: repeating-linear-gradient(
     to bottom,
     transparent 0, transparent 2px,
     var(--text-muted) 2px, var(--text-muted) 3px
   );
-  opacity: 0; transition: opacity 0.12s;
+  opacity: 0; transition: opacity 0.12s; flex-shrink: 0;
 }
-.wbs-row:hover .row-selector::after { opacity: 0.55; }
+.wbs-row:hover .row-selector::after { opacity: 0.5; }
 .wbs-row.multi-selected .row-selector::after {
   background: repeating-linear-gradient(to bottom, transparent 0, transparent 2px, var(--olive) 2px, var(--olive) 3px);
   opacity: 1;
@@ -2831,7 +2836,7 @@ const COLUMN_DEFS = [
   { id: 'budget',       label: 'Rozpočet',     w: '74px'  },
   { id: 'delay',        label: 'Zpoždění',     w: '64px'  },
 ];
-let visibleColumns = (() => { try { const saved = JSON.parse(localStorage.getItem('bt_cols') || 'null'); if (saved && saved[0] === 'wbs') { const cleaned = saved.filter(c => c !== 'predecessors' && c !== 'successors'); return cleaned; } return ['wbs','name','schedule','start','end','duration','progress','budget']; } catch(e) { return ['wbs','name','schedule','start','end','duration','progress','budget']; } })();
+let visibleColumns = (() => { try { const saved = JSON.parse(localStorage.getItem('bt_cols') || 'null'); if (saved && saved[0] === 'wbs') { const cleaned = saved.filter(c => c !== 'predecessors' && c !== 'successors' && c !== 'schedule'); return cleaned; } return ['wbs','name','start','end','duration','progress','budget']; } catch(e) { return ['wbs','name','start','end','duration','progress','budget']; } })();
 // Persisted custom column widths (overrides COLUMN_DEFS.w)
 let colWidths = (() => { try { return JSON.parse(localStorage.getItem('bt_col_w') || 'null') || {}; } catch(e) { return {}; } })();
 // always ensure 'wbs' is first (fixed), 'name' is present
@@ -4077,8 +4082,7 @@ function createTaskRow(task, phase, pi, ti, depth) {
   }).join('');
 
   row.innerHTML = `
-    <span class="row-num">${_rowNumMap.get(task.id) || ''}</span>
-    <div class="row-selector" onclick="event.stopPropagation()"></div>
+    <div class="row-selector" onclick="event.stopPropagation()"><span class="row-num">${_rowNumMap.get(task.id) || ''}</span></div>
     <div class="wbs-row-content" style="grid-template-columns:${getColTemplate()};">
       ${cells}
     </div>
@@ -5142,13 +5146,16 @@ function makeResizableBar(barWrap, task, minD) {
     function onMove(ev) {
       const dx = ev.clientX - startX;
       if (edge === 'right') {
-        const newW = Math.max(cellW, origWidth + dx);
+        // Right edge: left fixed, right moves. Minimum 1px width.
+        const newW = Math.max(1, origWidth + dx);
         barWrap.style.width = newW + 'px';
       } else {
-        const newLeft = origLeft + dx;
-        const newW = Math.max(cellW, origWidth - dx);
-        barWrap.style.left = newLeft + 'px';
-        barWrap.style.width = newW + 'px';
+        // Left edge: right edge fixed, left moves.
+        const rightEdge = origLeft + origWidth;
+        const rawLeft = origLeft + dx;
+        const clampedLeft = Math.min(rawLeft, rightEdge - 1); // can't push past right edge
+        barWrap.style.left  = clampedLeft + 'px';
+        barWrap.style.width = (rightEdge - clampedLeft) + 'px';
       }
     }
     function onUp() {
@@ -5156,14 +5163,14 @@ function makeResizableBar(barWrap, task, minD) {
       document.removeEventListener('mouseup', onUp);
       if (edge === 'right') {
         const newW = parseInt(barWrap.style.width);
-        task.endDate = addDays(task.startDate, xToDays(newW));
+        task.endDate = addDays(task.startDate, Math.max(0, Math.round(xToDays(newW))));
         cascadeSuccessors(task.id);
       } else {
         const newLeft = parseInt(barWrap.style.left);
         const newW = parseInt(barWrap.style.width);
         const newStart = new Date(minD); newStart.setDate(newStart.getDate() + Math.round(xToDays(newLeft)));
         task.startDate = newStart.toISOString().split('T')[0];
-        task.endDate = addDays(task.startDate, xToDays(newW));
+        task.endDate = addDays(task.startDate, Math.max(0, Math.round(xToDays(newW))));
         enforceConstraints(task);
         cascadeSuccessors(task.id);
       }
@@ -7178,7 +7185,6 @@ function selectTask(taskId) {
 let _activeDotWrap = null;
 
 function showBarDot(barWrap, taskId) {
-  _arrowsDimmed = false;
   hideDepPopup();
   if (_activeDotWrap && _activeDotWrap !== barWrap) {
     _activeDotWrap.querySelector('.bar-connect-dot')?.classList.remove('dot-active');
@@ -7199,10 +7205,8 @@ function hideBarDot() {
   const pop = document.getElementById('bar-date-popup');
   if (pop) pop.style.visibility = 'hidden';
   hideDepPopup();
-  // Dim all arrows (same suppression as non-related arrows when a bar is active)
-  _arrowsDimmed = true;
   const svg = document.getElementById('gantt-dep-svg');
-  if (svg) svg.querySelectorAll('g[data-from-id]').forEach(g => g.setAttribute('opacity', '0.15'));
+  if (svg) _resetArrows(svg);
 }
 
 let _popupRafId = null;
@@ -7247,24 +7251,12 @@ function showBarPopup(task, barWrap) {
   pop.style.top = '-9999px';
   _popupRafId = requestAnimationFrame(() => {
     _popupRafId = null;
-    const r = barWrap.getBoundingClientRect();
-    if (!r.width && !r.height) return;
-    const pw = pop.offsetWidth || 160;
-    const ph = pop.offsetHeight || 32;
-    const cx = r.left + r.width / 2;
-    const left = Math.max(8, Math.min(cx - pw / 2, window.innerWidth - pw - 8));
-    // Prefer above the bar with 10px gap; if not enough room, place below
-    let top;
-    if (r.top - ph - 10 >= 54) {
-      top = r.top - ph - 10;
-    } else {
-      top = r.bottom + 10;
-      if (top + ph > window.innerHeight - 8) top = r.top - ph - 10;
-    }
-    top = Math.max(54, Math.min(top, window.innerHeight - ph - 8));
-    pop.style.left = left + 'px';
-    pop.style.top = top + 'px';
-    _popupRafId = requestAnimationFrame(() => { _popupRafId = null; pop.style.visibility = 'visible'; });
+    const pw = pop.offsetWidth || 180;
+    const ph = pop.offsetHeight || 60;
+    const margin = 16;
+    pop.style.left = (window.innerWidth  - pw - margin) + 'px';
+    pop.style.top  = (window.innerHeight - ph - margin) + 'px';
+    pop.style.visibility = 'visible';
   });
 }
 
@@ -7339,14 +7331,10 @@ function showDepPopup(fromId, toId, clientX, clientY) {
   _depPopupRafId = requestAnimationFrame(() => {
     _depPopupRafId = null;
     const pw = pop.offsetWidth || 220, ph = pop.offsetHeight || 80;
-    const left = Math.max(8, Math.min(clientX - pw / 2, window.innerWidth - pw - 8));
-    let top = clientY - ph - 14;
-    if (top < 54) top = clientY + 14;
-    if (top + ph > window.innerHeight - 8) top = clientY - ph - 14;
-    top = Math.max(54, top);
-    pop.style.left = left + 'px';
-    pop.style.top  = top  + 'px';
-    _depPopupRafId = requestAnimationFrame(() => { _depPopupRafId = null; pop.style.visibility = 'visible'; });
+    const margin = 16;
+    pop.style.left = (window.innerWidth  - pw - margin) + 'px';
+    pop.style.top  = (window.innerHeight - ph - margin) + 'px';
+    pop.style.visibility = 'visible';
   });
 }
 
@@ -8733,8 +8721,10 @@ function tdpInlineEdit(field, taskId) {
       if (d === 0) task.type = 'milestone';
     }
     else if (field === 'progress') { task.progress = Math.min(100, Math.max(0, parseInt(inp.value) || 0)); }
+    enforceConstraints(task);
     cascadeSuccessors(taskId);
     saveProject(true);
+    renderGantt();
     openTaskDetailPanel(taskId);
   }
   inp.addEventListener('blur', commit);
@@ -8751,6 +8741,7 @@ function tdpToggleManual(taskId) {
   pushUndo();
   task.manual = !task.manual;
   saveProject(true);
+  renderGantt();
   openTaskDetailPanel(taskId);
 }
 
@@ -9144,18 +9135,20 @@ if ('serviceWorker' in navigator) {
    ARROW HOVER HIGHLIGHTING
 ═══════════════════════════════════════════════════ */
 let _depDblTapState = { ts: 0, x: 0, y: 0 };
-let _arrowsDimmed = false;
+
+// Base opacity matches the initial render state (no selection)
+const ARROW_BASE_OPC = '0.4';
 
 function _resetArrows(svg) {
   if (!svg) return;
-  svg.querySelectorAll('g[data-from-id]').forEach(g => g.setAttribute('opacity', '1'));
+  svg.querySelectorAll('g[data-from-id]').forEach(g => g.setAttribute('opacity', ARROW_BASE_OPC));
 }
 
 function _highlightArrowsFor(svg, tid) {
   if (!svg) return;
   svg.querySelectorAll('g[data-from-id]').forEach(g => {
     const related = g.dataset.fromId === tid || g.dataset.toId === tid;
-    g.setAttribute('opacity', related ? '1' : '0.15');
+    g.setAttribute('opacity', related ? '1' : '0.08');
   });
 }
 
@@ -9165,82 +9158,78 @@ function initArrowHighlighting() {
   let _hoverArrowG = null;
   let _mmRaf = null;
 
-  // mousemove: dep arrow hover using manual hit-test (SVG has pointer-events:none so
-  // mouseover on g elements never fires; hitTestArrow does geometry-based detection)
+  const getSvg = () => document.getElementById('gantt-dep-svg');
+
+  // mousemove: dep-arrow hover via manual hit-test (SVG has pointer-events:none)
   canvas.addEventListener('mousemove', (e) => {
     if (window.innerWidth <= 768) return;
     if (_mmRaf) return;
     _mmRaf = requestAnimationFrame(() => {
       _mmRaf = null;
-      // When hovering a bar, clear any arrow hover state
+      // If over a bar, clear arrow hover state (bar mouseover handles arrow highlight)
       if (e.target.closest('.gantt-bar-wrap')) {
-        if (_hoverArrowG) {
-          _hoverArrowG = null;
-          const svg = document.getElementById('gantt-dep-svg');
-          if (!_arrowsDimmed && svg) _resetArrows(svg);
-          hideDepPopup();
-        }
+        if (_hoverArrowG) { _hoverArrowG = null; hideDepPopup(); }
         return;
       }
       const g = hitTestArrow(e.clientX, e.clientY);
       if (g === _hoverArrowG) return;
       _hoverArrowG = g;
-      const svg = document.getElementById('gantt-dep-svg');
+      const svg = getSvg();
       if (g) {
-        _arrowsDimmed = false;
-        if (svg) svg.querySelectorAll('g[data-from-id]').forEach(ag => ag.setAttribute('opacity', ag === g ? '1' : '0.15'));
+        // Highlight only the hovered arrow; all others nearly invisible
+        if (svg) svg.querySelectorAll('g[data-from-id]').forEach(ag =>
+          ag.setAttribute('opacity', ag === g ? '1' : '0.05'));
         showDepPopup(g.dataset.fromId, g.dataset.toId, e.clientX, e.clientY);
       } else {
-        if (!_arrowsDimmed && svg) _resetArrows(svg);
+        // Back to base: restore from bar highlight or base opacity
+        if (hoverTid) { if (svg) _highlightArrowsFor(svg, hoverTid); }
+        else { if (svg) _resetArrows(svg); }
         hideDepPopup();
       }
     });
   });
 
+  // When mouse leaves the canvas entirely: reset everything
   canvas.addEventListener('mouseleave', () => {
-    if (_hoverArrowG) {
-      _hoverArrowG = null;
-      const svg = document.getElementById('gantt-dep-svg');
-      if (!_arrowsDimmed && svg) _resetArrows(svg);
-      hideDepPopup();
+    if (_hoverArrowG) { _hoverArrowG = null; hideDepPopup(); }
+    if (hoverTid) {
+      hoverTid = null;
+      const svg = getSvg(); if (svg) _resetArrows(svg);
     }
-    hoverTid = null;
   });
 
-  // mouseover: bar hover → highlight related dep arrows
+  // Bar hover → highlight related arrows (suppresses others)
   canvas.addEventListener('mouseover', (e) => {
+    if (window.innerWidth <= 768) return;
     const bar = e.target.closest('.gantt-bar-wrap');
     if (!bar) return;
-    _arrowsDimmed = false;
     const tid = bar.dataset.taskId;
     if (tid === hoverTid) return;
     hoverTid = tid;
-    const svg = document.getElementById('gantt-dep-svg');
-    if (svg) _highlightArrowsFor(svg, tid);
+    const svg = getSvg(); if (svg) _highlightArrowsFor(svg, tid);
   });
 
+  // Bar mouseleave → reset to base opacity
   canvas.addEventListener('mouseout', (e) => {
+    if (window.innerWidth <= 768) return;
     const bar = e.target.closest('.gantt-bar-wrap');
     if (!bar) return;
     if (e.relatedTarget?.closest('.gantt-bar-wrap')) return;
     hoverTid = null;
-    if (!_activeDotWrap && !_arrowsDimmed) {
-      const svg = document.getElementById('gantt-dep-svg');
-      if (svg) _resetArrows(svg);
-    }
+    // Only reset if not hovering a dep arrow (dep arrow may still be active)
+    if (!_hoverArrowG) { const svg = getSvg(); if (svg) _resetArrows(svg); }
   });
 
-  // Click on dep arrow: desktop → open dep editor; mobile → show popup
+  // Click dep arrow: desktop → dep editor; mobile → popup
   canvas.addEventListener('click', (e) => {
     if (e.target.closest('.gantt-bar-wrap')) return;
     if (_suppressDepClick) { _suppressDepClick = false; return; }
     const g = hitTestArrow(e.clientX, e.clientY);
     if (!g) return;
-    const svg = document.getElementById('gantt-dep-svg');
-    if (svg) svg.querySelectorAll('g[data-from-id]').forEach(ag => ag.setAttribute('opacity', ag === g ? '1' : '0.15'));
-    _arrowsDimmed = false;
+    const svg = getSvg();
+    if (svg) svg.querySelectorAll('g[data-from-id]').forEach(ag =>
+      ag.setAttribute('opacity', ag === g ? '1' : '0.05'));
     if (window.innerWidth > 768) {
-      // Desktop: click opens dep editor
       hideDepPopup();
       const toTask = findTask(g.dataset.toId);
       if (toTask) {
@@ -9414,6 +9403,7 @@ function confirmDRP() {
   saveProject(true);
   const id = _drp.taskId;
   closeDRP();
+  renderGantt();
   openTaskDetailPanel(id);
 }
 
