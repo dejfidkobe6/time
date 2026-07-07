@@ -9162,21 +9162,53 @@ function _highlightArrowsFor(svg, tid) {
 function initArrowHighlighting() {
   const canvas = document.getElementById('gantt-canvas-wrap');
   let hoverTid = null;
+  let _hoverArrowG = null;
+  let _mmRaf = null;
 
-  // Desktop: hover over bar → highlight related dep arrows
-  canvas.addEventListener('mouseover', (e) => {
-    const g = e.target.closest('g[data-from-id]');
-    if (g) {
-      _arrowsDimmed = false;
+  // mousemove: dep arrow hover using manual hit-test (SVG has pointer-events:none so
+  // mouseover on g elements never fires; hitTestArrow does geometry-based detection)
+  canvas.addEventListener('mousemove', (e) => {
+    if (window.innerWidth <= 768) return;
+    if (_mmRaf) return;
+    _mmRaf = requestAnimationFrame(() => {
+      _mmRaf = null;
+      // When hovering a bar, clear any arrow hover state
+      if (e.target.closest('.gantt-bar-wrap')) {
+        if (_hoverArrowG) {
+          _hoverArrowG = null;
+          const svg = document.getElementById('gantt-dep-svg');
+          if (!_arrowsDimmed && svg) _resetArrows(svg);
+          hideDepPopup();
+        }
+        return;
+      }
+      const g = hitTestArrow(e.clientX, e.clientY);
+      if (g === _hoverArrowG) return;
+      _hoverArrowG = g;
       const svg = document.getElementById('gantt-dep-svg');
-      if (!svg) return;
-      svg.querySelectorAll('g[data-from-id]').forEach(ag => {
-        ag.setAttribute('opacity', ag === g ? '1' : '0.15');
-      });
-      // Desktop: show dep popup on hover
-      if (window.innerWidth > 768) showDepPopup(g.dataset.fromId, g.dataset.toId, e.clientX, e.clientY);
-      return;
+      if (g) {
+        _arrowsDimmed = false;
+        if (svg) svg.querySelectorAll('g[data-from-id]').forEach(ag => ag.setAttribute('opacity', ag === g ? '1' : '0.15'));
+        showDepPopup(g.dataset.fromId, g.dataset.toId, e.clientX, e.clientY);
+      } else {
+        if (!_arrowsDimmed && svg) _resetArrows(svg);
+        hideDepPopup();
+      }
+    });
+  });
+
+  canvas.addEventListener('mouseleave', () => {
+    if (_hoverArrowG) {
+      _hoverArrowG = null;
+      const svg = document.getElementById('gantt-dep-svg');
+      if (!_arrowsDimmed && svg) _resetArrows(svg);
+      hideDepPopup();
     }
+    hoverTid = null;
+  });
+
+  // mouseover: bar hover → highlight related dep arrows
+  canvas.addEventListener('mouseover', (e) => {
     const bar = e.target.closest('.gantt-bar-wrap');
     if (!bar) return;
     _arrowsDimmed = false;
@@ -9188,15 +9220,6 @@ function initArrowHighlighting() {
   });
 
   canvas.addEventListener('mouseout', (e) => {
-    const gEl = e.target.closest('g[data-from-id]');
-    if (gEl && !e.relatedTarget?.closest('g[data-from-id]')) {
-      if (!_arrowsDimmed) {
-        const svg = document.getElementById('gantt-dep-svg');
-        if (svg) _resetArrows(svg);
-      }
-      hideDepPopup();
-      return;
-    }
     const bar = e.target.closest('.gantt-bar-wrap');
     if (!bar) return;
     if (e.relatedTarget?.closest('.gantt-bar-wrap')) return;
