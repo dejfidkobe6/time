@@ -5,7 +5,7 @@
       <feComposite in="fg" in2="SourceGraphic" operator="in"/>
     </filter>
   </defs>
-  <rect width="512" height="512" fill="#4A5340"/>
+  <rect width="512" height="512" fill="#FFFFFF"/>
 
   <!-- Full BeSix logo (mark + BeSix text as one unit), gold -->
   <image filter="url(#gold)" x="86" y="78" width="340" height="303"
