@@ -8033,13 +8033,20 @@ function initSplitter() {
     splitter.classList.remove('dragging');
     document.body.style.cursor = '';
     document.body.style.userSelect = '';
+    localStorage.setItem('bt_wbs_w', String(wbsPanel.offsetWidth));
     renderGantt();
   });
   splitter.addEventListener('dblclick', () => {
     wbsPanel.style.width = '520px';
     document.documentElement.style.setProperty('--wbs-w', '520px');
+    localStorage.setItem('bt_wbs_w', '520');
     renderGantt();
   });
+  const savedW = parseInt(localStorage.getItem('bt_wbs_w') || '0', 10);
+  if (savedW >= 200 && savedW <= 900) {
+    wbsPanel.style.width = savedW + 'px';
+    document.documentElement.style.setProperty('--wbs-w', savedW + 'px');
+  }
 }
 
 /* ═══════════════════════════════════════════════════
