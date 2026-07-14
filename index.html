@@ -1745,13 +1745,17 @@ html, body {
   border-radius: 0 4px 4px 0;
   pointer-events: none;
 }
-.gantt-bl-delay { background: rgba(192,57,43,0.82); }
-.gantt-bl-save  { background: rgba(39,174,96,0.62); }
+.gantt-bl-delay { background: rgba(192,57,43,0.32); border-left: 2px solid rgba(192,57,43,0.7); }
+.gantt-bl-save  { background: rgba(39,174,96,0.22); border-left: 2px solid rgba(39,174,96,0.6); }
+/* Bar itself sits above baseline overlays so label is always readable */
+.gantt-bar-wrap { z-index: 2; }
+.gantt-bl-outline, .gantt-bl-delay, .gantt-bl-save, .gantt-float-bar { z-index: 1; }
 /* Day-count label above bar */
 .gantt-bl-label {
   position: absolute;
   top: 1px;
   font-size: 9px;
+  z-index: 3;
   font-weight: 800;
   pointer-events: none;
   white-space: nowrap;
@@ -2487,6 +2491,10 @@ html, body {
           Export
         </button>
         <div class="export-menu hidden" id="export-menu">
+          <div class="export-item" onclick="openPDFExportDialog()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/><line x1="9" y1="9" x2="10" y2="9"/></svg>
+            Harmonogram → PDF
+          </div>
           <div class="export-item" onclick="exportCashflowXLSX()">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9l6 6M15 9l-6 6"/></svg>
             Cashflow → Excel
@@ -2633,6 +2641,8 @@ html, body {
                     <label class="gantt-opts-row"><input type="checkbox" id="opt-labels" onchange="toggleGanttOpt('labels')" checked> <label for="opt-labels">Popisky na lištách</label></label>
                     <label class="gantt-opts-row"><input type="checkbox" id="opt-wknd" onchange="toggleGanttOpt('wknd')" checked> <label for="opt-wknd">Zvýraznit víkendy</label></label>
                     <label class="gantt-opts-row"><input type="checkbox" id="opt-progress" onchange="toggleGanttOpt('progress')" checked> <label for="opt-progress">Postup na lišté</label></label>
+                    <label class="gantt-opts-row"><input type="checkbox" id="opt-delays" onchange="toggleGanttOpt('delays')" checked> <label for="opt-delays">Zpoždění (směrný plán)</label></label>
+                    <label class="gantt-opts-row"><input type="checkbox" id="opt-critical" onchange="toggleCriticalPathOpt(this.checked)"> <label for="opt-critical">Kritická cesta</label></label>
                   </div>
                   <div class="gantt-opts-section">
                     <div class="gantt-opts-heading">Výška řádků</div>
@@ -2651,9 +2661,6 @@ html, body {
               </button>
               <button class="btn btn-ghost btn-icon" onclick="scrollToToday()" title="Dnes">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-              </button>
-              <button class="btn btn-ghost btn-icon" onclick="exportPDF()" title="Exportovat do PDF">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/><line x1="9" y1="9" x2="10" y2="9"/></svg>
               </button>
             </div>
           </div>
@@ -2846,7 +2853,7 @@ if (!visibleColumns.includes('name')) visibleColumns.splice(1, 0, 'name');
 
 let ganttColorMode = localStorage.getItem('bt_colormode') || 'phase';
 let ganttFilter    = localStorage.getItem('bt_filter')    || 'all';
-let ganttOpts = (() => { try { return JSON.parse(localStorage.getItem('bt_opts') || 'null') || {deps:true,labels:true,wknd:true,progress:true}; } catch(e) { return {deps:true,labels:true,wknd:true,progress:true}; } })();
+let ganttOpts = (() => { try { const o = JSON.parse(localStorage.getItem('bt_opts') || 'null') || {}; return {deps:true,labels:true,wknd:true,progress:true,delays:true,...o}; } catch(e) { return {deps:true,labels:true,wknd:true,progress:true,delays:true}; } })();
 
 /* ═══════════════════════════════════════════════════
    INIT
@@ -4818,14 +4825,13 @@ function renderGanttTaskRowsRecursive(tasks, phase, pi, minD, totalW, container,
         addTouchResize(barWrap, task, minD);
 
         // Baseline visualization: outline behind bar, delay/saving overlay + label in front
-        {
+        if (ganttOpts.delays !== false) {
           const activeBaseline = getActiveBaseline();
           const blTask = activeBaseline ? findBaselineTask(activeBaseline, task.id) : null;
           if (blTask && blTask.startDate && blTask.endDate) {
             const blX  = Math.round(dateToX(new Date(blTask.startDate), minD));
             const blX2 = Math.round(dateToX(new Date(blTask.endDate),   minD));
             const blW  = Math.max(4, blX2 - blX);
-            // Bar first, then outline on top (transparent fill → only border visible)
             tRow.appendChild(barWrap);
             const blOut = document.createElement('div');
             blOut.className = 'gantt-bl-outline';
@@ -4833,7 +4839,6 @@ function renderGanttTaskRowsRecursive(tasks, phase, pi, minD, totalW, container,
             blOut.style.width = blW + 'px';
             blOut.title = `Směrný plán: ${blTask.startDate} – ${blTask.endDate}`;
             tRow.appendChild(blOut);
-            // Delay / saving
             const dayDiff = Math.round((new Date(task.endDate) - new Date(blTask.endDate)) / 86400000);
             if (dayDiff > 0) {
               const ow = Math.max(2, x2 - blX2);
@@ -4863,6 +4868,8 @@ function renderGanttTaskRowsRecursive(tasks, phase, pi, minD, totalW, container,
           } else {
             tRow.appendChild(barWrap);
           }
+        } else {
+          tRow.appendChild(barWrap);
         }
 
         // Float bar (time reserve) — 50% transparent extension after bar end
@@ -5960,46 +5967,7 @@ function zoomGantt(dir) {
   renderGantt();
 }
 
-function exportPDF() {
-  const gs   = document.getElementById('gantt-scroll-wrap');
-  const th   = document.getElementById('gantt-time-header');
-  const cw   = document.getElementById('gantt-canvas-wrap');
-  const rows = document.getElementById('gantt-rows');
-  const svg  = document.getElementById('gantt-dep-svg');
-  const wb   = document.getElementById('wbs-body');
-
-  const prevLeft = gs ? gs.scrollLeft : 0;
-  const prevTop  = gs ? gs.scrollTop  : 0;
-
-  // Reset all scrolls to 0,0 so everything aligns in print
-  if (gs) { gs.scrollLeft = 0; gs.scrollTop = 0; }
-  if (th) th.scrollLeft = 0;
-  if (wb) wb.scrollTop = 0;
-
-  // Give the browser a frame to apply the scroll before measuring
-  requestAnimationFrame(() => {
-    // Set explicit height on canvas wrap = full row content height,
-    // so the SVG (position:absolute, height:100%) covers all rows
-    const contentH = rows ? rows.scrollHeight : 0;
-    if (cw && contentH) cw.style.height = contentH + 'px';
-    if (svg && contentH) {
-      svg.style.height = contentH + 'px';
-      svg.style.top    = '0px';
-    }
-
-    setTimeout(() => {
-      window.print();
-      // Restore after print dialog closes
-      setTimeout(() => {
-        if (cw)  cw.style.height  = '';
-        if (svg) { svg.style.height = ''; svg.style.top = '0px'; }
-        if (gs)  { gs.scrollLeft = prevLeft; gs.scrollTop = prevTop; }
-        if (th)  th.scrollLeft = prevLeft;
-        if (wb)  wb.scrollTop  = prevTop;
-      }, 800);
-    }, 100);
-  });
-}
+function exportPDF() { openPDFExportDialog(); }
 
 function scrollToToday() {
   const { minD } = getGanttBounds();
@@ -7872,6 +7840,8 @@ function toggleGanttOpts(e) {
     const el = document.getElementById('opt-' + k);
     if (el) el.checked = ganttOpts[k];
   });
+  const elCrit = document.getElementById('opt-critical');
+  if (elCrit) elCrit.checked = !!(project && project.settings && project.settings.showCriticalPath);
   document.getElementById('gantt-filter-btns')?.querySelectorAll('.mode-btn').forEach(b => {
     b.classList.toggle('active', b.textContent.toLowerCase().includes(
       {all:'vše',active:'aktivní',overdue:'po termínu',done:'hotovo'}[ganttFilter]?.substring(0,4) || ganttFilter
@@ -7901,6 +7871,119 @@ function setRowHeight(val) {
   document.documentElement.style.setProperty('--row-h', val + 'px');
   document.getElementById('row-h-val').textContent = val + 'px';
   renderWBS(); renderGantt();
+}
+function toggleCriticalPathOpt(val) {
+  if (!project || !project.settings) return;
+  project.settings.showCriticalPath = val;
+  _criticalPathCache = null;
+  saveProject(true);
+  renderGantt();
+}
+
+/* ═══════════════════════════════════════════════════
+   PDF EXPORT DIALOG
+═══════════════════════════════════════════════════ */
+function openPDFExportDialog() {
+  document.getElementById('export-menu').classList.add('hidden');
+  const curVisible = new Set(visibleColumns);
+  const colRows = COLUMN_DEFS.filter(c => c.id !== 'wbs').map(c => `
+    <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;padding:2px 0;">
+      <input type="checkbox" name="pdf-col" value="${c.id}" ${curVisible.has(c.id) ? 'checked' : ''}> ${c.label}
+    </label>`).join('');
+  const tsOpts = ['days','weeks','months'].map(ts => {
+    const label = {days:'Dny',weeks:'Týdny',months:'Měsíce'}[ts];
+    return `<label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer;">
+      <input type="radio" name="pdf-ts" value="${ts}" ${timescale===ts?'checked':''}> ${label}</label>`;
+  }).join('');
+  openModal(`
+    <div class="modal-box" style="max-width:440px;">
+      <div class="modal-header">
+        <div class="modal-title">Export harmonogramu do PDF</div>
+        <button class="modal-close" onclick="closeModal()">×</button>
+      </div>
+      <div class="modal-body" style="display:flex;flex-direction:column;gap:20px;">
+        <div>
+          <div class="gantt-opts-heading" style="margin-bottom:8px;">Časová osa</div>
+          <div style="display:flex;gap:16px;">${tsOpts}</div>
+        </div>
+        <div>
+          <div class="gantt-opts-heading" style="margin-bottom:8px;">Sloupce</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:2px 12px;">${colRows}</div>
+        </div>
+        <div>
+          <div class="gantt-opts-heading" style="margin-bottom:8px;">Papír</div>
+          <div style="display:flex;gap:16px;">
+            <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer;"><input type="radio" name="pdf-paper" value="A3 landscape" checked> A3 na šířku</label>
+            <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer;"><input type="radio" name="pdf-paper" value="A4 landscape"> A4 na šířku</label>
+            <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer;"><input type="radio" name="pdf-paper" value="A4 portrait"> A4 na výšku</label>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal()">Zrušit</button>
+        <button class="btn btn-primary" onclick="runPDFExport()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Exportovat
+        </button>
+      </div>
+    </div>`);
+}
+function runPDFExport() {
+  const ov = document.getElementById('active-modal');
+  if (!ov) return;
+  const chosenTs    = (ov.querySelector('input[name="pdf-ts"]:checked') || {value:timescale}).value;
+  const chosenPaper = (ov.querySelector('input[name="pdf-paper"]:checked') || {value:'A3 landscape'}).value;
+  const chosenCols  = ['wbs', ...[...ov.querySelectorAll('input[name="pdf-col"]:checked')].map(i => i.value)];
+  closeModal();
+
+  const prevTs = timescale, prevCellW = cellW, prevCols = [...visibleColumns];
+  timescale = chosenTs;
+  cellW = {days:22,weeks:28,months:48}[chosenTs] || cellW;
+  visibleColumns = chosenCols;
+  document.querySelectorAll('.timescale-btn').forEach(b => b.classList.remove('active'));
+  const tsBtn = document.getElementById('ts-' + chosenTs);
+  if (tsBtn) tsBtn.classList.add('active');
+
+  const styleEl = document.createElement('style');
+  styleEl.id = 'pdf-page-style';
+  styleEl.textContent = `@media print { @page { size: ${chosenPaper}; margin: 8mm; } }`;
+  document.head.appendChild(styleEl);
+
+  renderWBS(); renderGantt();
+
+  const gs = document.getElementById('gantt-scroll-wrap');
+  const th = document.getElementById('gantt-time-header');
+  const cw = document.getElementById('gantt-canvas-wrap');
+  const rows = document.getElementById('gantt-rows');
+  const svg = document.getElementById('gantt-dep-svg');
+  const wb  = document.getElementById('wbs-body');
+  const prevLeft = gs ? gs.scrollLeft : 0, prevTop = gs ? gs.scrollTop : 0;
+  if (gs) { gs.scrollLeft = 0; gs.scrollTop = 0; }
+  if (th) th.scrollLeft = 0;
+  if (wb) wb.scrollTop = 0;
+
+  requestAnimationFrame(() => {
+    const contentH = rows ? rows.scrollHeight : 0;
+    if (cw && contentH) cw.style.height = contentH + 'px';
+    if (svg && contentH) { svg.style.height = contentH + 'px'; svg.style.top = '0px'; }
+    setTimeout(() => {
+      window.print();
+      setTimeout(() => {
+        if (cw)  cw.style.height = '';
+        if (svg) { svg.style.height = ''; svg.style.top = '0px'; }
+        if (gs)  { gs.scrollLeft = prevLeft; gs.scrollTop = prevTop; }
+        if (th)  th.scrollLeft = prevLeft;
+        if (wb)  wb.scrollTop = prevTop;
+        timescale = prevTs; cellW = prevCellW; visibleColumns = prevCols;
+        document.querySelectorAll('.timescale-btn').forEach(b => b.classList.remove('active'));
+        const rb = document.getElementById('ts-' + prevTs);
+        if (rb) rb.classList.add('active');
+        const ps = document.getElementById('pdf-page-style');
+        if (ps) ps.remove();
+        renderWBS(); renderGantt();
+      }, 800);
+    }, 100);
+  });
 }
 
 /* ═══════════════════════════════════════════════════
