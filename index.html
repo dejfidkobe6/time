@@ -1102,11 +1102,32 @@ html, body {
 .cf-table tr.phase-row td { background: var(--bg); font-weight: 700; color: var(--text); font-size: 10px; text-transform: uppercase; letter-spacing: 0.3px; }
 .cf-table tr.phase-row td:first-child { background: var(--bg); }
 
-.cf-total-row td { font-weight: 800; background: var(--charcoal) !important; color: white !important; border-top: 2px solid var(--olive); }
+.cf-total-row td { font-weight: 800; background: var(--charcoal) !important; color: white !important; border-bottom: 2px solid var(--olive); }
 .cf-total-row td:first-child { background: var(--charcoal) !important; color: white !important; }
 
 .cf-cell-value { font-variant-numeric: tabular-nums; }
 .cf-cell-nonzero { color: var(--olive) !important; font-weight: 700 !important; }
+
+/* Phase collapse toggle */
+.cf-phase-toggle { display: inline-block; width: 12px; font-size: 8px; opacity: 0.6; cursor: pointer; flex-shrink: 0; }
+.cf-table tr.phase-row td:first-child { cursor: pointer; display: flex; align-items: center; gap: 2px; }
+.cf-table tr[data-cf-phase].cf-phase-hidden { display: none; }
+
+/* Cashflow table resize handle */
+.cf-table-resize {
+  height: 7px;
+  background: var(--border);
+  cursor: ns-resize;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.cf-table-resize::after {
+  content: '';
+  width: 36px; height: 2px;
+  background: var(--text-muted);
+  border-radius: 1px;
+  opacity: 0.35;
+}
 
 /* ═══════════════════════════════════════
    SPLIT VIEW (Gantt + Cashflow)
@@ -2748,9 +2769,10 @@ html, body {
             Export Excel
           </button>
         </div>
-        <div class="cf-table-scroll">
+        <div class="cf-table-scroll" id="cf-table-scroll">
           <table class="cf-table" id="cf-table"></table>
         </div>
+        <div class="cf-table-resize" id="cf-table-resize"></div>
       </div>
     </div>
 
@@ -5723,7 +5745,7 @@ function renderCashflow() {
   
   if (cashflowChartInstance) { cashflowChartInstance.destroy(); }
   
-  document.getElementById('cashflow-canvas-wrap').style.height = '280px';
+  document.getElementById('cashflow-canvas-wrap').style.height = '300px';
   
   cashflowChartInstance = new Chart(ctx, {
     type: 'bar',
@@ -5783,7 +5805,18 @@ function renderCashflow() {
       scales: {
         x: {
           grid: { color: 'rgba(0,0,0,0.04)' },
-          ticks: { font: { family: 'Montserrat', size: 9, weight: '600' }, color: '#9A9A8E', maxRotation: 45 }
+          ticks: {
+            font: { family: 'Montserrat', size: 9, weight: '600' },
+            color: '#9A9A8E',
+            maxRotation: 0,
+            minRotation: 0,
+            callback: (value, index) => {
+              const cum = data.cumulative[index];
+              if (cum == null) return labels[index] || '';
+              const cumFmt = parseFloat((cum / divisor).toFixed(1)).toLocaleString('cs-CZ') + ' ' + unitLabel;
+              return [labels[index] || '', cumFmt];
+            }
+          }
         },
         yBar: {
           type: 'linear',
@@ -5804,10 +5837,14 @@ function renderCashflow() {
   renderCashflowTable(data, divisor, unitLabel);
 }
 
+function _cfFmt(v, divisor) {
+  return (+(v / divisor).toFixed(1)).toLocaleString('cs-CZ');
+}
+
 function renderCashflowTable(data, divisor, unitLabel) {
   const table = document.getElementById('cf-table');
   if (!table) return;
-  
+
   const mn = ['led','úno','bře','dub','kvě','čvn','čvc','srp','zář','říj','lis','pro'];
   const labels = data.months.map(m => mn[m.getMonth()] + '<br>' + m.getFullYear());
 
@@ -5815,43 +5852,56 @@ function renderCashflowTable(data, divisor, unitLabel) {
   labels.forEach(l => { html += `<th class="cf-cell-value">${l}</th>`; });
   html += '<th>Celkem</th></tr></thead><tbody>';
 
-  // Phases
-  const phaseMap = {};
-  data.taskData.forEach(t => {
-    if (!phaseMap[t.phaseName]) phaseMap[t.phaseName] = { tasks: [], monthly: new Array(data.months.length).fill(0) };
-    phaseMap[t.phaseName].tasks.push(t);
-    t.monthly.forEach((v,i) => phaseMap[t.phaseName].monthly[i] += v);
-  });
-
-  Object.entries(phaseMap).forEach(([phaseName, pd]) => {
-    const phTotal = pd.monthly.reduce((a,b) => a+b, 0);
-    html += `<tr class="phase-row"><td>${escHtml(phaseName)}</td>`;
-    pd.monthly.forEach(v => {
-      const fv = +(v/divisor).toFixed(1);
-      html += `<td class="${fv > 0 ? 'cf-cell-nonzero' : ''} cf-cell-value">${fv > 0 ? fv.toLocaleString('cs-CZ') : '—'}</td>`;
-    });
-    html += `<td class="cf-cell-nonzero cf-cell-value">${+(phTotal/divisor).toFixed(1).toLocaleString('cs-CZ')}</td></tr>`;
-
-    pd.tasks.forEach(t => {
-      const tTotal = t.monthly.reduce((a,b) => a+b, 0);
-      html += `<tr><td style="padding-left:24px;">↳ ${escHtml(t.taskName)}</td>`;
-      t.monthly.forEach(v => {
-        const fv = +(v/divisor).toFixed(1);
-        html += `<td class="${fv > 0 ? 'cf-cell-nonzero' : ''} cf-cell-value">${fv > 0 ? fv.toLocaleString('cs-CZ') : '—'}</td>`;
-      });
-      html += `<td class="cf-cell-value">${+(tTotal/divisor).toFixed(1).toLocaleString('cs-CZ')}</td></tr>`;
-    });
-  });
-
-  // Total row
-  const grandTotal = data.totalMonthly.reduce((a,b) => a+b, 0);
+  // CELKEM row first (at top)
+  const grandTotal = data.totalMonthly.reduce((a, b) => a + b, 0);
   html += `<tr class="cf-total-row"><td>CELKEM</td>`;
   data.totalMonthly.forEach(v => {
-    html += `<td class="cf-cell-value">${+(v/divisor).toFixed(1).toLocaleString('cs-CZ')}</td>`;
+    html += `<td class="cf-cell-value">${_cfFmt(v, divisor)}</td>`;
   });
-  html += `<td class="cf-cell-value">${+(grandTotal/divisor).toFixed(1).toLocaleString('cs-CZ')}</td></tr>`;
+  html += `<td class="cf-cell-value">${_cfFmt(grandTotal, divisor)}</td></tr>`;
+
+  // Phases (collapsible)
+  const phaseMap = {};
+  const phaseOrder = [];
+  data.taskData.forEach(t => {
+    if (!phaseMap[t.phaseName]) { phaseMap[t.phaseName] = { tasks: [], monthly: new Array(data.months.length).fill(0) }; phaseOrder.push(t.phaseName); }
+    phaseMap[t.phaseName].tasks.push(t);
+    t.monthly.forEach((v, i) => phaseMap[t.phaseName].monthly[i] += v);
+  });
+
+  phaseOrder.forEach((phaseName, phIdx) => {
+    const pd = phaseMap[phaseName];
+    const phKey = 'cfph' + phIdx;
+    const phTotal = pd.monthly.reduce((a, b) => a + b, 0);
+    html += `<tr class="phase-row" data-cf-head="${phKey}">`;
+    html += `<td onclick="toggleCFPhase('${phKey}')"><span class="cf-phase-toggle" id="cft-${phKey}">▼</span>${escHtml(phaseName)}</td>`;
+    pd.monthly.forEach(v => {
+      const fv = +(v / divisor).toFixed(1);
+      html += `<td class="${fv > 0 ? 'cf-cell-nonzero' : ''} cf-cell-value">${fv > 0 ? fv.toLocaleString('cs-CZ') : '—'}</td>`;
+    });
+    html += `<td class="cf-cell-nonzero cf-cell-value">${_cfFmt(phTotal, divisor)}</td></tr>`;
+
+    pd.tasks.forEach(t => {
+      const tTotal = t.monthly.reduce((a, b) => a + b, 0);
+      html += `<tr data-cf-phase="${phKey}"><td style="padding-left:24px;">↳ ${escHtml(t.taskName)}</td>`;
+      t.monthly.forEach(v => {
+        const fv = +(v / divisor).toFixed(1);
+        html += `<td class="${fv > 0 ? 'cf-cell-nonzero' : ''} cf-cell-value">${fv > 0 ? fv.toLocaleString('cs-CZ') : '—'}</td>`;
+      });
+      html += `<td class="cf-cell-value">${_cfFmt(tTotal, divisor)}</td></tr>`;
+    });
+  });
+
   html += '</tbody>';
   table.innerHTML = html;
+}
+
+function toggleCFPhase(phKey) {
+  const rows = document.querySelectorAll(`tr[data-cf-phase="${phKey}"]`);
+  const toggle = document.getElementById('cft-' + phKey);
+  const isHidden = rows.length > 0 && rows[0].classList.contains('cf-phase-hidden');
+  rows.forEach(r => r.classList.toggle('cf-phase-hidden', !isHidden));
+  if (toggle) toggle.textContent = isHidden ? '▼' : '▶';
 }
 
 function renderBottomCashflow() {
@@ -8133,6 +8183,36 @@ function initSplitter() {
 }
 
 /* ═══════════════════════════════════════════════════
+   CASHFLOW TABLE RESIZE
+═══════════════════════════════════════════════════ */
+function initCFTableResize() {
+  const handle = document.getElementById('cf-table-resize');
+  const scroll = document.getElementById('cf-table-scroll');
+  if (!handle || !scroll) return;
+  const savedH = parseInt(localStorage.getItem('bt_cf_h') || '0', 10);
+  if (savedH >= 80) scroll.style.maxHeight = savedH + 'px';
+  let dragging = false, startY = 0, startH = 0;
+  handle.addEventListener('mousedown', (e) => {
+    dragging = true; startY = e.clientY; startH = scroll.offsetHeight;
+    document.body.style.cursor = 'ns-resize';
+    document.body.style.userSelect = 'none';
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    const newH = Math.max(80, Math.min(1200, startH + e.clientY - startY));
+    scroll.style.maxHeight = newH + 'px';
+  });
+  document.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    localStorage.setItem('bt_cf_h', String(scroll.offsetHeight));
+  });
+}
+
+/* ═══════════════════════════════════════════════════
    PREDECESSOR EDITOR (in modals)
 ═══════════════════════════════════════════════════ */
 function buildPredsList(taskId) {
@@ -9503,6 +9583,7 @@ initMobRowDrag();
 initSplitter();
 initPinchZoom();
 initMobPanelResize();
+initCFTableResize();
 initArrowHighlighting();
 init();
 </script>
