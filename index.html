@@ -5723,7 +5723,7 @@ function renderCashflow() {
   
   if (cashflowChartInstance) { cashflowChartInstance.destroy(); }
   
-  document.getElementById('cashflow-canvas-wrap').style.height = '280px';
+  document.getElementById('cashflow-canvas-wrap').style.height = '300px';
   
   cashflowChartInstance = new Chart(ctx, {
     type: 'bar',
@@ -5783,7 +5783,18 @@ function renderCashflow() {
       scales: {
         x: {
           grid: { color: 'rgba(0,0,0,0.04)' },
-          ticks: { font: { family: 'Montserrat', size: 9, weight: '600' }, color: '#9A9A8E', maxRotation: 45 }
+          ticks: {
+            font: { family: 'Montserrat', size: 9, weight: '600' },
+            color: '#9A9A8E',
+            maxRotation: 0,
+            minRotation: 0,
+            callback: (value, index) => {
+              const cum = data.cumulative[index];
+              if (cum == null) return labels[index] || '';
+              const cumFmt = parseFloat((cum / divisor).toFixed(1)).toLocaleString('cs-CZ') + ' ' + unitLabel;
+              return [labels[index] || '', cumFmt];
+            }
+          }
         },
         yBar: {
           type: 'linear',
