@@ -5811,10 +5811,10 @@ function renderCashflow() {
             maxRotation: 0,
             minRotation: 0,
             callback: (value, index) => {
-              const cum = data.cumulative[index];
-              if (cum == null) return labels[index] || '';
-              const cumFmt = parseFloat((cum / divisor).toFixed(1)).toLocaleString('cs-CZ') + ' ' + unitLabel;
-              return [labels[index] || '', cumFmt];
+              const monthly = data.totalMonthly[index];
+              if (!monthly) return labels[index] || '';
+              const fmt = parseFloat((monthly / divisor).toFixed(1)).toLocaleString('cs-CZ') + ' ' + unitLabel;
+              return [labels[index] || '', fmt];
             }
           }
         },
