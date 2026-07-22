@@ -2388,35 +2388,67 @@ html, body {
 }
 
 /* ── PRINT / PDF ─────────────────────────────── */
+#print-header { display: none; }
+
 @media print {
-  @page { size: A3 landscape; margin: 8mm; }
+  @page { size: A3 landscape; margin: 10mm 8mm; }
   *, *::before, *::after {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
-  #sidebar, #app-header, #wbs-toolbar, #gantt-toolbar,
+
+  /* ── Hide all UI chrome ── */
+  #sidebar, #header, #wbs-toolbar, #gantt-toolbar,
   .row-actions, .wbs-add-bar, .row-selector,
   .bar-resize-handle, .bar-connect-handle,
-  .row-fill-handle, .gantt-opts-panel { display: none !important; }
+  .row-fill-handle, .gantt-opts-panel,
+  #wbs-splitter, #today-line,
+  .bar-resize-l, .bar-resize-r, .bar-connect-dot,
+  .bar-fill-handle { display: none !important; }
 
-  body, html { background: white !important; overflow: visible !important; }
-  #content, #gantt-view, #gantt-main {
-    display: flex !important; overflow: visible !important;
-    height: auto !important; max-height: none !important;
+  /* ── Show print header ── */
+  #print-header { display: flex !important; }
+
+  /* ── Reset root layout ── */
+  body, html {
+    background: white !important;
+    overflow: visible !important;
+    height: auto !important;
+    margin: 0 !important; padding: 0 !important;
   }
-  #wbs-panel { flex-shrink: 0; overflow: visible !important; }
+  #app {
+    margin-left: 0 !important;
+    height: auto !important;
+    min-height: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: visible !important;
+  }
+
+  /* ── Content layers ── */
+  #content { overflow: visible !important; height: auto !important; display: flex !important; }
+  #gantt-view { overflow: visible !important; height: auto !important; display: flex !important; flex-direction: column !important; }
+  #gantt-main { overflow: visible !important; height: auto !important; display: flex !important; }
+
+  /* ── WBS panel ── */
+  #wbs-panel { flex-shrink: 0; overflow: visible !important; background: white !important; }
   #wbs-body  { overflow: visible !important; height: auto !important; max-height: none !important; }
-  #gantt-panel { overflow: visible !important; flex: 1; display: flex !important; flex-direction: column !important; }
+
+  /* Task names: never clip, always fully visible */
+  .wbs-row-content { overflow: visible !important; }
+  .wbs-name-cell   { overflow: visible !important; }
+  .wbs-name-input  { overflow: visible !important; white-space: nowrap !important; max-width: none !important; }
+
+  /* ── Gantt panel ── */
+  #gantt-panel     { overflow: visible !important; flex: 1; display: flex !important; flex-direction: column !important; }
   #gantt-time-header { overflow: visible !important; flex-shrink: 0; }
   #gantt-scroll-wrap { overflow: visible !important; height: auto !important; flex: 1; }
   #gantt-canvas-wrap { overflow: visible !important; position: relative; }
-  #gantt-rows { overflow: visible !important; }
-  #gantt-dep-svg { display: block !important; position: absolute !important; pointer-events: none; }
-  #wbs-splitter { display: none !important; }
-  #today-line { display: none !important; }
+  #gantt-rows      { overflow: visible !important; }
+  #gantt-dep-svg   { display: block !important; position: absolute !important; pointer-events: none; }
+
   .wbs-row, .gantt-row { break-inside: avoid; }
   .pred-chip { border: 1px solid #aaa !important; }
-  .row-fill-handle, .bar-connect-handle { display: none !important; }
 }
 </style>
 </head>
@@ -2466,6 +2498,28 @@ html, body {
 
 <!-- MAIN APP -->
 <div id="app">
+
+  <!-- PRINT HEADER (hidden on screen, shown in print/PDF) -->
+  <div id="print-header" style="align-items:center;justify-content:space-between;padding:0 4mm 6mm;border-bottom:2px solid #4A5340;margin-bottom:3mm;gap:16px;">
+    <div style="display:flex;align-items:center;gap:14px;">
+      <img src="/besix_logo_highres_transparent.png" alt="BeSix" style="height:28px;width:auto;filter:brightness(0);">
+      <div style="width:1px;height:32px;background:#ccc;"></div>
+      <div>
+        <div id="ph-project-name" style="font-size:15px;font-weight:800;color:#1C1E1A;letter-spacing:-0.3px;"></div>
+        <div id="ph-project-code" style="font-size:10px;color:#777;font-weight:600;margin-top:1px;"></div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:24px;">
+      <div style="text-align:right;">
+        <div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#aaa;">Harmonogram</div>
+        <div id="ph-date-range" style="font-size:10px;font-weight:600;color:#555;margin-top:1px;"></div>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#aaa;">Exportováno</div>
+        <div id="ph-export-date" style="font-size:10px;font-weight:600;color:#555;margin-top:1px;"></div>
+      </div>
+    </div>
+  </div>
 
   <!-- HEADER -->
   <header id="header">
@@ -7994,10 +8048,25 @@ function runPDFExport() {
   const tsBtn = document.getElementById('ts-' + chosenTs);
   if (tsBtn) tsBtn.classList.add('active');
 
+  // Override @page size from dialog
   const styleEl = document.createElement('style');
   styleEl.id = 'pdf-page-style';
-  styleEl.textContent = `@media print { @page { size: ${chosenPaper}; margin: 8mm; } }`;
+  styleEl.textContent = `@media print { @page { size: ${chosenPaper}; margin: 10mm 8mm; } }`;
   document.head.appendChild(styleEl);
+
+  // Fill print header
+  const allTasks = getAllTasks();
+  const dates = allTasks.flatMap(t => [t.startDate, t.endDate]).filter(Boolean).sort();
+  const mn = ['led','úno','bře','dub','kvě','čvn','čvc','srp','zář','říj','lis','pro'];
+  const fmtD = d => { const x = new Date(d); return x.getDate() + '. ' + mn[x.getMonth()] + ' ' + x.getFullYear(); };
+  const phName = document.getElementById('ph-project-name');
+  const phCode = document.getElementById('ph-project-code');
+  const phRange = document.getElementById('ph-date-range');
+  const phDate = document.getElementById('ph-export-date');
+  if (phName) phName.textContent = project.name || '';
+  if (phCode) phCode.textContent = project.code || '';
+  if (phRange && dates.length >= 2) phRange.textContent = fmtD(dates[0]) + ' – ' + fmtD(dates[dates.length - 1]);
+  if (phDate) phDate.textContent = new Date().toLocaleDateString('cs-CZ');
 
   renderWBS(); renderGantt();
 
