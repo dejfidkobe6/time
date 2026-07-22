@@ -198,7 +198,8 @@ html, body {
   padding: 2px 4px;
   border-radius: 3px;
   transition: background 0.15s;
-  min-width: 200px;
+  min-width: 120px;
+  width: auto;
 }
 #project-name:hover { background: var(--bg-hover); }
 #project-name:focus { background: var(--bg-hover); }
@@ -3271,7 +3272,7 @@ async function saveProjectOverview() {
     if (data.ok) {
       project.name = name;
       project.description = desc;
-      const pnEl = document.getElementById('project-name'); if (pnEl) pnEl.value = name;
+      const pnEl = document.getElementById('project-name'); if (pnEl) { pnEl.value = name; syncProjectNameWidth(); }
       closeModal();
       showToast('Projekt uložen');
     } else {
@@ -3520,6 +3521,7 @@ function render() {
 ═══════════════════════════════════════════════════ */
 function renderHeader() {
   document.getElementById('project-name').value = project.name;
+  syncProjectNameWidth();
   document.getElementById('project-code-chip').textContent = project.code;
   
   const statuses = {
@@ -7610,9 +7612,23 @@ function editProjectMeta() {
   if (code !== null) { project.code = code; saveProject(true); renderHeader(); }
 }
 
+function syncProjectNameWidth() {
+  const el = document.getElementById('project-name');
+  if (!el) return;
+  const tmp = document.createElement('span');
+  tmp.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none;font-size:16px;font-weight:800;font-family:' + getComputedStyle(el).fontFamily + ';white-space:pre;padding:2px 4px;';
+  tmp.textContent = el.value || ' ';
+  document.body.appendChild(tmp);
+  el.style.width = Math.max(120, tmp.offsetWidth + 2) + 'px';
+  document.body.removeChild(tmp);
+}
+
+document.getElementById('project-name').addEventListener('input', syncProjectNameWidth);
 document.getElementById('project-name').addEventListener('change', (e) => {
-  if (isViewer()) { e.target.value = project.name; return; }
+  if (isViewer()) { e.target.value = project.name; syncProjectNameWidth(); return; }
   project.name = e.target.value.trim() || 'Nový projekt';
+  e.target.value = project.name;
+  syncProjectNameWidth();
   saveProject(true);
 });
 
