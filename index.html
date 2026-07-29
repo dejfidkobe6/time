@@ -2571,6 +2571,10 @@ html, body {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/><line x1="9" y1="9" x2="10" y2="9"/></svg>
             Harmonogram → PDF
           </div>
+          <div class="export-item" onclick="exportScheduleXLSX()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/><line x1="4" y1="20" x2="20" y2="20"/></svg>
+            Harmonogram → Excel
+          </div>
           <div class="export-item" onclick="exportCashflowXLSX()">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9l6 6M15 9l-6 6"/></svg>
             Cashflow → Excel
@@ -7684,6 +7688,52 @@ function handleJSONImport(e) {
   };
   reader.readAsText(file);
   e.target.value = '';
+}
+
+function exportScheduleXLSX() {
+  const wb = XLSX.utils.book_new();
+  const rows = [];
+  const COL_HEADER = ['WBS', 'Název', 'Zahájení', 'Dokončení', 'Trvání (dny)', 'Postup (%)', 'Rozpočet (Kč)', 'Přiřazení', 'Typ'];
+  rows.push(COL_HEADER);
+
+  const taskDur = (t) => (t.startDate && t.endDate)
+    ? Math.round((new Date(t.endDate) - new Date(t.startDate)) / 86400000) + 1
+    : '';
+
+  // Collect all leaf dates for a task tree
+  function leafDates(tasks) {
+    const ds = [];
+    function walk(arr) { arr.forEach(t => { if (t.startDate) ds.push(t.startDate); if (t.endDate) ds.push(t.endDate); if (t.children) walk(t.children); }); }
+    walk(tasks);
+    return ds.sort();
+  }
+
+  // Recursively add task rows
+  function addTasks(tasks, prefix) {
+    tasks.forEach((task, ti) => {
+      const wbs = prefix + (ti + 1);
+      const typeLabel = task.type === 'summary' ? 'Souhrn' : task.type === 'milestone' ? 'Milník' : 'Úkol';
+      rows.push([wbs, task.name || '', task.startDate || '', task.endDate || '', taskDur(task), task.progress || 0, task.budget || 0, task.assignee || '', typeLabel]);
+      if (task.type === 'summary' && task.children && task.children.length) {
+        addTasks(task.children, wbs + '.');
+      }
+    });
+  }
+
+  project.phases.forEach((phase, pi) => {
+    const phWbs = 'F' + (pi + 1);
+    const ds = leafDates(phase.tasks || []);
+    rows.push([phWbs, phase.name || '', ds[0] || '', ds[ds.length - 1] || '', '', getPhaseProgress(phase), getPhaseBudget(phase), '', 'Fáze']);
+    addTasks(phase.tasks || [], (pi + 1) + '.');
+  });
+
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols'] = [{wch:8},{wch:40},{wch:13},{wch:13},{wch:13},{wch:11},{wch:18},{wch:22},{wch:10}];
+
+  XLSX.utils.book_append_sheet(wb, ws, 'Harmonogram');
+  const fname = (project.name || 'projekt').replace(/\s/g,'_') + '_harmonogram.xlsx';
+  XLSX.writeFile(wb, fname);
+  showToast('Excel exportován');
 }
 
 function exportCashflowXLSX() {
