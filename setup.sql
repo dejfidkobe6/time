@@ -12,16 +12,27 @@ CREATE TABLE IF NOT EXISTS user_oauth (
   KEY idx_user_id (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- Persistentní "zapamatuj si mě" tokeny
+-- Persistentní "zapamatuj si mě" tokeny (1 řádek = 1 zařízení, platnost 14 dní)
 CREATE TABLE IF NOT EXISTS remember_tokens (
   id          INT AUTO_INCREMENT PRIMARY KEY,
   user_id     INT NOT NULL,
   token_hash  VARCHAR(64) NOT NULL,
   expires_at  DATETIME NOT NULL,
+  prev_hash   VARCHAR(64) DEFAULT NULL,   -- předchozí token po rotaci
+  prev_until  DATETIME DEFAULT NULL,      -- dokdy předchozí token ještě platí
+  last_seen   DATETIME DEFAULT NULL,      -- poslední rotace tokenu
   created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   UNIQUE KEY uq_token (token_hash),
-  KEY idx_user (user_id)
+  KEY idx_user (user_id),
+  KEY idx_prev (prev_hash)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Migrace existující instalace:
+-- ALTER TABLE remember_tokens
+--   ADD COLUMN prev_hash  VARCHAR(64) DEFAULT NULL,
+--   ADD COLUMN prev_until DATETIME    DEFAULT NULL,
+--   ADD COLUMN last_seen  DATETIME    DEFAULT NULL,
+--   ADD KEY idx_prev (prev_hash);
 
 -- Registrace aplikace
 INSERT IGNORE INTO apps (app_key, app_name) VALUES ('time', 'BeSix Time — Harmonogram');

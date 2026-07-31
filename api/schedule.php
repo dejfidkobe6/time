@@ -6,6 +6,8 @@ require_once __DIR__ . '/config.php';
 header('Content-Type: application/json');
 header('Cache-Control: no-store');
 
+define('MAX_SCHEDULE_BYTES', 8 * 1024 * 1024);   // 8 MB na harmonogram
+
 $userId = requireAuth();
 $action = $_GET['action'] ?? '';
 
@@ -31,7 +33,27 @@ if ($action === 'save' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     requireProjectRole($projectId, 'member');
 
     $body = file_get_contents('php://input');
-    if (!$body || !json_decode($body)) {
+
+    if ($body === false || $body === '') {
+        http_response_code(400);
+        echo json_encode(['ok' => false, 'error' => 'Prázdná data']);
+        exit;
+    }
+
+    // Strop velikosti — ochrana DB i paměti serveru
+    if (strlen($body) > MAX_SCHEDULE_BYTES) {
+        http_response_code(413);
+        echo json_encode([
+            'ok'    => false,
+            'error' => 'Harmonogram je příliš velký (limit '
+                     . round(MAX_SCHEDULE_BYTES / 1048576) . ' MB).',
+        ]);
+        exit;
+    }
+
+    // Musí to být platný JSON objekt/pole — ne "null", "false" ani holé číslo
+    $decoded = json_decode($body, true, 64);
+    if (json_last_error() !== JSON_ERROR_NONE || !is_array($decoded)) {
         http_response_code(400);
         echo json_encode(['ok' => false, 'error' => 'Neplatná data']);
         exit;

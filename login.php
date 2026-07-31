@@ -27,16 +27,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             session_regenerate_id(true);
             $_SESSION['user_id'] = $user['id'];
 
-            // Remember me — persistent cookie 30 days
-            if (!empty($_POST['remember'])) {
-                $token   = bin2hex(random_bytes(32));
-                $hash    = hash('sha256', $token);
-                $expires = date('Y-m-d H:i:s', strtotime('+30 days'));
-                $pdo->prepare("DELETE FROM remember_tokens WHERE user_id = ?")->execute([$user['id']]);
-                $pdo->prepare("INSERT INTO remember_tokens (user_id, token_hash, expires_at) VALUES (?,?,?)")
-                    ->execute([$user['id'], $hash, $expires]);
-                setcookie(REMEMBER_COOKIE, $token, strtotime('+30 days'), '/', '.besix.cz', true, true);
-            }
+            // Zařízení si přihlášení pamatuje automaticky (REMEMBER_DAYS dní)
+            issueRememberToken((int)$user['id']);
 
             header('Location: /');
             exit;
@@ -301,10 +293,13 @@ input:focus {
         <input type="password" id="password" name="password"
                placeholder="••••••••" required>
       </div>
-      <div class="field" style="display:flex;align-items:center;gap:8px;margin-top:2px;">
-        <input type="checkbox" id="remember" name="remember" value="1"
-               style="width:16px;height:16px;accent-color:#4A5340;cursor:pointer;flex-shrink:0;">
-        <label for="remember" style="margin:0;font-weight:400;color:#8E8E93;cursor:pointer;user-select:none;">Zapamatovat si mě na 30 dní</label>
+      <div class="field" style="display:flex;align-items:center;gap:7px;margin-top:2px;color:#8E8E93;font-size:13px;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8E8E93" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;">
+          <rect x="3" y="11" width="18" height="11" rx="2"></rect>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+        </svg>
+        <span>Na tomto zařízení zůstanete přihlášeni <?= REMEMBER_DAYS ?> dní</span>
       </div>
       <button type="submit" class="btn-submit">Přihlásit se</button>
     </form>
