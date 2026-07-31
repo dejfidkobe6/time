@@ -1,20 +1,20 @@
 <?php
 /**
  * Odstraní duplicitní projekty se stejným názvem — zachová vždy jen nejstarší (nejnižší ID).
- * Spustit jednorázově: https://time.besix.cz/api/cleanup_projects.php
- * Po spuštění soubor smaž nebo přejmenuj.
+ * Spustit jednorázově: https://time.besix.cz/api/cleanup_projects.php?token=<ADMIN_TOKEN>
+ *
+ * POZOR: skript nevratně maže projekty. Vyžaduje ADMIN_TOKEN (viz admin_guard.php).
  */
+require_once __DIR__ . '/admin_guard.php';
+requireAdmin();
+
 header('Content-Type: application/json; charset=utf-8');
-require_once __DIR__ . '/secrets.php';
+require_once __DIR__ . '/config.php';   // sdílené připojení k DB
 
-$pdo = new PDO(
-    'mysql:host=127.0.0.1;dbname=besixcz;charset=utf8mb4',
-    'besixcz001',
-    DB_PASS,
-    [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]
-);
-
-$log = [];
+// Bez &confirm=1 se nic nemaže, jen se vypíše, co by se smazalo
+$dryRun = empty($_GET['confirm']);
+$log    = [];
+if ($dryRun) $log[] = 'NÁHLED — nic se nemaže. Pro skutečné smazání přidej &confirm=1';
 
 // Najdi duplicity — projekty se stejným názvem, zachovat nejnižší ID
 $rows = $pdo->query("SELECT name, MIN(id) AS keep_id, COUNT(*) AS cnt, GROUP_CONCAT(id ORDER BY id) AS ids
@@ -41,16 +41,20 @@ foreach ($rows as $row) {
             $keepSched->execute([$keepId]);
             if (!$keepSched->fetch()) {
                 // Přemluv harmonogram na zachovaný ID
-                $pdo->prepare("UPDATE time_schedules SET project_id = ? WHERE project_id = ?")
-                    ->execute([$keepId, $delId]);
+                if (!$dryRun)
+                    $pdo->prepare("UPDATE time_schedules SET project_id = ? WHERE project_id = ?")
+                        ->execute([$keepId, $delId]);
                 $log[] = "↷ Harmonogram přesunut z #$delId → #$keepId";
             } else {
-                $pdo->prepare("DELETE FROM time_schedules WHERE project_id = ?")->execute([$delId]);
+                if (!$dryRun)
+                    $pdo->prepare("DELETE FROM time_schedules WHERE project_id = ?")->execute([$delId]);
                 $log[] = "✗ Duplicitní harmonogram #$delId smazán (zachovaný #$keepId již má harmonogram)";
             }
         }
-        $pdo->prepare("DELETE FROM time_project_members WHERE project_id = ?")->execute([$delId]);
-        $pdo->prepare("DELETE FROM time_projects WHERE id = ?")->execute([$delId]);
+        if (!$dryRun) {
+            $pdo->prepare("DELETE FROM time_project_members WHERE project_id = ?")->execute([$delId]);
+            $pdo->prepare("DELETE FROM time_projects WHERE id = ?")->execute([$delId]);
+        }
         $log[] = "✗ Odstraněn duplicitní projekt #$delId \"{$row['name']}\" (zachován #$keepId)";
     }
 }

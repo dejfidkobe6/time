@@ -133,17 +133,40 @@ try {
     // Zařízení si přihlášení pamatuje automaticky (REMEMBER_DAYS dní)
     issueRememberToken((int)$row['id']);
 
-    $safe = $returnUrl;
-    if (!preg_match('#^/#', $safe) && parse_url($safe, PHP_URL_HOST) !== 'time.besix.cz') {
-        $safe = '/';
-    }
-    header('Location: ' . $safe);
+    header('Location: ' . safeReturnPath($returnUrl));
     exit;
 
 } catch (Throwable $e) {
     if (isset($pdo) && $pdo->inTransaction()) $pdo->rollBack();
-    header('Location: /login.php?error=' . urlencode('Chyba přihlášení: ' . $e->getMessage()));
+    // Detail chyby patří do logu, ne uživateli (mohl by prozradit vnitřek serveru)
+    error_log('[auth_google] ' . $e->getMessage());
+    header('Location: /login.php?error=' . urlencode('Přihlášení se nezdařilo. Zkuste to prosím znovu.'));
     exit;
+}
+
+/**
+ * Vrátí bezpečnou cílovou adresu po přihlášení — vždy jen cestu na tomto webu.
+ * Brání přesměrování na cizí web (//evil.cz, https://evil.cz, /\evil.cz).
+ */
+function safeReturnPath(?string $url): string {
+    $url = trim((string)$url);
+    if ($url === '') return '/';
+
+    // Zahoď řídicí znaky (ochrana proti podvržení hlavičky)
+    if (preg_match('/[\x00-\x1F\x7F]/', $url)) return '/';
+
+    // Absolutní adresu pusť jen na vlastní doménu
+    $host = parse_url($url, PHP_URL_HOST);
+    if ($host !== null && strtolower($host) !== 'time.besix.cz') return '/';
+
+    $path = parse_url($url, PHP_URL_PATH);
+    if (!is_string($path) || $path === '' || $path[0] !== '/') return '/';
+
+    // "//evil.cz" i "/\evil.cz" prohlížeč bere jako cizí doménu
+    if (preg_match('#^/[\\\\/]#', $path)) return '/';
+
+    $query = parse_url($url, PHP_URL_QUERY);
+    return $path . ($query !== null && $query !== '' ? '?' . $query : '');
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
