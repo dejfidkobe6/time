@@ -1,12 +1,20 @@
 <?php
 require_once __DIR__ . '/secrets.php';
 
-define('DB_HOST', '127.0.0.1');
-define('DB_NAME', 'besixcz');
-define('DB_USER', 'besixcz001');
+// Lokální vývoj (php -S localhost:8000) — pozná se podle hostitele.
+// Na ostrém serveru je IS_LOCAL vždy false a nic se nemění.
+$_host = strtolower(explode(':', $_SERVER['HTTP_HOST'] ?? ($_SERVER['SERVER_NAME'] ?? ''))[0]);
+define('IS_LOCAL', in_array($_host, ['localhost', '127.0.0.1', '[::1]', '::1'], true));
+unset($_host);
+
+// Hodnoty lze přebít v api/secrets.php (gitignorováno) — tak si je nastavuje dev.
+defined('DB_HOST') || define('DB_HOST', '127.0.0.1');
+defined('DB_PORT') || define('DB_PORT', 3306);
+defined('DB_NAME') || define('DB_NAME', 'besixcz');
+defined('DB_USER') || define('DB_USER', 'besixcz001');
 
 $pdo = new PDO(
-    'mysql:host=' . DB_HOST . ';dbname=' . DB_NAME . ';charset=utf8mb4',
+    'mysql:host=' . DB_HOST . ';port=' . DB_PORT . ';dbname=' . DB_NAME . ';charset=utf8mb4',
     DB_USER,
     DB_PASS,
     [
@@ -89,12 +97,14 @@ define('REMEMBER_COOKIE', 'besix_remember');
 define('REMEMBER_DAYS',   14);            // jak dlouho zůstane zařízení přihlášené
 define('REMEMBER_ROTATE_AFTER', 86400);   // token se přegeneruje nejvýš 1× za den
 define('REMEMBER_GRACE',        120);     // starý token platí ještě 2 min (souběžné requesty)
-define('COOKIE_DOMAIN', '.besix.cz');
+// Na localhostu nesmí být doména .besix.cz ani Secure — prohlížeč by cookie zahodil
+define('COOKIE_DOMAIN', IS_LOCAL ? ''    : '.besix.cz');
+define('COOKIE_SECURE', IS_LOCAL ? false : true);
 
 // ── Session (sdílená cookie přes celé besix.cz) ────────────────────────────
 session_name('BESIX_SESS');
 ini_set('session.cookie_domain',   COOKIE_DOMAIN);
-ini_set('session.cookie_secure',   '1');
+ini_set('session.cookie_secure',   COOKIE_SECURE ? '1' : '0');
 ini_set('session.cookie_httponly', '1');
 ini_set('session.cookie_samesite', 'Lax');
 // Session přežije zavření prohlížeče — jinak by se na každé spuštění muselo
@@ -107,7 +117,7 @@ function setRememberCookie(string $value, int $expires): void {
         'expires'  => $expires,
         'path'     => '/',
         'domain'   => COOKIE_DOMAIN,
-        'secure'   => true,
+        'secure'   => COOKIE_SECURE,
         'httponly' => true,
         'samesite' => 'Lax',
     ]);
