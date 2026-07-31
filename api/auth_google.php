@@ -130,6 +130,9 @@ try {
     session_regenerate_id(true);
     $_SESSION['user_id'] = (int)$row['id'];
 
+    // Zařízení si přihlášení pamatuje automaticky (REMEMBER_DAYS dní)
+    issueRememberToken((int)$row['id']);
+
     $safe = $returnUrl;
     if (!preg_match('#^/#', $safe) && parse_url($safe, PHP_URL_HOST) !== 'time.besix.cz') {
         $safe = '/';
