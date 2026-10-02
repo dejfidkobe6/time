@@ -2636,6 +2636,11 @@ html, body {
         <div id="mob-task-panel">
           <div id="mob-task-panel-header">
             <span style="flex:1;">Úkoly</span>
+            <div style="display:flex;gap:2px;align-items:center;margin-right:4px;">
+              <button onclick="setExpandLevel(1)" style="background:none;border:1px solid var(--border);border-radius:4px;color:var(--text-muted);font-size:11px;font-weight:700;padding:2px 6px;cursor:pointer;" title="Sbalit na 1. úroveň">1</button>
+              <button onclick="setExpandLevel(2)" style="background:none;border:1px solid var(--border);border-radius:4px;color:var(--text-muted);font-size:11px;font-weight:700;padding:2px 6px;cursor:pointer;" title="Rozbalit na 2. úroveň">2</button>
+              <button onclick="setExpandLevel(null)" style="background:none;border:1px solid var(--border);border-radius:4px;color:var(--text-muted);font-size:13px;font-weight:700;padding:2px 6px;cursor:pointer;" title="Rozbalit vše">∞</button>
+            </div>
             <button id="mob-panel-toggle" onclick="toggleMobTaskPanel()" title="Skrýt/Zobrazit">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
             </button>
@@ -2658,6 +2663,14 @@ html, body {
               Směrný plán
             </button>
             <div id="baseline-active-chip" style="display:none;" onclick="openBaselinePanel()"></div>
+            <div style="width:1px;height:16px;background:var(--border);margin:0 4px;flex-shrink:0;"></div>
+            <span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);">Úroveň</span>
+            <div style="display:flex;gap:2px;align-items:center;">
+              <button class="btn btn-ghost btn-icon" style="min-width:24px;padding:2px 6px;font-size:11px;font-weight:700;" onclick="setExpandLevel(1)" title="Sbalit na 1. úroveň">1</button>
+              <button class="btn btn-ghost btn-icon" style="min-width:24px;padding:2px 6px;font-size:11px;font-weight:700;" onclick="setExpandLevel(2)" title="Rozbalit na 2. úroveň">2</button>
+              <button class="btn btn-ghost btn-icon" style="min-width:24px;padding:2px 6px;font-size:11px;font-weight:700;" onclick="setExpandLevel(3)" title="Rozbalit na 3. úroveň">3</button>
+              <button class="btn btn-ghost btn-icon" style="min-width:24px;padding:2px 6px;font-size:13px;font-weight:700;" onclick="setExpandLevel(null)" title="Rozbalit vše">∞</button>
+            </div>
             <div class="ml-auto" style="display:flex;gap:6px;align-items:center;">
               <div class="col-picker-wrap">
                 <button class="btn btn-ghost btn-icon" onclick="toggleColumnPicker(event)" title="Sloupce">
@@ -3508,6 +3521,9 @@ function copyInviteLink(url, btn) {
    RENDER DISPATCHER
 ═══════════════════════════════════════════════════ */
 function render() {
+  // Invalidate task list caches so all sub-renders share one fresh traversal
+  _flatCache = null;
+  _leafCache = null;
   // Pre-compute summary task dates before any rendering
   project.phases.forEach(ph => {
     (ph.tasks || []).forEach(t => { if (t.type === 'summary') computeSummaryDates(t); });
@@ -3649,13 +3665,17 @@ function initColResize(hdr) {
       handle.classList.add('resizing');
       document.body.style.cursor = 'col-resize';
 
+      let _colRafId = null;
       function onMove(ev) {
         const newW = Math.max(30, startW + ev.clientX - startX);
         colWidths[colId] = Math.round(newW);
-        // Live-update grid template on header + all rows
-        const tpl = getColTemplate();
-        hdr.style.gridTemplateColumns = tpl;
-        document.querySelectorAll('.wbs-row-content').forEach(r => r.style.gridTemplateColumns = tpl);
+        if (_colRafId) return;
+        _colRafId = requestAnimationFrame(() => {
+          _colRafId = null;
+          const tpl = getColTemplate();
+          hdr.style.gridTemplateColumns = tpl;
+          document.querySelectorAll('.wbs-row-content').forEach(r => r.style.gridTemplateColumns = tpl);
+        });
       }
       function onUp() {
         document.removeEventListener('mousemove', onMove);
@@ -3687,6 +3707,10 @@ let _rowNumMap = new Map();
 function buildRowNumMap() {
   _rowNumMap = new Map(getAllTasksFlat().map((t, i) => [t.id, i + 1]));
 }
+
+// Task list cache — invalidated at start of each top-level render()
+let _flatCache = null;
+let _leafCache = null;
 function renderWBS() {
   _renderDepth++;
   buildRowNumMap();
@@ -4249,6 +4273,7 @@ function dateToX(date, minD) {
 function renderGantt() {
   _renderDepth++;
   _criticalPathCache = null;
+  _selGanttRow = null; // DOM is rebuilt, clear stale reference
   const wrap = document.getElementById('gantt-scroll-wrap');
   const savedTop  = wrap ? wrap.scrollTop  : 0;
   const savedLeft = wrap ? wrap.scrollLeft : 0;
@@ -4781,7 +4806,9 @@ function renderGanttTaskRowsRecursive(tasks, phase, pi, minD, totalW, container,
         selectedTaskId = task.id;
         selectedTaskIds.clear(); selectedTaskIds.add(task.id); lastSelectedTaskId = task.id;
         renderWBS();
-        document.querySelectorAll('#gantt-rows .gantt-row').forEach(r => { r.style.background = r.dataset.taskId === task.id ? 'rgba(74,83,64,0.05)' : ''; });
+        if (_selGanttRow && _selGanttRow !== tRow) _selGanttRow.style.background = '';
+        tRow.style.background = 'rgba(74,83,64,0.05)';
+        _selGanttRow = tRow;
       });
     }
 
@@ -7168,8 +7195,9 @@ function findTask(taskId) {
   return null;
 }
 
-// Get all leaf tasks (non-summary) in a flat array
+// Get all leaf tasks (non-summary) in a flat array — cached per render cycle
 function getAllTasks() {
+  if (_leafCache) return _leafCache;
   const out = [];
   function collect(tasks) {
     for (const t of tasks) {
@@ -7178,11 +7206,13 @@ function getAllTasks() {
     }
   }
   project.phases.forEach(ph => collect(ph.tasks || []));
+  _leafCache = out;
   return out;
 }
 
-// Get all tasks flat including summary tasks themselves
+// Get all tasks flat including summary tasks themselves — cached per render cycle
 function getAllTasksFlat() {
+  if (_flatCache) return _flatCache;
   const out = [];
   function collect(tasks) {
     for (const t of tasks) {
@@ -7191,6 +7221,7 @@ function getAllTasksFlat() {
     }
   }
   project.phases.forEach(ph => collect(ph.tasks || []));
+  _flatCache = out;
   return out;
 }
 
@@ -7944,6 +7975,7 @@ const ganttScroll = document.getElementById('gantt-scroll-wrap');
 
 let syncingScroll = false;
 let _renderDepth = 0; // >0 during DOM rebuilds — suppresses scroll sync to prevent jump-to-top
+let _selGanttRow = null; // currently highlighted Gantt row element
 
 wbsBody.addEventListener('scroll', () => {
   if (syncingScroll || _renderDepth > 0) return;
@@ -8548,6 +8580,25 @@ function toggleSummaryCollapse(taskId) {
   if (_viewerBlock()) return;
   const task = findTask(taskId);
   if (task) { task.collapsed = !task.collapsed; saveProject(true); render(); }
+}
+
+// Expand/collapse all summary tasks to a given depth level.
+// level=1 → collapse all summaries (show only top level within phase)
+// level=2 → expand 1st level, collapse deeper
+// level=null → expand everything
+function setExpandLevel(level) {
+  if (_viewerBlock()) return;
+  function applyLevel(tasks, depth) {
+    tasks.forEach(t => {
+      if (t.type === 'summary') {
+        t.collapsed = (level !== null && depth >= level);
+        if (t.children) applyLevel(t.children, depth + 1);
+      }
+    });
+  }
+  project.phases.forEach(ph => applyLevel(ph.tasks || [], 1));
+  saveProject(true);
+  render();
 }
 
 function ungroupSummary(taskId) {
