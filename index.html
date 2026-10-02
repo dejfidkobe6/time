@@ -2660,6 +2660,19 @@ html, body {
             </button>
             <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-muted);">Přidat fázi</span>
             <div style="width:1px;height:16px;background:var(--border);margin:0 4px;flex-shrink:0;"></div>
+            <div style="position:relative;">
+              <button class="btn btn-ghost btn-icon" onclick="togglePhaseSortMenu(event)" title="Seřadit fáze" style="gap:5px;padding:4px 8px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;display:flex;align-items:center;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;flex-shrink:0;"><line x1="3" y1="6" x2="21" y2="6"/><line x1="6" y1="12" x2="18" y2="12"/><line x1="9" y1="18" x2="15" y2="18"/></svg>
+                Seřadit
+              </button>
+              <div id="phase-sort-menu" style="display:none;position:absolute;top:100%;left:0;z-index:300;background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.12);min-width:180px;padding:4px;margin-top:2px;">
+                <button onclick="sortPhases('name')" style="display:block;width:100%;text-align:left;padding:6px 10px;font-size:12px;background:none;border:none;color:var(--text);cursor:pointer;border-radius:5px;" onmouseover="this.style.background='var(--hover)'" onmouseout="this.style.background='none'">Podle názvu (A → Z)</button>
+                <button onclick="sortPhases('start')" style="display:block;width:100%;text-align:left;padding:6px 10px;font-size:12px;background:none;border:none;color:var(--text);cursor:pointer;border-radius:5px;" onmouseover="this.style.background='var(--hover)'" onmouseout="this.style.background='none'">Podle zahájení</button>
+                <button onclick="sortPhases('end')" style="display:block;width:100%;text-align:left;padding:6px 10px;font-size:12px;background:none;border:none;color:var(--text);cursor:pointer;border-radius:5px;" onmouseover="this.style.background='var(--hover)'" onmouseout="this.style.background='none'">Podle dokončení</button>
+                <button onclick="sortPhases('progress')" style="display:block;width:100%;text-align:left;padding:6px 10px;font-size:12px;background:none;border:none;color:var(--text);cursor:pointer;border-radius:5px;" onmouseover="this.style.background='var(--hover)'" onmouseout="this.style.background='none'">Podle postupu</button>
+              </div>
+            </div>
+            <div style="width:1px;height:16px;background:var(--border);margin:0 4px;flex-shrink:0;"></div>
             <button class="btn btn-ghost btn-icon" onclick="openBaselinePanel()" title="Směrný plán" style="gap:5px;padding:4px 8px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;display:flex;align-items:center;">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;flex-shrink:0;"><path d="M3 3h18v4H3z"/><path d="M3 10h18v4H3z"/><path d="M3 17h18v4H3z"/></svg>
               Směrný plán
@@ -4044,6 +4057,7 @@ function createPhaseRow(phase, pi) {
     switch (colId) {
       case 'name': return `
         <div class="wbs-name-cell">
+          <span class="phase-drag-handle row-drag-handle" title="Přetáhnout pro přeřazení fáze">&#8942;&#8942;</span>
           <div class="phase-toggle ${phase.collapsed?'collapsed':''}" onclick="togglePhase('${phase.id}');event.stopPropagation()">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
           </div>
@@ -8743,6 +8757,46 @@ function moveTaskUpDown(taskId, dir) {
 }
 
 /* ═══════════════════════════════════════════════════
+   PHASE SORT & DRAG-TO-REORDER
+═══════════════════════════════════════════════════ */
+function togglePhaseSortMenu(e) {
+  e.stopPropagation();
+  const menu = document.getElementById('phase-sort-menu');
+  if (!menu) return;
+  const open = menu.style.display !== 'none';
+  menu.style.display = open ? 'none' : 'block';
+  if (!open) {
+    const close = (ev) => { if (!menu.contains(ev.target)) { menu.style.display = 'none'; document.removeEventListener('click', close); } };
+    setTimeout(() => document.addEventListener('click', close), 0);
+  }
+}
+
+function sortPhases(by) {
+  if (_viewerBlock()) return;
+  project.phases.sort((a, b) => {
+    if (by === 'name') return (a.name || '').localeCompare(b.name || '', 'cs');
+    const da = getPhaseDatesRaw(a);
+    const db = getPhaseDatesRaw(b);
+    if (by === 'start') {
+      const ta = da.start ? da.start.getTime() : Infinity;
+      const tb = db.start ? db.start.getTime() : Infinity;
+      return ta - tb;
+    }
+    if (by === 'end') {
+      const ta = da.end ? da.end.getTime() : Infinity;
+      const tb = db.end ? db.end.getTime() : Infinity;
+      return ta - tb;
+    }
+    if (by === 'progress') return getPhaseProgress(b) - getPhaseProgress(a);
+    return 0;
+  });
+  document.getElementById('phase-sort-menu').style.display = 'none';
+  saveProject(true);
+  render();
+  showToast('Fáze seřazeny');
+}
+
+/* ═══════════════════════════════════════════════════
    ROW DRAG-TO-REORDER
 ═══════════════════════════════════════════════════ */
 function initRowDrag() {
@@ -8833,6 +8887,85 @@ function initRowDrag() {
       }
     }
 
+    state = null;
+  });
+}
+
+/* ═══════════════════════════════════════════════════
+   PHASE DRAG-TO-REORDER
+═══════════════════════════════════════════════════ */
+function initPhaseDrag() {
+  if (isViewer()) return;
+  const body = document.getElementById('wbs-body');
+  let state = null;
+
+  body.addEventListener('mousedown', (e) => {
+    const handle = e.target.closest('.phase-drag-handle');
+    if (!handle) return;
+    const row = handle.closest('.wbs-row[data-phase-id]');
+    if (!row) return;
+    e.preventDefault();
+    state = { phaseId: row.dataset.phaseId, startX: e.clientX, startY: e.clientY,
+              dragging: false, row, indicator: null, dropPhaseId: null, before: true };
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!state) return;
+    if (!state.dragging) {
+      if (Math.abs(e.clientY - state.startY) < 5 && Math.abs(e.clientX - state.startX) < 5) return;
+      state.dragging = true;
+      state.row.classList.add('row-dragging');
+      body.classList.add('wbs-drag-active');
+      state.indicator = document.createElement('div');
+      state.indicator.className = 'row-drop-indicator';
+      document.body.appendChild(state.indicator);
+    }
+
+    const phaseRows = [...body.querySelectorAll('.wbs-row[data-phase-id]')];
+    phaseRows.forEach(r => r.classList.remove('drag-gap-top', 'drag-gap-bottom'));
+    state.dropPhaseId = null;
+
+    for (let i = 0; i < phaseRows.length; i++) {
+      const r = phaseRows[i];
+      if (r === state.row) continue;
+      const rect = r.getBoundingClientRect();
+      if (e.clientY < rect.top + rect.height / 2) {
+        state.dropPhaseId = r.dataset.phaseId;
+        state.before = true;
+        state.indicator.style.top = (rect.top - 1) + 'px';
+        r.classList.add('drag-gap-top');
+        return;
+      }
+      // cursor is in the bottom half of this row
+      if (i === phaseRows.length - 1 || phaseRows[i + 1] === state.row) {
+        state.dropPhaseId = r.dataset.phaseId;
+        state.before = false;
+        state.indicator.style.top = (rect.bottom - 1) + 'px';
+        r.classList.add('drag-gap-bottom');
+      }
+    }
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (!state) return;
+    body.querySelectorAll('.wbs-row').forEach(r => r.classList.remove('drag-gap-top', 'drag-gap-bottom'));
+    body.classList.remove('wbs-drag-active');
+    if (state.indicator) { state.indicator.remove(); state.indicator = null; }
+    if (state.row) state.row.classList.remove('row-dragging');
+
+    if (state.dragging && state.dropPhaseId && state.dropPhaseId !== state.phaseId) {
+      const fromIdx = project.phases.findIndex(p => p.id === state.phaseId);
+      const toIdx   = project.phases.findIndex(p => p.id === state.dropPhaseId);
+      if (fromIdx >= 0 && toIdx >= 0) {
+        const [phase] = project.phases.splice(fromIdx, 1);
+        // After removing fromIdx, destination index shifts if toIdx > fromIdx
+        let insertAt = state.before ? toIdx : toIdx + 1;
+        if (toIdx > fromIdx) insertAt--;
+        project.phases.splice(Math.max(0, insertAt), 0, phase);
+        saveProject(true);
+        render();
+      }
+    }
     state = null;
   });
 }
@@ -9879,6 +10012,7 @@ function confirmDRP() {
 
 initFillHandle();
 initRowDrag();
+initPhaseDrag();
 initMobRowDrag();
 initSplitter();
 initPinchZoom();
