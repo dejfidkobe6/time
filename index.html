@@ -3132,8 +3132,9 @@ async function doRecoverLocalStorage() {
 
       const newId = json.project.id;
       // Ulož harmonogram pod novým ID
+      // text/plain: WAF hostingu odmítá JSON těla s více než ~1000 hodnotami (HTTP 400)
       await fetch('/api/schedule.php?action=save&project_id=' + newId, {
-        method: 'POST', headers: {'Content-Type':'application/json'},
+        method: 'POST', headers: {'Content-Type':'text/plain;charset=UTF-8'},
         body: JSON.stringify(data)
       });
       ok++;
@@ -7675,9 +7676,11 @@ function saveProject(silent) {
 
   // Uložení do DB — selhání se NESMÍ spolknout, jinak uživatel tiše přijde o práci
   if (currentProjectId) {
+    // text/plain: WAF hostingu odmítá JSON těla s více než ~1000 hodnotami (HTTP 400),
+    // takže větší harmonogram (cca 80+ úkolů) by nešel uložit. Server čte php://input.
     fetch('/api/schedule.php?action=save&project_id=' + currentProjectId, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
       body: payload
     })
       .then(res => res.ok
