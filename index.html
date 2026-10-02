@@ -465,8 +465,9 @@ html, body {
 
 #wbs-body {
   flex: 1;
-  overflow-y: auto;
+  overflow-y: scroll;
   overflow-x: hidden;
+  will-change: scroll-position;
 }
 
 #wbs-body::-webkit-scrollbar { width: 4px; }
@@ -768,9 +769,10 @@ html, body {
 
 #gantt-scroll-wrap {
   flex: 1;
-  overflow: auto;
+  overflow: scroll;
   position: relative;
   touch-action: pan-x pan-y;
+  will-change: scroll-position;
 }
 
 #gantt-scroll-wrap::-webkit-scrollbar { height: 6px; width: 6px; }
@@ -3721,9 +3723,10 @@ function buildRowNumMap() {
   _rowNumMap = new Map(getAllTasksFlat().map((t, i) => [t.id, i + 1]));
 }
 
-// Task list cache — invalidated at start of each top-level render()
+// Task list cache — invalidated at start of each top-level render() and on project mutations
 let _flatCache = null;
 let _leafCache = null;
+function invalidateTaskCaches() { _flatCache = null; _leafCache = null; }
 function renderWBS() {
   _renderDepth++;
   buildRowNumMap();
@@ -5060,6 +5063,7 @@ function nextWorkDay(dateStr) {
 
 // Re-enforce constraints on every auto-scheduled task; call after project load to fix saved violations
 function enforceAllConstraints() {
+  invalidateTaskCaches();
   const allTasks = getAllTasksFlat();
   if (!allTasks.length) return;
   const taskById = new Map(allTasks.map(t => [t.id, t]));
@@ -7725,6 +7729,7 @@ function handleJSONImport(e) {
   reader.onload = (ev) => {
     try {
       project = JSON.parse(ev.target.result);
+      invalidateTaskCaches();
       enforceAllConstraints();
       saveProject(true);
       render();
@@ -7991,21 +7996,23 @@ let syncingScroll = false;
 let _renderDepth = 0; // >0 during DOM rebuilds — suppresses scroll sync to prevent jump-to-top
 let _selGanttRow = null; // currently highlighted Gantt row element
 
+const ganttTimeHdr = document.getElementById('gantt-time-header');
+
+// Scroll sync — passive listeners so browser can start compositing immediately
 wbsBody.addEventListener('scroll', () => {
   if (syncingScroll || _renderDepth > 0) return;
   syncingScroll = true;
   ganttScroll.scrollTop = wbsBody.scrollTop;
   requestAnimationFrame(() => { syncingScroll = false; });
-});
+}, { passive: true });
 
-const ganttTimeHdr = document.getElementById('gantt-time-header');
 ganttScroll.addEventListener('scroll', () => {
   if (syncingScroll || _renderDepth > 0) return;
   syncingScroll = true;
   wbsBody.scrollTop = ganttScroll.scrollTop;
   if (ganttTimeHdr) ganttTimeHdr.scrollLeft = ganttScroll.scrollLeft;
   requestAnimationFrame(() => { syncingScroll = false; });
-});
+}, { passive: true });
 
 // Ctrl+scroll or pinch-zoom on Gantt canvas = zoom timeline
 ganttScroll.addEventListener('wheel', (e) => {
@@ -8659,6 +8666,10 @@ function togglePhaseSortMenu(e) {
 
 function sortPhases(by) {
   if (_viewerBlock()) return;
+  if (!confirm('Seřazení přepíše současné pořadí fází. Pokračovat?')) {
+    document.getElementById('phase-sort-menu').style.display = 'none';
+    return;
+  }
   project.phases.sort((a, b) => {
     if (by === 'name') return (a.name || '').localeCompare(b.name || '', 'cs');
     const da = getPhaseDatesRaw(a);
@@ -8781,11 +8792,11 @@ function initRowDrag() {
    PHASE DRAG-TO-REORDER
 ═══════════════════════════════════════════════════ */
 function initPhaseDrag() {
-  if (isViewer()) return;
   const body = document.getElementById('wbs-body');
   let state = null;
 
   body.addEventListener('mousedown', (e) => {
+    if (_viewerBlock()) return;
     const handle = e.target.closest('.phase-drag-handle');
     if (!handle) return;
     const row = handle.closest('.wbs-row[data-phase-id]');
@@ -9773,6 +9784,7 @@ function pushUndo() {
 function undoAction() {
   if (!_undoStack.length) { showToast('Nic k vrácení'); return; }
   project = JSON.parse(_undoStack.pop());
+  invalidateTaskCaches();
   render();
   closeTaskDetailPanel();
   showToast('Vráceno zpět');
