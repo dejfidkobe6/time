@@ -21,6 +21,7 @@ jobs:
           GOOGLE_CLIENT_ID:     ${{ secrets.google_client_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.google_client_secret }}
           ADMIN_TOKEN:          ${{ secrets.ADMIN_TOKEN }}
+          EXPORT_TOKEN:         ${{ secrets.EXPORT_TOKEN }}
         run: |
           php -r "
           file_put_contents('api/secrets.php',
@@ -29,7 +30,8 @@ jobs:
             'define(\'BREVO_API_KEY\',        ' . var_export(getenv('BREVO_API_KEY'),        true) . ');' . PHP_EOL .
             'define(\'GOOGLE_CLIENT_ID\',     ' . var_export(getenv('GOOGLE_CLIENT_ID'),     true) . ');' . PHP_EOL .
             'define(\'GOOGLE_CLIENT_SECRET\', ' . var_export(getenv('GOOGLE_CLIENT_SECRET'), true) . ');' . PHP_EOL .
-            'define(\'ADMIN_TOKEN\',          ' . var_export(getenv('ADMIN_TOKEN'),          true) . ');' . PHP_EOL
+            'define(\'ADMIN_TOKEN\',          ' . var_export(getenv('ADMIN_TOKEN'),          true) . ');' . PHP_EOL .
+            'define(\'EXPORT_TOKEN\',         ' . var_export(getenv('EXPORT_TOKEN'),         true) . ');' . PHP_EOL
           );"
 
       - name: Deploy via FTP
