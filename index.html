@@ -8909,9 +8909,9 @@ function initPhaseDrag() {
   let state = null;
 
   body.addEventListener('mousedown', (e) => {
-    if (_viewerBlock()) return;
     const handle = e.target.closest('.phase-drag-handle');
     if (!handle) return;
+    if (_viewerBlock()) return;
     const row = handle.closest('.wbs-row[data-phase-id]');
     if (!row) return;
     e.preventDefault();

@@ -29,28 +29,35 @@ if (!file_exists($secretsFile)) {
 require_once $secretsFile;   // definuje EXPORT_TOKEN a DB_PASS
 
 /* ── Autorizace tokenem ─────────────────────────────────────────────────── */
-$requestToken = $_GET['token'] ?? '';
-if (!defined('EXPORT_TOKEN') || !hash_equals(EXPORT_TOKEN, $requestToken)) {
+$requestToken = is_string($_GET['token'] ?? null) ? $_GET['token'] : '';
+if (
+    !defined('EXPORT_TOKEN') ||
+    !is_string(EXPORT_TOKEN) ||
+    strlen(EXPORT_TOKEN) < 32 ||
+    $requestToken === '' ||
+    !hash_equals(EXPORT_TOKEN, $requestToken)
+) {
     http_response_code(401);
     echo json_encode(['error' => 'unauthorized']);
     exit;
 }
 
 /* ── Parametry ──────────────────────────────────────────────────────────── */
-$projectParam = trim($_GET['project'] ?? '');
+$projectParam = is_string($_GET['project'] ?? null) ? trim($_GET['project']) : '';
 if ($projectParam === '') {
     http_response_code(400);
     echo json_encode(['error' => 'missing_parameter_project']);
     exit;
 }
 
-$fromParam = $_GET['from'] ?? '';
-$toParam   = $_GET['to']   ?? '';
+$fromParam = is_string($_GET['from'] ?? null) ? $_GET['from'] : '';
+$toParam   = is_string($_GET['to']   ?? null) ? $_GET['to']   : '';
 
 // Validace datumových parametrů
 function validDate(string $d): bool {
-    return $d !== '' && (bool)preg_match('/^\d{4}-\d{2}-\d{2}$/', $d)
-        && strtotime($d) !== false;
+    if ($d === '') return false;
+    $dt = DateTimeImmutable::createFromFormat('Y-m-d', $d);
+    return $dt !== false && $dt->format('Y-m-d') === $d;
 }
 $filterDates = false;
 $filterFrom  = '';
@@ -129,6 +136,11 @@ $rawData     = $row['data'] ?? null;
 $schedule = null;
 if ($rawData !== null) {
     $schedule = json_decode($rawData, true);
+    if (json_last_error() !== JSON_ERROR_NONE) {
+        http_response_code(500);
+        echo json_encode(['error' => 'invalid_schedule_data']);
+        exit;
+    }
 }
 $phases = (is_array($schedule) && isset($schedule['phases'])) ? $schedule['phases'] : [];
 
@@ -168,9 +180,6 @@ foreach ($phases as $ph) {
     $phaseCounter++;
     $phaseIdMap[$ph['id']] = $phaseCounter;
 
-    $stack = $ph['tasks'] ?? [];
-    // Iterativní depth-first (LIFO simuluje rekurzi bez limit)
-    $queue = $ph['tasks'] ?? [];
     $walkQueue = function (array $tasks) use (&$taskCounter, &$taskIdMap, &$walkQueue): void {
         foreach ($tasks as $t) {
             $taskCounter++;
