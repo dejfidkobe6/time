@@ -887,10 +887,12 @@ html, body {
   height: 18px;
   cursor: grab;
 }
+/* Záchytná zóna pruhu — drží se těsně u pruhu a jeho okrajů.
+   Dřív měla přesah -10px/-12px, čímž zabírala celou výšku řádku. */
 .gantt-bar-wrap::before {
   content: '';
   position: absolute;
-  inset: -10px -12px;
+  inset: -2px -4px;
 }
 .gantt-bar-wrap:active { cursor: grabbing; }
 
@@ -3158,8 +3160,9 @@ async function doRecoverLocalStorage() {
 
       const newId = json.project.id;
       // Ulož harmonogram pod novým ID
+      // text/plain: WAF hostingu odmítá JSON těla s více než ~1000 hodnotami (HTTP 400)
       await fetch('/api/schedule.php?action=save&project_id=' + newId, {
-        method: 'POST', headers: {'Content-Type':'application/json'},
+        method: 'POST', headers: {'Content-Type':'text/plain;charset=UTF-8'},
         body: JSON.stringify(data)
       });
       ok++;
@@ -7142,12 +7145,30 @@ function selectTemplate(key) {
   if (inp && !inp.value) inp.value = TEMPLATES[key].name;
 }
 
+/* Kolik práce je v projektu — kvůli varování před přepsáním. */
+function countProjectTasks() {
+  let n = 0;
+  const walk = (arr) => (arr || []).forEach(t => { n++; if (t.children) walk(t.children); });
+  (project.phases || []).forEach(ph => walk(ph.tasks));
+  return n;
+}
+
 function confirmLoadTemplate() {
   if (_viewerBlock()) return;
   const key = selectedTemplateKey;
   if (!key) { alert('Vyberte šablonu.'); return; }
   const pname = document.getElementById('tpl-project-name').value.trim() || TEMPLATES[key].name;
   const startDate = document.getElementById('tpl-start-date').value;
+
+  // Šablona zahodí celý stávající harmonogram — na to je potřeba se zeptat
+  const existing = countProjectTasks();
+  if (existing > 0 && !confirm(
+        'Projekt „' + (project.name || 'Nový projekt') + '" obsahuje ' + existing + ' úkolů.\n\n' +
+        'Načtením šablony se celý stávající harmonogram smaže a nahradí novým.\n\n' +
+        'Opravdu pokračovat?')) {
+    return;
+  }
+
   closeModal();
   loadTemplate(key, pname, startDate);
 }
@@ -7155,7 +7176,9 @@ function confirmLoadTemplate() {
 function loadTemplate(key, projectName, startDateStr) {
   const tpl = TEMPLATES[key];
   if (!tpl) return;
-  
+
+  pushUndo();   // ať jde přepsání vzít zpět
+
   project.phases = [];
   project.nextId = 1;
   project.name = projectName || tpl.name;
@@ -7688,22 +7711,84 @@ document.getElementById('project-name').addEventListener('change', (e) => {
 /* ═══════════════════════════════════════════════════
    SAVE / LOAD
 ═══════════════════════════════════════════════════ */
+let _saveFailed = false;
+
 function saveProject(silent) {
   if (isViewer()) { if (!silent) showToast('Pouze prohlížení'); return; }
-  // Záloha do localStorage
+  const payload = JSON.stringify(project);
+
+  // Záloha do localStorage (může selhat na plné kvótě — hlavní úložiště je DB)
   if (currentProjectId) {
-    localStorage.setItem('besixtime_project_' + currentProjectId, JSON.stringify(project));
+    try { localStorage.setItem('besixtime_project_' + currentProjectId, payload); }
+    catch (e) { console.warn('Lokální záloha se nepovedla:', e); }
   }
-  // Uložení do DB
+
+  // Uložení do DB — selhání se NESMÍ spolknout, jinak uživatel tiše přijde o práci
   if (currentProjectId) {
+    // text/plain: WAF hostingu odmítá JSON těla s více než ~1000 hodnotami (HTTP 400),
+    // takže větší harmonogram (cca 80+ úkolů) by nešel uložit. Server čte php://input.
     fetch('/api/schedule.php?action=save&project_id=' + currentProjectId, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(project)
-    }).catch(() => {});
+      headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+      body: payload
+    })
+      .then(res => res.ok
+        ? res.json().catch(() => ({ ok: true }))
+        : res.json().catch(() => null).then(j => {
+            throw new Error((j && j.error) || 'server odpověděl ' + res.status);
+          }))
+      .then(data => {
+        if (data && data.ok === false) throw new Error(data.error || 'server uložení odmítl');
+        clearSaveError();
+      })
+      .catch(err => showSaveError(err.message));
   }
   if (!silent) showToast('Projekt uložen');
 }
+
+/* Trvalý pruh: uživatel musí vědět, že jeho změny nejsou na serveru. */
+function showSaveError(detail) {
+  _saveFailed = true;
+  let bar = document.getElementById('save-error-bar');
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'save-error-bar';
+    bar.style.cssText = `
+      position:fixed;top:0;left:0;right:0;z-index:10000;
+      display:flex;align-items:center;gap:12px;
+      padding:9px 16px;background:#C0392B;color:#fff;
+      font-family:var(--font-main);font-size:11px;font-weight:700;
+      box-shadow:0 2px 10px rgba(0,0,0,0.25);`;
+
+    const txt = document.createElement('span');
+    txt.id = 'save-error-text';
+    txt.style.cssText = 'flex:1;';
+
+    const retry = document.createElement('button');
+    retry.textContent = 'Zkusit znovu';
+    retry.style.cssText = `
+      background:#fff;color:#C0392B;border:none;border-radius:4px;
+      padding:5px 12px;font-family:inherit;font-size:11px;font-weight:700;cursor:pointer;`;
+    retry.onclick = () => saveProject(true);
+
+    bar.appendChild(txt);
+    bar.appendChild(retry);
+    document.body.appendChild(bar);
+  }
+  document.getElementById('save-error-text').textContent =
+    '⚠ Změny se nepodařilo uložit na server (' + detail + '). Nezavírejte stránku.';
+}
+
+function clearSaveError() {
+  _saveFailed = false;
+  const bar = document.getElementById('save-error-bar');
+  if (bar) bar.remove();
+}
+
+// Poslední záchrana — nepusť uživatele pryč s neuloženou prací
+window.addEventListener('beforeunload', (e) => {
+  if (_saveFailed) { e.preventDefault(); e.returnValue = ''; }
+});
 
 function loadProject() {
   document.getElementById('json-file-input').click();
@@ -7721,20 +7806,48 @@ function importProjectJSON() {
   document.getElementById('json-file-input').click();
 }
 
+/* Ověří, že soubor opravdu vypadá jako projekt BeSix Time — jinak by rozbil aplikaci. */
+function validateImportedProject(d) {
+  if (!d || typeof d !== 'object' || Array.isArray(d)) return 'Soubor neobsahuje projekt.';
+  if (!Array.isArray(d.phases)) return 'Chybí seznam fází (phases).';
+  for (const ph of d.phases) {
+    if (!ph || typeof ph !== 'object') return 'Poškozená fáze v souboru.';
+    if (ph.tasks !== undefined && !Array.isArray(ph.tasks)) return 'Fáze „' + (ph.name || '?') + '" má poškozený seznam úkolů.';
+  }
+  return null;   // v pořádku
+}
+
 function handleJSONImport(e) {
   if (_viewerBlock()) return;
   const file = e.target.files[0];
   if (!file) return;
   const reader = new FileReader();
   reader.onload = (ev) => {
+    let imported;
     try {
-      project = JSON.parse(ev.target.result);
-      invalidateTaskCaches();
-      enforceAllConstraints();
-      saveProject(true);
-      render();
-      showToast('Projekt importován');
-    } catch(err) { alert('Chyba při importu JSON: ' + err.message); }
+      imported = JSON.parse(ev.target.result);
+    } catch (err) {
+      alert('Chyba při importu JSON: ' + err.message);
+      return;
+    }
+
+    const problem = validateImportedProject(imported);
+    if (problem) { alert('Import se nezdařil — ' + problem); return; }
+
+    const existing = countProjectTasks();
+    if (existing > 0 && !confirm(
+          'Projekt „' + (project.name || 'Nový projekt') + '" obsahuje ' + existing + ' úkolů.\n\n' +
+          'Import celý stávající harmonogram nahradí obsahem souboru.\n\n' +
+          'Opravdu pokračovat?')) {
+      return;
+    }
+
+    pushUndo();   // ať jde import vzít zpět
+    project = imported;
+    enforceAllConstraints();
+    saveProject(true);
+    render();
+    showToast('Projekt importován');
   };
   reader.readAsText(file);
   e.target.value = '';

@@ -25,12 +25,8 @@ if ($action === 'me') {
 }
 
 if ($action === 'logout') {
-    // Clear remember-me token from DB and cookie
-    if (!empty($_COOKIE[REMEMBER_COOKIE])) {
-        $hash = hash('sha256', $_COOKIE[REMEMBER_COOKIE]);
-        $pdo->prepare("DELETE FROM remember_tokens WHERE token_hash = ?")->execute([$hash]);
-        setcookie(REMEMBER_COOKIE, '', time() - 3600, '/', '.besix.cz', true, true);
-    }
+    // Zapomenout jen toto zařízení — ostatní zůstanou přihlášená
+    clearRememberToken();
     session_destroy();
     echo json_encode(['ok' => true]);
     exit;

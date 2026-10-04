@@ -4,18 +4,15 @@
  * Z plans_projects bere POUZE projekty jejichž ID je v time_schedules.
  * Tím se plans.besix.cz vůbec nedotýká.
  *
- * Spustit: https://time.besix.cz/api/migrate.php
+ * Spustit: https://time.besix.cz/api/migrate.php?token=<ADMIN_TOKEN>
+ *
+ * Skript zapisuje do databáze — vyžaduje ADMIN_TOKEN (viz admin_guard.php).
  */
+require_once __DIR__ . '/admin_guard.php';
+requireAdmin();
+
 header('Content-Type: application/json; charset=utf-8');
-
-require_once __DIR__ . '/secrets.php';
-
-$pdo = new PDO(
-    'mysql:host=127.0.0.1;dbname=besixcz;charset=utf8mb4',
-    'besixcz001',
-    DB_PASS,
-    [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]
-);
+require_once __DIR__ . '/config.php';   // sdílené připojení k DB
 
 $log    = [];
 $errors = [];

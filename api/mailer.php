@@ -33,7 +33,16 @@ function sendBrevoEmail(string $toEmail, string $toName, string $subject, string
     return $httpCode >= 200 && $httpCode < 300;
 }
 
+/** Ošetří text před vložením do HTML e-mailu (jméno i název projektu zadává uživatel). */
+function esc(string $s): string {
+    return htmlspecialchars($s, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+}
+
 function buildInviteEmail(string $inviterName, string $projectName, string $inviteUrl): string {
+    $inviterName = esc($inviterName);
+    $projectName = esc($projectName);
+    $inviteUrl   = esc($inviteUrl);
+
     return <<<HTML
 <!DOCTYPE html>
 <html lang="cs">
@@ -96,6 +105,10 @@ HTML;
 }
 
 function buildAddedToProjectEmail(string $inviterName, string $projectName, string $projectUrl): string {
+    $inviterName = esc($inviterName);
+    $projectName = esc($projectName);
+    $projectUrl  = esc($projectUrl);
+
     return <<<HTML
 <!DOCTYPE html>
 <html lang="cs">
