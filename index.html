@@ -4421,18 +4421,16 @@ function renderMobTaskPanel() {
   const ganttScroll = document.getElementById('gantt-scroll-wrap');
   if (ganttScroll && !body._scrollBound) {
     body._scrollBound = true;
-    let syncing = false;
+    let _mobSyncTop = -1;
     ganttScroll.addEventListener('scroll', () => {
-      if (syncing || _renderDepth > 0) return;
-      syncing = true;
+      if (_renderDepth > 0 || ganttScroll.scrollTop === _mobSyncTop) return;
+      _mobSyncTop = ganttScroll.scrollTop;
       body.scrollTop = ganttScroll.scrollTop;
-      requestAnimationFrame(() => { syncing = false; });
     });
     body.addEventListener('scroll', () => {
-      if (syncing || _renderDepth > 0) return;
-      syncing = true;
+      if (_renderDepth > 0 || body.scrollTop === _mobSyncTop) return;
+      _mobSyncTop = body.scrollTop;
       ganttScroll.scrollTop = body.scrollTop;
-      requestAnimationFrame(() => { syncing = false; });
     });
   }
 }
@@ -8105,26 +8103,31 @@ document.addEventListener('keydown', (e) => {
 const wbsBody = document.getElementById('wbs-body');
 const ganttScroll = document.getElementById('gantt-scroll-wrap');
 
-let syncingScroll = false;
 let _renderDepth = 0; // >0 during DOM rebuilds — suppresses scroll sync to prevent jump-to-top
 let _selGanttRow = null; // currently highlighted Gantt row element
 
 const ganttTimeHdr = document.getElementById('gantt-time-header');
 
-// Scroll sync — passive listeners so browser can start compositing immediately
+// Scroll sync — track last synced position instead of a boolean flag.
+// A boolean flag gets cleared by rAF before the responding programmatic scroll event
+// fires (rAF runs in the same frame, responding scroll event fires in the next frame),
+// causing the handler to run with the flag cleared and snap scrollTop back.
+let _lastSyncTop = -1;
+
 wbsBody.addEventListener('scroll', () => {
-  if (syncingScroll || _renderDepth > 0) return;
-  syncingScroll = true;
+  if (_renderDepth > 0 || wbsBody.scrollTop === _lastSyncTop) return;
+  _lastSyncTop = wbsBody.scrollTop;
   ganttScroll.scrollTop = wbsBody.scrollTop;
-  requestAnimationFrame(() => { syncingScroll = false; });
 }, { passive: true });
 
 ganttScroll.addEventListener('scroll', () => {
-  if (syncingScroll || _renderDepth > 0) return;
-  syncingScroll = true;
-  wbsBody.scrollTop = ganttScroll.scrollTop;
+  if (_renderDepth > 0) return;
+  const top = ganttScroll.scrollTop;
+  if (top !== _lastSyncTop) {
+    _lastSyncTop = top;
+    wbsBody.scrollTop = top;
+  }
   if (ganttTimeHdr) ganttTimeHdr.scrollLeft = ganttScroll.scrollLeft;
-  requestAnimationFrame(() => { syncingScroll = false; });
 }, { passive: true });
 
 // Ctrl+scroll or pinch-zoom on Gantt canvas = zoom timeline
