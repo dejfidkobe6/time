@@ -2,10 +2,11 @@
 /**
  * BeSix Time — read-only JSON export harmonogramu
  *
- * GET /api/export.php?token=<TOKEN>&project=<ID|název>[&from=YYYY-MM-DD][&to=YYYY-MM-DD]
+ * GET /api/export.php?project=<ID|název>[&from=YYYY-MM-DD][&to=YYYY-MM-DD]
+ * Token: hlavička "Authorization: Bearer <TOKEN>" (preferováno)
+ *        nebo query parametr "token=<TOKEN>" (přechodně)
  */
 declare(strict_types=1);
-error_reporting(0);
 ini_set('display_errors', '0');
 
 header('Content-Type: application/json; charset=utf-8');
@@ -29,7 +30,22 @@ if (!file_exists($secretsFile)) {
 require_once $secretsFile;   // definuje EXPORT_TOKEN a DB_PASS
 
 /* ── Autorizace tokenem ─────────────────────────────────────────────────── */
-$requestToken = is_string($_GET['token'] ?? null) ? $_GET['token'] : '';
+// Preferujeme Bearer hlavičku; query ?token= přijímáme přechodně.
+$authHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
+if (preg_match('/^Bearer\s+(\S+)$/i', $authHeader, $m)) {
+    $requestToken = $m[1];
+} else {
+    $requestToken = is_string($_GET['token'] ?? null) ? $_GET['token'] : '';
+}
+
+function rejectUnauthorized(): never {
+    // Pevné zpomalení při chybném tokenu — brzdí brute-force
+    usleep(300_000);
+    http_response_code(401);
+    echo json_encode(['error' => 'unauthorized']);
+    exit;
+}
+
 if (
     !defined('EXPORT_TOKEN') ||
     !is_string(EXPORT_TOKEN) ||
@@ -37,9 +53,7 @@ if (
     $requestToken === '' ||
     !hash_equals(EXPORT_TOKEN, $requestToken)
 ) {
-    http_response_code(401);
-    echo json_encode(['error' => 'unauthorized']);
-    exit;
+    rejectUnauthorized();
 }
 
 /* ── Parametry ──────────────────────────────────────────────────────────── */
@@ -91,6 +105,7 @@ try {
         ]
     );
 } catch (PDOException $e) {
+    error_log('export.php DB connect: ' . $e->getMessage());
     http_response_code(503);
     echo json_encode(['error' => 'database_unavailable']);
     exit;
@@ -103,20 +118,32 @@ try {
             'SELECT p.id, p.name, s.data
              FROM time_projects p
              LEFT JOIN time_schedules s ON s.project_id = p.id
-             WHERE p.id = ?'
+             WHERE p.id = ?
+             LIMIT 1'
         );
         $stmt->execute([(int)$projectParam]);
+        $rows = $stmt->fetchAll();
     } else {
+        // LIMIT 2 — při shodě dvou názvů vrátíme 409 místo náhodného řádku
         $stmt = $pdo->prepare(
             'SELECT p.id, p.name, s.data
              FROM time_projects p
              LEFT JOIN time_schedules s ON s.project_id = p.id
-             WHERE p.name = ?'
+             WHERE p.name = ?
+             ORDER BY p.id
+             LIMIT 2'
         );
         $stmt->execute([$projectParam]);
+        $rows = $stmt->fetchAll();
+        if (count($rows) > 1) {
+            http_response_code(409);
+            echo json_encode(['error' => 'ambiguous_project_name']);
+            exit;
+        }
     }
-    $row = $stmt->fetch();
+    $row = $rows[0] ?? null;
 } catch (PDOException $e) {
+    error_log('export.php DB query: ' . $e->getMessage());
     http_response_code(500);
     echo json_encode(['error' => 'database_error']);
     exit;
@@ -167,10 +194,6 @@ foreach ($phases as &$ph) {
 unset($ph, $t);
 
 /* ── Přiřazení integer ID fázím a úkolům ───────────────────────────────── */
-// Dvě průchody: (1) indexace všech UUID → int-id; (2) export s filtrací.
-
-// Průchod 1: přiřazení ID — procházíme fáze a rekurzivně úkoly v pořadí,
-// jak je uživatel vidí v Ganttu (depth-first, stejně jako renderWBSTaskRows).
 $phaseIdMap = [];   // phaseUUID → int
 $taskIdMap  = [];   // taskUUID  → int
 $phaseCounter = 0;
@@ -200,9 +223,8 @@ foreach ($phases as $phIdx => $ph) {
     $phIntId   = $phaseIdMap[$ph['id']] ?? ($phIdx + 1);
     $phaseName = $ph['name'] ?? '';
 
-    // Rekurzivní procházení úkolů fáze
     $taskOrderInPhase = 0;
-    $included         = false;  // má fáze alespoň 1 zahrnutý úkol?
+    $included         = false;
 
     $flattenTasks = function (
         array $tasks,
@@ -221,7 +243,7 @@ foreach ($phases as $phIdx => $ph) {
         foreach ($tasks as $t) {
             $isMilestone = ($t['type'] ?? '') === 'milestone';
             $start       = $t['startDate'] ?? '';
-            $end         = $t['endDate']   ?? ($start);   // milestone: start == end
+            $end         = $t['endDate']   ?? ($start);
             if (!$isMilestone && $start !== '' && $end === '') {
                 $end = $start;
             }
@@ -229,12 +251,10 @@ foreach ($phases as $phIdx => $ph) {
                 $end = $start;
             }
 
-            // Datum filtr: úkol zasahuje do intervalu pokud start <= filterTo AND end >= filterFrom
             if ($filterDates) {
                 $taskStart = $start !== '' ? $start : '0000-01-01';
                 $taskEnd   = $end   !== '' ? $end   : '9999-12-31';
                 if ($taskStart > $filterTo || $taskEnd < $filterFrom) {
-                    // Přeskočit tento úkol, ale rekurzovat do dětí summary
                     if (!empty($t['children'])) {
                         $flattenTasks($t['children'], $phIntId, $phaseName);
                     }
@@ -243,10 +263,9 @@ foreach ($phases as $phIdx => $ph) {
             }
 
             $taskOrderInPhase++;
-            $included = true;
+            $included  = true;
             $taskIntId = $taskIdMap[$t['id']] ?? 0;
 
-            // Předchůdci — mapujeme UUID → int, neznámé přeskočíme (inter-project ref)
             $predchudci = [];
             foreach ($t['predecessors'] ?? [] as $p) {
                 $predUuid = $p['taskId'] ?? '';
@@ -256,20 +275,19 @@ foreach ($phases as $phIdx => $ph) {
             }
 
             $ukoly[] = [
-                'id'       => $taskIntId,
-                'oddil_id' => $phIntId,
-                'oddil'    => $phaseName,
-                'nazev'    => $t['name'] ?? '',
-                'start'    => $start,
-                'konec'    => $end,
-                'hotovo'   => min(100, max(0, (int)($t['progress'] ?? 0))),
-                'milnik'   => $isMilestone || ($start !== '' && $start === $end),
+                'id'         => $taskIntId,
+                'oddil_id'   => $phIntId,
+                'oddil'      => $phaseName,
+                'nazev'      => $t['name'] ?? '',
+                'start'      => $start,
+                'konec'      => $end,
+                'hotovo'     => min(100, max(0, (int)($t['progress'] ?? 0))),
+                'milnik'     => $isMilestone || ($start !== '' && $start === $end),
                 'predchudci' => $predchudci,
-                'poradi'   => $taskOrderInPhase,
-                'poznamka' => $t['note'] ?? '',
+                'poradi'     => $taskOrderInPhase,
+                'poznamka'   => $t['note'] ?? '',
             ];
 
-            // Rekurzovat do dětí summary úkolu
             if (!empty($t['children'])) {
                 $flattenTasks($t['children'], $phIntId, $phaseName);
             }
