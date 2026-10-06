@@ -2411,7 +2411,7 @@ html, body {
   .row-fill-handle, .gantt-opts-panel,
   #wbs-splitter, #today-line,
   .bar-resize-l, .bar-resize-r, .bar-connect-dot,
-  .bar-fill-handle { display: none !important; }
+  .bar-fill-handle, .modal-overlay { display: none !important; }
 
   /* ── Show print header ── */
   #print-header { display: flex !important; }
@@ -2430,15 +2430,21 @@ html, body {
     display: flex !important;
     flex-direction: column !important;
     overflow: visible !important;
+    transform-origin: top left;
   }
 
   /* ── Content layers ── */
-  #content { overflow: visible !important; height: auto !important; display: flex !important; }
+  #content {
+    overflow: visible !important;
+    height: auto !important;
+    display: flex !important;
+    width: max-content !important;
+  }
   #gantt-view { overflow: visible !important; height: auto !important; display: flex !important; flex-direction: column !important; }
   #gantt-main { overflow: visible !important; height: auto !important; display: flex !important; }
 
   /* ── WBS panel ── */
-  #wbs-panel { flex-shrink: 0; overflow: visible !important; background: white !important; }
+  #wbs-panel { flex-shrink: 0 !important; overflow: visible !important; background: white !important; }
   #wbs-body  { overflow: visible !important; height: auto !important; max-height: none !important; }
 
   /* Task names: never clip, always fully visible */
@@ -2446,15 +2452,15 @@ html, body {
   .wbs-name-cell   { overflow: visible !important; }
   .wbs-name-input  { overflow: visible !important; white-space: nowrap !important; max-width: none !important; }
 
-  /* ── Gantt panel ── */
-  #gantt-panel     { overflow: visible !important; flex: 1; display: flex !important; flex-direction: column !important; }
-  #gantt-time-header { overflow: visible !important; flex-shrink: 0; }
-  #gantt-scroll-wrap { overflow: visible !important; height: auto !important; flex: 1; }
-  #gantt-canvas-wrap { overflow: visible !important; position: relative; }
+  /* ── Gantt panel — expand to full timeline width ── */
+  #gantt-panel     { overflow: visible !important; flex: none !important; display: flex !important; flex-direction: column !important; }
+  #gantt-time-header { overflow: visible !important; flex-shrink: 0 !important; width: max-content !important; }
+  #gantt-scroll-wrap { overflow: visible !important; height: auto !important; width: max-content !important; }
+  #gantt-canvas-wrap { overflow: visible !important; position: relative !important; }
   #gantt-rows      { overflow: visible !important; }
   #gantt-dep-svg   { display: block !important; position: absolute !important; pointer-events: none; }
 
-  .wbs-row, .gantt-row { break-inside: avoid; }
+  .wbs-row, .gantt-row { break-inside: avoid; page-break-inside: avoid; }
   .pred-chip { border: 1px solid #aaa !important; }
 }
 </style>
@@ -4385,10 +4391,14 @@ function renderMobTaskPanel() {
   }
 
   const cp = getSettings().showCriticalPath ? getCriticalPath() : new Set();
+  const norm = _nameFilter ? normalizeStr(_nameFilter) : '';
 
   project.phases.forEach((phase, pi) => {
     const color = getPhaseColor(phase, pi);
     const taskColor = lightenColor(color, 0.42);
+
+    // When filter active, skip phase if none of its tasks match
+    if (norm && !(phase.tasks || []).some(t => taskOrDescendantMatchesText(t, norm))) return;
 
     // Phase row — click collapses, dblclick edits
     const phRow = document.createElement('div');
@@ -4414,11 +4424,14 @@ function renderMobTaskPanel() {
     });
     body.appendChild(phRow);
 
-    if (phase.collapsed) return;
+    // When filter active, expand collapsed phases with matches
+    if (phase.collapsed && !norm) return;
 
     function renderMobTasks(tasks, indent) {
       tasks.forEach(task => {
         if (task.type === 'summary') computeSummaryDates(task);
+        // Skip tasks that don't match filter (nor any descendant)
+        if (norm && !taskOrDescendantMatchesText(task, norm)) return;
         const isSummary = task.type === 'summary';
         const row = document.createElement('div');
         row.className = 'mob-task-row' + (selectedTaskId === task.id ? ' selected' : '') + (isSummary ? ' is-phase' : '');
@@ -4460,8 +4473,8 @@ function renderMobTaskPanel() {
 
         body.appendChild(row);
 
-        // Recurse into children if summary and not collapsed
-        if (isSummary && !task.collapsed && task.children && task.children.length) {
+        // Recurse into children if summary and not collapsed (force-expand when filtering)
+        if (isSummary && (norm || !task.collapsed) && task.children && task.children.length) {
           renderMobTasks(task.children, indent + 1);
         }
       });
@@ -8334,7 +8347,7 @@ function openPDFExportDialog() {
       <input type="radio" name="pdf-ts" value="${ts}" ${timescale===ts?'checked':''}> ${label}</label>`;
   }).join('');
   openModal(`
-    <div class="modal-box" style="max-width:440px;">
+    <div class="modal" style="max-width:460px;">
       <div class="modal-header">
         <div class="modal-title">Export harmonogramu do PDF</div>
         <button class="modal-close" onclick="closeModal()">×</button>
@@ -8345,7 +8358,7 @@ function openPDFExportDialog() {
           <div style="display:flex;gap:16px;">${tsOpts}</div>
         </div>
         <div>
-          <div class="gantt-opts-heading" style="margin-bottom:8px;">Sloupce</div>
+          <div class="gantt-opts-heading" style="margin-bottom:8px;">Sloupce WBS</div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:2px 12px;">${colRows}</div>
         </div>
         <div>
@@ -8353,15 +8366,24 @@ function openPDFExportDialog() {
           <div style="display:flex;gap:16px;">
             <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer;"><input type="radio" name="pdf-paper" value="A3 landscape" checked> A3 na šířku</label>
             <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer;"><input type="radio" name="pdf-paper" value="A4 landscape"> A4 na šířku</label>
-            <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer;"><input type="radio" name="pdf-paper" value="A4 portrait"> A4 na výšku</label>
           </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--border);padding-top:14px;">
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;">
+            <input type="checkbox" id="pdf-expand-all" checked>
+            <span>Rozbalit všechny skupiny a fáze pro export</span>
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;">
+            <input type="checkbox" id="pdf-fit-page" checked>
+            <span>Přizpůsobit celý harmonogram na 1 stránku</span>
+          </label>
         </div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" onclick="closeModal()">Zrušit</button>
         <button class="btn btn-primary" onclick="runPDFExport()">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          Exportovat
+          Exportovat PDF
         </button>
       </div>
     </div>`);
@@ -8372,8 +8394,11 @@ function runPDFExport() {
   const chosenTs    = (ov.querySelector('input[name="pdf-ts"]:checked') || {value:timescale}).value;
   const chosenPaper = (ov.querySelector('input[name="pdf-paper"]:checked') || {value:'A3 landscape'}).value;
   const chosenCols  = ['wbs', ...[...ov.querySelectorAll('input[name="pdf-col"]:checked')].map(i => i.value)];
+  const doExpand    = ov.querySelector('#pdf-expand-all')?.checked !== false;
+  const doFitPage   = ov.querySelector('#pdf-fit-page')?.checked !== false;
   closeModal();
 
+  // Save timescale/column state
   const prevTs = timescale, prevCellW = cellW, prevCols = [...visibleColumns];
   timescale = chosenTs;
   cellW = {days:22,weeks:28,months:48}[chosenTs] || cellW;
@@ -8382,7 +8407,19 @@ function runPDFExport() {
   const tsBtn = document.getElementById('ts-' + chosenTs);
   if (tsBtn) tsBtn.classList.add('active');
 
-  // Override @page size from dialog
+  // Save and optionally expand all collapsed states
+  let savedCollapsed = null;
+  if (doExpand) {
+    function _saveCollapsed(tasks) {
+      return tasks.map(t => ({id:t.id, c:!!t.collapsed, ch:_saveCollapsed(t.children||[])}));
+    }
+    savedCollapsed = project.phases.map(ph => ({id:ph.id, c:!!ph.collapsed, tasks:_saveCollapsed(ph.tasks||[])}));
+    function _expandAll(tasks) { tasks.forEach(t => { t.collapsed = false; if (t.children) _expandAll(t.children); }); }
+    project.phases.forEach(ph => { ph.collapsed = false; _expandAll(ph.tasks||[]); });
+    invalidateTaskCaches();
+  }
+
+  // @page override
   const styleEl = document.createElement('style');
   styleEl.id = 'pdf-page-style';
   styleEl.textContent = `@media print { @page { size: ${chosenPaper}; margin: 10mm 8mm; } }`;
@@ -8404,38 +8441,90 @@ function runPDFExport() {
 
   renderWBS(); renderGantt();
 
-  const gs = document.getElementById('gantt-scroll-wrap');
-  const th = document.getElementById('gantt-time-header');
-  const cw = document.getElementById('gantt-canvas-wrap');
+  const gs   = document.getElementById('gantt-scroll-wrap');
+  const th   = document.getElementById('gantt-time-header');
+  const cw   = document.getElementById('gantt-canvas-wrap');
   const rows = document.getElementById('gantt-rows');
-  const svg = document.getElementById('gantt-dep-svg');
-  const wb  = document.getElementById('wbs-body');
+  const svg  = document.getElementById('gantt-dep-svg');
+  const wb   = document.getElementById('wbs-body');
   const prevLeft = gs ? gs.scrollLeft : 0, prevTop = gs ? gs.scrollTop : 0;
   if (gs) { gs.scrollLeft = 0; gs.scrollTop = 0; }
   if (th) th.scrollLeft = 0;
   if (wb) wb.scrollTop = 0;
 
+  // Expand height to show all rows, then measure for fit-to-page
   requestAnimationFrame(() => {
     const contentH = rows ? rows.scrollHeight : 0;
     if (cw && contentH) cw.style.height = contentH + 'px';
     if (svg && contentH) { svg.style.height = contentH + 'px'; svg.style.top = '0px'; }
-    setTimeout(() => {
-      window.print();
+
+    requestAnimationFrame(() => {
+      if (doFitPage) {
+        // Usable page area in CSS px (96dpi: 1mm = 3.7795px)
+        // margins: 8mm left+right (16mm), 10mm top+bottom (20mm)
+        const paperMm = {
+          'A3 landscape': [404, 277], // 420-16, 297-20
+          'A4 landscape': [281, 190], // 297-16, 210-20
+        };
+        const [pw, ph_] = (paperMm[chosenPaper] || paperMm['A3 landscape']);
+        const mm2px = 3.7795;
+        const usableW = pw * mm2px;
+        const usableH = ph_ * mm2px;
+
+        // Measure rendered content dimensions
+        const wbsEl   = document.getElementById('wbs-panel');
+        const cwEl    = document.getElementById('gantt-canvas-wrap');
+        const phdrEl  = document.getElementById('print-header');
+        const cwWidth = cwEl ? Math.max(cwEl.offsetWidth, cwEl.scrollWidth) : 0;
+        const totalW  = (wbsEl ? wbsEl.offsetWidth : 0) + cwWidth;
+        const totalH  = (phdrEl ? phdrEl.offsetHeight : 50) + contentH + 16;
+
+        if (totalW > 0 && totalH > 0) {
+          const zoom = Math.min(1, usableW / totalW, usableH / totalH);
+          if (zoom < 0.999) {
+            const zs = document.createElement('style');
+            zs.id = 'pdf-zoom-style';
+            zs.textContent = `@media print { #app { zoom: ${zoom.toFixed(4)}; } }`;
+            document.head.appendChild(zs);
+          }
+        }
+      }
+
       setTimeout(() => {
-        if (cw)  cw.style.height = '';
-        if (svg) { svg.style.height = ''; svg.style.top = '0px'; }
-        if (gs)  { gs.scrollLeft = prevLeft; gs.scrollTop = prevTop; }
-        if (th)  th.scrollLeft = prevLeft;
-        if (wb)  wb.scrollTop = prevTop;
-        timescale = prevTs; cellW = prevCellW; visibleColumns = prevCols;
-        document.querySelectorAll('.timescale-btn').forEach(b => b.classList.remove('active'));
-        const rb = document.getElementById('ts-' + prevTs);
-        if (rb) rb.classList.add('active');
-        const ps = document.getElementById('pdf-page-style');
-        if (ps) ps.remove();
-        renderWBS(); renderGantt();
-      }, 800);
-    }, 100);
+        window.print();
+        setTimeout(() => {
+          if (cw)  cw.style.height = '';
+          if (svg) { svg.style.height = ''; svg.style.top = '0px'; }
+          if (gs)  { gs.scrollLeft = prevLeft; gs.scrollTop = prevTop; }
+          if (th)  th.scrollLeft = prevLeft;
+          if (wb)  wb.scrollTop = prevTop;
+          timescale = prevTs; cellW = prevCellW; visibleColumns = prevCols;
+          document.querySelectorAll('.timescale-btn').forEach(b => b.classList.remove('active'));
+          const rb = document.getElementById('ts-' + prevTs);
+          if (rb) rb.classList.add('active');
+          document.getElementById('pdf-page-style')?.remove();
+          document.getElementById('pdf-zoom-style')?.remove();
+
+          // Restore collapsed states
+          if (savedCollapsed) {
+            function _restoreCollapsed(tasks, saved) {
+              saved.forEach(s => {
+                const t = tasks.find(x => x.id === s.id);
+                if (!t) return;
+                t.collapsed = s.c;
+                if (t.children && s.ch.length) _restoreCollapsed(t.children, s.ch);
+              });
+            }
+            savedCollapsed.forEach(ps => {
+              const ph = project.phases.find(p => p.id === ps.id);
+              if (ph) { ph.collapsed = ps.c; _restoreCollapsed(ph.tasks||[], ps.tasks); }
+            });
+            invalidateTaskCaches();
+          }
+          renderWBS(); renderGantt();
+        }, 900);
+      }, 200);
+    });
   });
 }
 
