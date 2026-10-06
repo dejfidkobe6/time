@@ -4385,10 +4385,14 @@ function renderMobTaskPanel() {
   }
 
   const cp = getSettings().showCriticalPath ? getCriticalPath() : new Set();
+  const norm = _nameFilter ? normalizeStr(_nameFilter) : '';
 
   project.phases.forEach((phase, pi) => {
     const color = getPhaseColor(phase, pi);
     const taskColor = lightenColor(color, 0.42);
+
+    // When filter active, skip phase if none of its tasks match
+    if (norm && !(phase.tasks || []).some(t => taskOrDescendantMatchesText(t, norm))) return;
 
     // Phase row — click collapses, dblclick edits
     const phRow = document.createElement('div');
@@ -4414,11 +4418,14 @@ function renderMobTaskPanel() {
     });
     body.appendChild(phRow);
 
-    if (phase.collapsed) return;
+    // When filter active, expand collapsed phases with matches
+    if (phase.collapsed && !norm) return;
 
     function renderMobTasks(tasks, indent) {
       tasks.forEach(task => {
         if (task.type === 'summary') computeSummaryDates(task);
+        // Skip tasks that don't match filter (nor any descendant)
+        if (norm && !taskOrDescendantMatchesText(task, norm)) return;
         const isSummary = task.type === 'summary';
         const row = document.createElement('div');
         row.className = 'mob-task-row' + (selectedTaskId === task.id ? ' selected' : '') + (isSummary ? ' is-phase' : '');
@@ -4460,8 +4467,8 @@ function renderMobTaskPanel() {
 
         body.appendChild(row);
 
-        // Recurse into children if summary and not collapsed
-        if (isSummary && !task.collapsed && task.children && task.children.length) {
+        // Recurse into children if summary and not collapsed (force-expand when filtering)
+        if (isSummary && (norm || !task.collapsed) && task.children && task.children.length) {
           renderMobTasks(task.children, indent + 1);
         }
       });
