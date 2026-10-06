@@ -3782,7 +3782,7 @@ function renderWBS() {
     const phRow = createPhaseRow(phase, pi);
     body.appendChild(phRow);
 
-    if (!phase.collapsed) {
+    if (!phase.collapsed || _nameFilter) {
       renderWBSTaskRows(phase.tasks || [], phase, pi, 0, body);
     }
   });
@@ -4397,9 +4397,6 @@ function renderMobTaskPanel() {
     const color = getPhaseColor(phase, pi);
     const taskColor = lightenColor(color, 0.42);
 
-    // When filter active, skip phase if none of its tasks match
-    if (norm && !(phase.tasks || []).some(t => taskOrDescendantMatchesText(t, norm))) return;
-
     // Phase row — click collapses, dblclick edits
     const phRow = document.createElement('div');
     phRow.className = 'mob-task-row is-phase';
@@ -4866,7 +4863,7 @@ function renderGanttRows(minD, totalW) {
     }
 
     rowOffset++;
-    if (phase.collapsed) return;
+    if (phase.collapsed && !_nameFilter) return;
 
     renderGanttTaskRowsRecursive(phase.tasks || [], phase, pi, minD, totalW, container, cp);
   });
