@@ -8358,13 +8358,6 @@ function openPDFExportDialog() {
           <div class="gantt-opts-heading" style="margin-bottom:8px;">Sloupce WBS</div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:2px 12px;">${colRows}</div>
         </div>
-        <div>
-          <div class="gantt-opts-heading" style="margin-bottom:8px;">Papír</div>
-          <div style="display:flex;gap:16px;">
-            <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer;"><input type="radio" name="pdf-paper" value="A3 landscape" checked> A3 na šířku</label>
-            <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer;"><input type="radio" name="pdf-paper" value="A4 landscape"> A4 na šířku</label>
-          </div>
-        </div>
         <div style="display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--border);padding-top:14px;">
           <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;">
             <input type="checkbox" id="pdf-expand-all" checked>
@@ -8372,8 +8365,11 @@ function openPDFExportDialog() {
           </label>
           <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;">
             <input type="checkbox" id="pdf-fit-page" checked>
-            <span>Přizpůsobit celý harmonogram na 1 stránku</span>
+            <span>Automatická velikost stránky (vše na jednu stránku, čitelné)</span>
           </label>
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);line-height:1.5;background:var(--bg);padding:10px;border-radius:6px;">
+          PDF se vygeneruje s vlastní velikostí stránky přesně podle obsahu — celý harmonogram na jedné straně v plné čitelnosti. Při uložení jako PDF zvolte "Uložit jako PDF" (ne tiskárnu).
         </div>
       </div>
       <div class="modal-footer">
@@ -8457,27 +8453,35 @@ function runPDFExport() {
 
     requestAnimationFrame(() => {
       if (doFitPage) {
-        // Usable page area in CSS px (96dpi: 1mm = 3.7795px)
-        // margins: 8mm left+right (16mm), 10mm top+bottom (20mm)
-        const paperMm = {
-          'A3 landscape': [404, 277], // 420-16, 297-20
-          'A4 landscape': [281, 190], // 297-16, 210-20
-        };
-        const [pw, ph_] = (paperMm[chosenPaper] || paperMm['A3 landscape']);
-        const mm2px = 3.7795;
-        const usableW = pw * mm2px;
-        const usableH = ph_ * mm2px;
+        // Calculate a custom page size that fits the content at 1:1 scale.
+        // Only zoom if content exceeds plotter maximum (~A0 width).
+        const mm = 3.7795; // CSS px per mm at 96 dpi
+        const marginW_mm = 16, marginH_mm = 20; // 8mm sides, 10mm top+bottom
 
-        // Measure rendered content dimensions
-        const wbsEl   = document.getElementById('wbs-panel');
-        const cwEl    = document.getElementById('gantt-canvas-wrap');
-        const phdrEl  = document.getElementById('print-header');
-        const cwWidth = cwEl ? Math.max(cwEl.offsetWidth, cwEl.scrollWidth) : 0;
-        const totalW  = (wbsEl ? wbsEl.offsetWidth : 0) + cwWidth;
-        const totalH  = (phdrEl ? phdrEl.offsetHeight : 50) + contentH + 16;
+        const wbsEl  = document.getElementById('wbs-panel');
+        const cwEl   = document.getElementById('gantt-canvas-wrap');
+        const phdrEl = document.getElementById('print-header');
+        const cwWidth   = cwEl ? Math.max(cwEl.offsetWidth, cwEl.scrollWidth) : 0;
+        const totalW_px = (wbsEl ? wbsEl.offsetWidth : 0) + cwWidth;
+        const totalH_px = (phdrEl ? phdrEl.offsetHeight : 50) + contentH + 16;
 
-        if (totalW > 0 && totalH > 0) {
-          const zoom = Math.min(1, usableW / totalW, usableH / totalH);
+        if (totalW_px > 0 && totalH_px > 0) {
+          let pageW = totalW_px / mm + marginW_mm;
+          let pageH = totalH_px / mm + marginH_mm;
+          let zoom = 1;
+          const maxW = 841, maxH = 594; // A0 width, A1 height in mm
+
+          if (pageW > maxW || pageH > maxH) {
+            const zoomW = pageW > maxW ? (maxW - marginW_mm) / (totalW_px / mm) : 1;
+            const zoomH = pageH > maxH ? (maxH - marginH_mm) / (totalH_px / mm) : 1;
+            zoom = Math.min(zoomW, zoomH);
+            pageW = Math.min(totalW_px / mm * zoom + marginW_mm, maxW);
+            pageH = Math.min(totalH_px / mm * zoom + marginH_mm, maxH);
+          }
+
+          // Override @page with content-fitted custom size
+          styleEl.textContent = `@media print { @page { size: ${pageW.toFixed(0)}mm ${pageH.toFixed(0)}mm; margin: 10mm 8mm; } }`;
+
           if (zoom < 0.999) {
             const zs = document.createElement('style');
             zs.id = 'pdf-zoom-style';
