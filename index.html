@@ -2047,10 +2047,12 @@ html, body {
   gap: 6px; flex-shrink: 0;
 }
 #mob-task-panel-subheader {
-  height: var(--colhdr-h);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
-  background: var(--bg);
+  background: var(--bg-card);
+  padding: 6px 8px;
+  display: flex;
+  align-items: center;
 }
 #mob-task-panel-body {
   overflow-y: auto;
@@ -2649,7 +2651,20 @@ html, body {
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
             </button>
           </div>
-          <div id="mob-task-panel-subheader"></div>
+          <div id="mob-task-panel-subheader">
+            <div style="position:relative;display:flex;align-items:center;width:100%;">
+              <svg style="position:absolute;left:8px;width:13px;height:13px;color:var(--text-muted);pointer-events:none;flex-shrink:0;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input id="mob-name-filter-input" type="text" placeholder="Filtrovat úkoly…"
+                style="width:100%;padding:7px 32px 7px 28px;font-size:13px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);outline:none;"
+                oninput="setNameFilter(this.value)"
+                onfocus="this.style.borderColor='var(--olive)'"
+                onblur="this.style.borderColor='var(--border)'">
+              <button id="mob-name-filter-clear" onclick="clearNameFilter()" title="Zrušit filtr"
+                style="display:none;position:absolute;right:8px;align-items:center;justify-content:center;background:none;border:none;cursor:pointer;padding:4px;color:var(--text-muted);">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:13px;height:13px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+          </div>
           <div id="mob-task-panel-body"></div>
           <div id="mob-panel-resize"></div>
         </div>
@@ -8830,17 +8845,23 @@ function setExpandLevel(level) {
 let _nameFilterTimer = null;
 function setNameFilter(val) {
   _nameFilter = val.trim();
-  const clearBtn = document.getElementById('name-filter-clear');
-  if (clearBtn) clearBtn.style.display = _nameFilter ? 'flex' : 'none';
+  ['name-filter-clear', 'mob-name-filter-clear'].forEach(id => {
+    const btn = document.getElementById(id);
+    if (btn) btn.style.display = _nameFilter ? 'flex' : 'none';
+  });
   clearTimeout(_nameFilterTimer);
   _nameFilterTimer = setTimeout(() => { renderWBS(); renderGantt(); }, 180);
 }
 function clearNameFilter() {
   _nameFilter = '';
-  const inp = document.getElementById('name-filter-input');
-  if (inp) inp.value = '';
-  const clearBtn = document.getElementById('name-filter-clear');
-  if (clearBtn) clearBtn.style.display = 'none';
+  ['name-filter-input', 'mob-name-filter-input'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  ['name-filter-clear', 'mob-name-filter-clear'].forEach(id => {
+    const btn = document.getElementById(id);
+    if (btn) btn.style.display = 'none';
+  });
   renderWBS(); renderGantt();
 }
 
