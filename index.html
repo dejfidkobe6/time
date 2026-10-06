@@ -2688,6 +2688,20 @@ html, body {
               <button class="btn btn-ghost btn-icon" style="min-width:24px;padding:2px 6px;font-size:11px;font-weight:700;" onclick="setExpandLevel(3)" title="Rozbalit na 3. úroveň">3</button>
               <button class="btn btn-ghost btn-icon" style="min-width:24px;padding:2px 6px;font-size:13px;font-weight:700;" onclick="setExpandLevel(null)" title="Rozbalit vše">∞</button>
             </div>
+            <div style="width:1px;height:16px;background:var(--border);margin:0 4px;flex-shrink:0;"></div>
+            <div style="position:relative;display:flex;align-items:center;flex-shrink:0;">
+              <svg style="position:absolute;left:7px;width:12px;height:12px;color:var(--text-muted);pointer-events:none;flex-shrink:0;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input id="name-filter-input" type="text" placeholder="Filtrovat…"
+                style="padding:3px 22px 3px 24px;font-size:11px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);width:130px;outline:none;transition:border-color .15s;"
+                oninput="setNameFilter(this.value)"
+                onfocus="this.style.borderColor='var(--olive)'"
+                onblur="this.style.borderColor='var(--border)'"
+                title="Filtrovat úkoly (bez diakritiky: c = c/č, s = s/š…)">
+              <button id="name-filter-clear" onclick="clearNameFilter()" title="Zrušit filtr"
+                style="display:none;position:absolute;right:5px;align-items:center;justify-content:center;background:none;border:none;cursor:pointer;padding:2px;color:var(--text-muted);">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:11px;height:11px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
             <div class="ml-auto" style="display:flex;gap:6px;align-items:center;">
               <div class="col-picker-wrap">
                 <button class="btn btn-ghost btn-icon" onclick="toggleColumnPicker(event)" title="Sloupce">
@@ -2964,6 +2978,7 @@ if (!visibleColumns.includes('name')) visibleColumns.splice(1, 0, 'name');
 
 let ganttColorMode = localStorage.getItem('bt_colormode') || 'phase';
 let ganttFilter    = localStorage.getItem('bt_filter')    || 'all';
+let _nameFilter = ''; // textový filtr WBS+Gantt řádků
 let ganttOpts = (() => { try { const o = JSON.parse(localStorage.getItem('bt_opts') || 'null') || {}; return {deps:true,labels:true,wknd:true,progress:true,delays:true,...o}; } catch(e) { return {deps:true,labels:true,wknd:true,progress:true,delays:true}; } })();
 
 /* ═══════════════════════════════════════════════════
@@ -3709,14 +3724,17 @@ function initColResize(hdr) {
 }
 
 function renderWBSTaskRows(tasks, phase, pi, depth, body) {
+  const norm = _nameFilter ? normalizeStr(_nameFilter) : '';
   tasks.forEach((task, ti) => {
-    // Compute summary dates before rendering
     if (task.type === 'summary') computeSummaryDates(task);
+    if (norm && !taskOrDescendantMatchesText(task, norm)) return;
     const tRow = createTaskRow(task, phase, pi, ti, depth);
     body.appendChild(tRow);
-    // Recurse into children if summary and not collapsed
-    if (task.type === 'summary' && !task.collapsed && task.children && task.children.length) {
-      renderWBSTaskRows(task.children, phase, pi, depth + 1, body);
+    if (task.type === 'summary' && task.children && task.children.length) {
+      // When filter active, force-expand summaries that have matches
+      if (norm || !task.collapsed) {
+        renderWBSTaskRows(task.children, phase, pi, depth + 1, body);
+      }
     }
   });
 }
@@ -4047,6 +4065,22 @@ function taskMatchesFilter(task) {
   if (ganttFilter === 'active') return (task.progress || 0) < 100;
   if (ganttFilter === 'overdue') return isOverdue(task);
   return true;
+}
+
+// Normalizace bez diakritiky: č→c, á→a, ž→z atd.
+function normalizeStr(s) {
+  return (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+}
+
+// Vrátí true pokud úkol nebo libovolný potomek odpovídá textovému filtru
+function taskOrDescendantMatchesText(task, norm) {
+  if (normalizeStr(task.name).includes(norm)) return true;
+  if (task.children) {
+    for (const c of task.children) {
+      if (taskOrDescendantMatchesText(c, norm)) return true;
+    }
+  }
+  return false;
 }
 
 function createPhaseRow(phase, pi) {
@@ -4811,9 +4845,10 @@ function renderGanttRows(minD, totalW) {
 }
 
 function renderGanttTaskRowsRecursive(tasks, phase, pi, minD, totalW, container, cp) {
+  const norm = _nameFilter ? normalizeStr(_nameFilter) : '';
   tasks.forEach(task => {
-    // Compute summary dates before rendering
     if (task.type === 'summary') computeSummaryDates(task);
+    if (norm && !taskOrDescendantMatchesText(task, norm)) return;
 
     const tRow = document.createElement('div');
     tRow.className = 'gantt-row' + (task.type === 'summary' ? ' is-summary' : '');
@@ -5035,9 +5070,10 @@ function renderGanttTaskRowsRecursive(tasks, phase, pi, minD, totalW, container,
 
     container.appendChild(tRow);
 
-    // Recurse into children if summary and not collapsed
-    if (task.type === 'summary' && !task.collapsed && task.children && task.children.length) {
-      renderGanttTaskRowsRecursive(task.children, phase, pi, minD, totalW, container, cp);
+    if (task.type === 'summary' && task.children && task.children.length) {
+      if (norm || !task.collapsed) {
+        renderGanttTaskRowsRecursive(task.children, phase, pi, minD, totalW, container, cp);
+      }
     }
   });
 }
@@ -8789,6 +8825,23 @@ function setExpandLevel(level) {
   invalidateTaskCaches();
   saveProject(true);
   render();
+}
+
+let _nameFilterTimer = null;
+function setNameFilter(val) {
+  _nameFilter = val.trim();
+  const clearBtn = document.getElementById('name-filter-clear');
+  if (clearBtn) clearBtn.style.display = _nameFilter ? 'flex' : 'none';
+  clearTimeout(_nameFilterTimer);
+  _nameFilterTimer = setTimeout(() => { renderWBS(); renderGantt(); }, 180);
+}
+function clearNameFilter() {
+  _nameFilter = '';
+  const inp = document.getElementById('name-filter-input');
+  if (inp) inp.value = '';
+  const clearBtn = document.getElementById('name-filter-clear');
+  if (clearBtn) clearBtn.style.display = 'none';
+  renderWBS(); renderGantt();
 }
 
 function ungroupSummary(taskId) {
