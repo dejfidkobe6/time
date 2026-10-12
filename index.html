@@ -8492,7 +8492,13 @@ function runPDFExport() {
       }
 
       setTimeout(() => {
+        // Set document title → browser uses it as default PDF filename
+        const prevTitle = document.title;
+        const exportDateStr = new Date().toLocaleDateString('cs-CZ').replace(/\s/g, '').replace(/\./g, '-').replace(/-$/, '');
+        const safeName = (project.name || 'projekt').replace(/[/\\:*?"<>|]/g, '_');
+        document.title = `HMG_${safeName}_${exportDateStr}`;
         window.print();
+        document.title = prevTitle;
         setTimeout(() => {
           if (cw)  cw.style.height = '';
           if (svg) { svg.style.height = ''; svg.style.top = '0px'; }
