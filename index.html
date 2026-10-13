@@ -514,6 +514,7 @@ html, body {
 }
 .wbs-row.drag-gap-top,    .mob-task-row.drag-gap-top    { margin-top: calc(var(--row-h) * 0.9) !important; }
 .wbs-row.drag-gap-bottom, .mob-task-row.drag-gap-bottom { margin-bottom: calc(var(--row-h) * 0.9) !important; }
+.wbs-row.drag-drop-inside { outline: 2px solid var(--olive); outline-offset: -2px; background: rgba(143,186,110,0.10) !important; }
 .row-selector {
   position: absolute; left: 0; top: 0; bottom: 0; width: 18px;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -4278,6 +4279,13 @@ function createTaskRow(task, phase, pi, ti, depth) {
       ${cells}
     </div>
     <div class="row-actions">
+      ${isSummary ? `
+      <button class="row-action-btn" onclick="openAddTaskModal('${phase.id}','${task.id}');event.stopPropagation();" title="Přidat úkol do skupiny">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      </button>
+      <button class="row-action-btn" onclick="openAddGroupModal('${phase.id}','${task.id}');event.stopPropagation();" title="Přidat podfázi do skupiny">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
+      </button>` : ''}
       <button class="row-action-btn" onclick="openEditTaskModal('${task.id}');event.stopPropagation();" title="Upravit">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
       </button>
@@ -6364,12 +6372,15 @@ function addTaskAfterSelected() {
   openAddTaskModal(foundPhase.id);
 }
 
-function openAddTaskModal(phaseId) {
+function openAddTaskModal(phaseId, parentTaskId) {
   if (_viewerBlock()) return;
+  parentTaskId = parentTaskId || '';
   const phaseOptions = project.phases.map(p => `<option value="${p.id}" ${p.id === phaseId ? 'selected' : ''}>${escHtml(p.name)}</option>`).join('');
   const today = new Date().toISOString().split('T')[0];
   const in30 = new Date(Date.now() + 30*86400000).toISOString().split('T')[0];
-  
+  const parentTask = parentTaskId ? findTask(parentTaskId) : null;
+  const parentInfo = parentTask ? `<div style="font-size:11px;color:var(--text-muted);padding:2px 0 8px;">Přidá se do skupiny: <strong>${escHtml(parentTask.name)}</strong></div>` : '';
+
   openModal(`
     <div class="modal">
       <div class="modal-header">
@@ -6379,6 +6390,8 @@ function openAddTaskModal(phaseId) {
         </button>
       </div>
       <div class="modal-body">
+        <input type="hidden" id="m-task-parent" value="${escHtml(parentTaskId)}">
+        ${parentInfo}
         <div class="form-row single"><div class="form-field">
           <label class="form-label">Název úkolu</label>
           <input class="form-input" id="m-task-name" placeholder="Název úkolu" autofocus>
@@ -6441,8 +6454,9 @@ function confirmAddTask() {
   if (_viewerBlock()) return;
   const name = document.getElementById('m-task-name').value.trim();
   const phaseId = document.getElementById('m-task-phase').value;
+  const parentTaskId = document.getElementById('m-task-parent')?.value || '';
   if (!name || !phaseId) { alert('Vyplňte název a fázi.'); return; }
-  
+
   const task = {
     id: 'task_' + (project.nextId++),
     name,
@@ -6454,24 +6468,37 @@ function confirmAddTask() {
     completionWeight: parseInt(document.getElementById('m-task-weight').value) || 0,
     type: 'task'
   };
-  
-  const phase = project.phases.find(p => p.id === phaseId);
-  if (phase) {
-    if (_insertAfter && _insertAfter.phaseId === phaseId) {
-      phase.tasks.splice(_insertAfter.beforeIdx, 0, task);
-    } else {
-      phase.tasks.push(task);
+
+  if (parentTaskId) {
+    const parent = findTask(parentTaskId);
+    if (parent && parent.type === 'summary') {
+      if (!parent.children) parent.children = [];
+      parent.children.push(task);
+      parent.collapsed = false;
+    }
+  } else {
+    const phase = project.phases.find(p => p.id === phaseId);
+    if (phase) {
+      if (_insertAfter && _insertAfter.phaseId === phaseId) {
+        phase.tasks.splice(_insertAfter.beforeIdx, 0, task);
+      } else {
+        phase.tasks.push(task);
+      }
     }
   }
   _insertAfter = null;
   closeModal();
+  invalidateTaskCaches();
   saveProject(true);
   render();
   selectTask(task.id);
 }
 
-function openAddGroupModal(phaseId) {
+function openAddGroupModal(phaseId, parentTaskId) {
   if (_viewerBlock()) return;
+  parentTaskId = parentTaskId || '';
+  const parentTask = parentTaskId ? findTask(parentTaskId) : null;
+  const parentInfo = parentTask ? `<div style="font-size:11px;color:var(--text-muted);padding:2px 0 8px;">Přidá se do skupiny: <strong>${escHtml(parentTask.name)}</strong></div>` : '';
   openModal(`
     <div class="modal">
       <div class="modal-header">
@@ -6482,8 +6509,10 @@ function openAddGroupModal(phaseId) {
       </div>
       <div class="modal-body">
         <input type="hidden" id="m-group-phase" value="${escHtml(phaseId)}">
+        <input type="hidden" id="m-group-parent" value="${escHtml(parentTaskId)}">
+        ${parentInfo}
         <div class="form-row single"><div class="form-field">
-          <label class="form-label">Název skupiny</label>
+          <label class="form-label">Název skupiny / podfáze</label>
           <input class="form-input" id="m-group-name" placeholder="Název skupiny / podfáze" autofocus>
         </div></div>
       </div>
@@ -6499,6 +6528,7 @@ function confirmAddGroup() {
   if (_viewerBlock()) return;
   const name = document.getElementById('m-group-name').value.trim();
   const phaseId = document.getElementById('m-group-phase').value;
+  const parentTaskId = document.getElementById('m-group-parent')?.value || '';
   if (!name || !phaseId) { alert('Vyplňte název skupiny.'); return; }
   const group = {
     id: 'task_' + (project.nextId++),
@@ -6507,8 +6537,17 @@ function confirmAddGroup() {
     collapsed: false,
     children: []
   };
-  const phase = project.phases.find(p => p.id === phaseId);
-  if (phase) phase.tasks.push(group);
+  if (parentTaskId) {
+    const parent = findTask(parentTaskId);
+    if (parent && parent.type === 'summary') {
+      if (!parent.children) parent.children = [];
+      parent.children.push(group);
+      parent.collapsed = false;
+    }
+  } else {
+    const phase = project.phases.find(p => p.id === phaseId);
+    if (phase) phase.tasks.push(group);
+  }
   closeModal();
   invalidateTaskCaches();
   saveProject(true);
@@ -9063,8 +9102,8 @@ function initRowDrag() {
     }
 
     const allRows = [...document.querySelectorAll('#wbs-body .wbs-row[data-task-id]')];
-    // Clear gap classes before reading positions (avoid stale rects)
-    allRows.forEach(r => r.classList.remove('drag-gap-top', 'drag-gap-bottom'));
+    // Clear gap/inside classes before reading positions (avoid stale rects)
+    allRows.forEach(r => r.classList.remove('drag-gap-top', 'drag-gap-bottom', 'drag-drop-inside'));
     state.dropPos = null;
     let lastAbove = null;
 
@@ -9072,25 +9111,36 @@ function initRowDrag() {
       const r = allRows[i];
       if (r === state.row) continue;
       const rect = r.getBoundingClientRect();
-      if (e.clientY < rect.top + rect.height / 2) {
-        state.dropPos = { taskId: r.dataset.taskId, before: true };
-        state.indicator.style.top = (rect.top - 1) + 'px';
+      const isSummaryRow = r.classList.contains('is-summary');
+      // Upper zone: drop BEFORE this row
+      const upperBound = rect.top + rect.height * (isSummaryRow ? 0.30 : 0.50);
+      // Middle zone (summary only): drop INSIDE this group
+      const middleBound = isSummaryRow ? (rect.bottom - rect.height * 0.30) : null;
+
+      if (e.clientY < upperBound) {
+        state.dropPos = { taskId: r.dataset.taskId, before: true, inside: false };
+        state.indicator.style.cssText = `top:${rect.top - 1}px;left:0;right:0;display:block;`;
         r.classList.add('drag-gap-top');
+        break;
+      } else if (isSummaryRow && middleBound !== null && e.clientY < middleBound) {
+        state.dropPos = { taskId: r.dataset.taskId, before: false, inside: true };
+        state.indicator.style.cssText = 'display:none;';
+        r.classList.add('drag-drop-inside');
         break;
       }
       lastAbove = r;
     }
     if (!state.dropPos && lastAbove) {
       const rect = lastAbove.getBoundingClientRect();
-      state.dropPos = { taskId: lastAbove.dataset.taskId, before: false };
-      state.indicator.style.top = (rect.bottom - 1) + 'px';
+      state.dropPos = { taskId: lastAbove.dataset.taskId, before: false, inside: false };
+      state.indicator.style.cssText = `top:${rect.bottom - 1}px;left:0;right:0;display:block;`;
       lastAbove.classList.add('drag-gap-bottom');
     }
   });
 
   document.addEventListener('mouseup', (e) => {
     if (!state) return;
-    document.querySelectorAll('#wbs-body .wbs-row').forEach(r => r.classList.remove('drag-gap-top', 'drag-gap-bottom'));
+    document.querySelectorAll('#wbs-body .wbs-row').forEach(r => r.classList.remove('drag-gap-top', 'drag-gap-bottom', 'drag-drop-inside'));
     document.getElementById('wbs-body')?.classList.remove('wbs-drag-active');
     if (state.indicator) { state.indicator.remove(); state.indicator = null; }
 
@@ -9104,20 +9154,33 @@ function initRowDrag() {
 
     if (state.dropPos && state.dropPos.taskId !== state.taskId) {
       const { taskId: fromId } = state;
-      const { taskId: refId, before } = state.dropPos;
+      const { taskId: refId, before, inside } = state.dropPos;
 
       const srcRef = findParent(fromId);
       if (srcRef) {
         const [srcTask] = srcRef.container.splice(srcRef.index, 1);
-        const dstRef = findParent(refId);
-        if (dstRef) {
-          dstRef.container.splice(before ? dstRef.index : dstRef.index + 1, 0, srcTask);
+
+        if (inside) {
+          // Drop INTO a summary task: push as last child, expand it
+          const target = findTask(refId);
+          if (target && target.type === 'summary') {
+            if (!target.children) target.children = [];
+            target.children.push(srcTask);
+            target.collapsed = false;
+          } else {
+            srcRef.container.push(srcTask); // fallback
+          }
         } else {
-          // Fallback: push back to source container
-          srcRef.container.push(srcTask);
+          const dstRef = findParent(refId);
+          if (dstRef) {
+            dstRef.container.splice(before ? dstRef.index : dstRef.index + 1, 0, srcTask);
+          } else {
+            srcRef.container.push(srcTask);
+          }
         }
         // Recompute summary dates after move
         project.phases.forEach(ph => ph.tasks.forEach(t => { if (t.type === 'summary') computeSummaryDates(t); }));
+        invalidateTaskCaches();
         saveProject(true);
         render();
       }
