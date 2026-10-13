@@ -8862,7 +8862,11 @@ function showTaskContextMenu(x, y, task) {
   const isSummary = task.type === 'summary';
   const selCount = selectedTaskIds.size;
   const items = [];
-  if (selCount > 0) {
+  if (selCount > 1) {
+    items.push({ label: `Přesunout výběr (${selCount}) do fáze/skupiny…`, fn: 'openMoveSelectionModal()' });
+    items.push({ label: `Souhrnný úkol z výběru (${selCount})`, fn: 'createSummaryFromSelection()' });
+    items.push('-');
+  } else if (selCount === 1) {
     items.push({ label: `Souhrnný úkol z výběru (${selCount})`, fn: 'createSummaryFromSelection()' });
     items.push('-');
   }
@@ -8923,6 +8927,100 @@ function createSummaryFromSelection() {
   saveProject(true);
   render();
   showToast('Souhrnný úkol vytvořen — dvojklik na název pro přejmenování');
+}
+
+function openMoveSelectionModal() {
+  if (_viewerBlock()) return;
+  const ids = [...selectedTaskIds];
+  if (ids.length < 2) { showToast('Vyberte alespoň 2 úkoly přes Shift+klik nebo Ctrl+klik'); return; }
+
+  // Build flat list of all possible destinations: phases and summary tasks (with indentation)
+  const opts = [];
+  project.phases.forEach(ph => {
+    opts.push({ id: 'phase:' + ph.id, label: ph.name, depth: 0 });
+    function addSummaries(tasks, depth) {
+      tasks.forEach(t => {
+        if (ids.includes(t.id)) return; // skip selected tasks themselves
+        if (t.type === 'summary') {
+          opts.push({ id: 'task:' + t.id, label: t.name, depth });
+          addSummaries(t.children || [], depth + 1);
+        }
+      });
+    }
+    addSummaries(ph.tasks || [], 1);
+  });
+
+  const indent = d => '    '.repeat(d);
+  const optHtml = opts.map(o => `<option value="${escHtml(o.id)}">${indent(o.depth)}${o.depth > 0 ? '↳ ' : ''}${escHtml(o.label)}</option>`).join('');
+
+  openModal(`
+    <div class="modal" style="max-width:420px;">
+      <div class="modal-header">
+        <span class="modal-title">Přesunout výběr (${ids.length} úkolů)</span>
+        <button class="modal-close" onclick="closeModal()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="form-row single"><div class="form-field">
+          <label class="form-label">Cílová fáze nebo skupina</label>
+          <select class="form-select" id="m-move-dest" style="font-size:13px;">${optHtml}</select>
+        </div></div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:6px;">Vybrané úkoly se přesunou na konec zvolené fáze nebo skupiny.</div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal()">Zrušit</button>
+        <button class="btn btn-primary" onclick="confirmMoveSelection()">Přesunout</button>
+      </div>
+    </div>
+  `);
+}
+
+function confirmMoveSelection() {
+  if (_viewerBlock()) return;
+  const dest = document.getElementById('m-move-dest')?.value;
+  if (!dest) return;
+  const ids = [...selectedTaskIds];
+
+  // Remove all selected tasks from their current containers first
+  // Process in reverse order of appearance to keep indices stable
+  const allRows = [...document.querySelectorAll('#wbs-body .wbs-row[data-task-id]')];
+  const orderedIds = allRows.map(r => r.dataset.taskId).filter(id => ids.includes(id));
+  const movedTasks = [];
+  // Remove highest indices first (use findParent fresh each time)
+  [...orderedIds].reverse().forEach(id => {
+    const ref = findParent(id);
+    if (ref) {
+      const [t] = ref.container.splice(ref.index, 1);
+      movedTasks.unshift(t); // restore original order
+    }
+  });
+
+  if (!movedTasks.length) { closeModal(); return; }
+
+  // Push to destination
+  if (dest.startsWith('phase:')) {
+    const phaseId = dest.slice(6);
+    const phase = project.phases.find(p => p.id === phaseId);
+    if (phase) movedTasks.forEach(t => phase.tasks.push(t));
+  } else if (dest.startsWith('task:')) {
+    const taskId = dest.slice(5);
+    const target = findTask(taskId);
+    if (target && target.type === 'summary') {
+      if (!target.children) target.children = [];
+      movedTasks.forEach(t => target.children.push(t));
+      target.collapsed = false;
+    }
+  }
+
+  selectedTaskIds.clear();
+  selectedTaskId = null;
+  closeModal();
+  invalidateTaskCaches();
+  project.phases.forEach(ph => ph.tasks.forEach(t => { if (t.type === 'summary') computeSummaryDates(t); }));
+  saveProject(true);
+  render();
+  showToast(`Přesunuto ${movedTasks.length} úkolů`);
 }
 
 function addSubTask(parentId) {
