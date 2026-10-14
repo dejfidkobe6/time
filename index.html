@@ -554,12 +554,25 @@ html, body {
 .wbs-row.is-phase { background: var(--bg); height: calc(var(--row-h, 40px) + 4px); }
 .wbs-row.is-phase:hover { background: var(--bg-hover); }
 
-/* Summary task rows */
-.wbs-row.is-summary { background: var(--bg); font-weight: 600; }
-.wbs-row.is-summary:hover { background: var(--bg-hover); }
+/* Summary task rows — sub-phases, visually between phase-header and plain task */
+.wbs-row.is-summary {
+  background: var(--bg-hover);
+  font-weight: 700;
+  border-top: 1px solid var(--border);
+}
+.wbs-row.is-summary:hover { background: color-mix(in srgb, var(--bg-hover) 80%, var(--olive) 20%); }
+/* Left accent stripe grows with depth so deeper = more prominent */
+.wbs-row.is-summary::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 3px;
+  background: var(--olive);
+  opacity: 0.45;
+}
 
 /* Nesting indentation via CSS variable --indent set on each row */
-.wbs-row .wbs-name-cell { padding-left: calc(var(--indent, 0) * 16px); }
+.wbs-row .wbs-name-cell { padding-left: calc(var(--indent, 0) * 20px); }
 
 /* Drag-to-reorder handle (dots icon in name cell) */
 .row-drag-handle {
@@ -571,12 +584,20 @@ html, body {
 .row-drag-handle:active { cursor: grabbing; }
 .row-drag-handle:hover { opacity: 1 !important; }
 
-/* Gantt summary bar — hollow: colored border, white fill */
-.gantt-row.is-summary { background: var(--bg); }
+/* Indent/outdent drag tooltip */
+.indent-drag-tip {
+  position: fixed; z-index: 1100; padding: 5px 12px; border-radius: 20px;
+  font-size: 12px; font-weight: 700; pointer-events: none;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2); white-space: nowrap;
+}
+
+/* Gantt summary bar — filled narrow bar at top of row (like MS Project) */
+.gantt-row.is-summary { background: var(--bg-hover); }
 .gantt-bar.summary-bar {
-  height: 10px; border-radius: 3px;
-  background: white !important;
-  position: absolute; top: 50%; transform: translateY(-50%);
+  height: 8px; border-radius: 2px;
+  background: var(--summary-bar-color, rgba(100,130,60,0.55)) !important;
+  border: none !important;
+  position: absolute; top: 3px; left: 0; right: 0;
   box-sizing: border-box;
 }
 
@@ -2679,9 +2700,26 @@ html, body {
         <!-- WBS -->
         <div id="wbs-panel">
           <div id="wbs-toolbar">
-            <button class="btn btn-primary btn-icon" onclick="openAddPhaseModal()" title="Přidat fázi">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            </button>
+            <div style="position:relative;display:flex;align-items:stretch;">
+              <button class="btn btn-primary btn-icon" onclick="openAddPhaseModal()" title="Přidat fázi 1. úrovně" style="border-radius:6px 0 0 6px;padding:5px 9px;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              </button>
+              <button class="btn btn-primary" onclick="toggleAddPhaseMenu(event)" title="Více možností" style="border-radius:0 6px 6px 0;border-left:1px solid rgba(255,255,255,0.25);padding:5px 6px;line-height:1;">
+                <svg viewBox="0 0 24 24" fill="currentColor" style="width:10px;height:10px;display:block;"><path d="M7 10l5 5 5-5z"/></svg>
+              </button>
+              <div id="add-phase-menu" style="display:none;position:absolute;top:calc(100% + 4px);left:0;z-index:400;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.18);min-width:230px;padding:4px;">
+                <button class="ctx-item" style="display:flex;align-items:center;gap:8px;font-size:12px;border-radius:5px;" onclick="openAddPhaseModal();document.getElementById('add-phase-menu').style.display='none';">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;flex-shrink:0;"><rect x="2" y="3" width="20" height="18" rx="2"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="12" y1="8" x2="12" y2="16"/></svg>
+                  Přidat fázi (1. úroveň)
+                </button>
+                <button class="ctx-item" style="display:flex;align-items:center;gap:8px;font-size:12px;border-radius:5px;" onclick="openAddSubPhaseFromToolbar();document.getElementById('add-phase-menu').style.display='none';">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;flex-shrink:0;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
+                  Přidat podfázi pod vybranou fázi
+                </button>
+                <div style="height:1px;background:var(--border);margin:4px 0;"></div>
+                <div style="padding:4px 10px 6px;font-size:10px;color:var(--text-muted);line-height:1.4;">Tip: uchopte ⋮⋮ fáze a táhněte doprava pro odsazení (→ podfáze), doleva pro uvolnění.</div>
+              </div>
+            </div>
             <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-muted);">Přidat fázi</span>
             <div style="width:1px;height:16px;background:var(--border);margin:0 4px;flex-shrink:0;"></div>
             <div style="position:relative;">
@@ -4152,7 +4190,7 @@ function createPhaseRow(phase, pi) {
       <button class="row-action-btn" onclick="openAddTaskModal('${phase.id}');event.stopPropagation();" title="Přidat úkol">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
       </button>
-      <button class="row-action-btn" onclick="openAddGroupModal('${phase.id}');event.stopPropagation();" title="Přidat skupinu / podfázi">
+      <button class="row-action-btn" onclick="openAddGroupModal('${phase.id}');event.stopPropagation();" title="Přidat podfázi">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
       </button>
       <button class="row-action-btn danger" onclick="deletePhase('${phase.id}');event.stopPropagation();" title="Smazat fázi">
@@ -4283,7 +4321,7 @@ function createTaskRow(task, phase, pi, ti, depth) {
       <button class="row-action-btn" onclick="openAddTaskModal('${phase.id}','${task.id}');event.stopPropagation();" title="Přidat úkol do skupiny">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
       </button>
-      <button class="row-action-btn" onclick="openAddGroupModal('${phase.id}','${task.id}');event.stopPropagation();" title="Přidat podfázi do skupiny">
+      <button class="row-action-btn" onclick="openAddGroupModal('${phase.id}','${task.id}');event.stopPropagation();" title="Přidat podfázi">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
       </button>` : ''}
       <button class="row-action-btn" onclick="openEditTaskModal('${task.id}');event.stopPropagation();" title="Upravit">
@@ -4910,8 +4948,8 @@ function renderGanttTaskRowsRecursive(tasks, phase, pi, minD, totalW, container,
         const w = Math.max(6, x2 - x);
         const barWrap = document.createElement('div');
         barWrap.className = 'gantt-bar-wrap';
-        barWrap.style.cssText = `left:${x}px;width:${w}px;height:10px;top:calc(50% - 5px);position:absolute;`;
-        barWrap.innerHTML = `<div class="gantt-bar summary-bar" style="border:2px solid ${barColor};width:100%;height:100%;border-radius:3px;"></div>`;
+        barWrap.style.cssText = `left:${x}px;width:${w}px;height:8px;top:3px;position:absolute;`;
+        barWrap.innerHTML = `<div class="gantt-bar summary-bar" style="--summary-bar-color:${barColor}88;width:100%;height:100%;"></div>`;
         // Click to select
         barWrap.addEventListener('click', () => selectTask(task.id));
         tRow.appendChild(barWrap);
@@ -6502,7 +6540,7 @@ function openAddGroupModal(phaseId, parentTaskId) {
   openModal(`
     <div class="modal">
       <div class="modal-header">
-        <span class="modal-title">Přidat skupinu / podfázi</span>
+        <span class="modal-title">Přidat podfázi</span>
         <button class="modal-close" onclick="closeModal()">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
@@ -6512,8 +6550,8 @@ function openAddGroupModal(phaseId, parentTaskId) {
         <input type="hidden" id="m-group-parent" value="${escHtml(parentTaskId)}">
         ${parentInfo}
         <div class="form-row single"><div class="form-field">
-          <label class="form-label">Název skupiny / podfáze</label>
-          <input class="form-input" id="m-group-name" placeholder="Název skupiny / podfáze" autofocus>
+          <label class="form-label">Název fáze</label>
+          <input class="form-input" id="m-group-name" placeholder="Název fáze" autofocus>
         </div></div>
       </div>
       <div class="modal-footer">
@@ -7441,6 +7479,104 @@ function findParent(taskId) {
   return null;
 }
 
+// Find id of the summary task whose .children array IS the given array
+function findOwnerSummaryId(childrenArr) {
+  function search(tasks) {
+    for (const t of tasks) {
+      if (t.children === childrenArr) return t.id;
+      if (t.children) { const r = search(t.children); if (r) return r; }
+    }
+    return null;
+  }
+  for (const ph of project.phases) {
+    const r = search(ph.tasks || []);
+    if (r) return r;
+  }
+  return null;
+}
+
+// Indent task: make it a child of the item immediately above it in its container
+function indentTask(taskId) {
+  if (_viewerBlock()) return;
+  const ref = findParent(taskId);
+  if (!ref || ref.index === 0) { showToast('Nelze odsadit — žádná nadřazená položka nad úkolem'); return; }
+  const above = ref.container[ref.index - 1];
+  const [task] = ref.container.splice(ref.index, 1);
+  if (above.type !== 'summary') {
+    above.type = 'summary';
+    if (!above.children) above.children = [];
+  }
+  above.children.push(task);
+  above.collapsed = false;
+  invalidateTaskCaches();
+  project.phases.forEach(ph => ph.tasks.forEach(t => { if (t.type === 'summary') computeSummaryDates(t); }));
+  saveProject(true); render();
+}
+
+// Outdent task: move one level up (from parent summary's children to parent's level)
+function outdentTask(taskId) {
+  if (_viewerBlock()) return;
+  const ref = findParent(taskId);
+  if (!ref) return;
+  if (project.phases.some(ph => ph.tasks === ref.container)) {
+    showToast('Nelze uvolnit — úkol je již na nejvyšší úrovni fáze'); return;
+  }
+  const ownerId = findOwnerSummaryId(ref.container);
+  if (!ownerId) return;
+  const parentRef = findParent(ownerId);
+  if (!parentRef) return;
+  const [task] = ref.container.splice(ref.index, 1);
+  parentRef.container.splice(parentRef.index + 1, 0, task);
+  invalidateTaskCaches();
+  project.phases.forEach(ph => ph.tasks.forEach(t => { if (t.type === 'summary') computeSummaryDates(t); }));
+  saveProject(true); render();
+}
+
+// Indent top-level phase: convert it to a sub-phase (summary task) inside the previous phase
+function indentPhase(phaseId) {
+  if (_viewerBlock()) return;
+  const idx = project.phases.findIndex(p => p.id === phaseId);
+  if (idx <= 0) { showToast('Nelze odsadit — první fáze nemá předchůdce'); return; }
+  const [phase] = project.phases.splice(idx, 1);
+  const prevPhase = project.phases[idx - 1];
+  const summary = {
+    id: phase.id, name: phase.name, type: 'summary', collapsed: false,
+    children: phase.tasks || [],
+    ...(phase.bg_color ? { bg_color: phase.bg_color } : {})
+  };
+  computeSummaryDates(summary);
+  if (!prevPhase.tasks) prevPhase.tasks = [];
+  prevPhase.tasks.push(summary);
+  invalidateTaskCaches();
+  saveProject(true); render();
+  showToast('Fáze převedena na podfázi');
+}
+
+// Outdent: promote a top-level summary task in a phase to its own top-level phase
+function outdentSummaryToPhase(taskId) {
+  if (_viewerBlock()) return;
+  const ref = findParent(taskId);
+  if (!ref) return;
+  const task = findTask(taskId);
+  if (!task || task.type !== 'summary') return;
+  // Find which phase contains it at top level
+  const phIdx = project.phases.findIndex(ph => ph.tasks === ref.container || ph.tasks.includes(task));
+  const ph = phIdx >= 0 ? project.phases[phIdx] : null;
+  if (!ph || ph.tasks !== ref.container) {
+    showToast('Nelze uvolnit — nejde o přímou podfázi fáze'); return;
+  }
+  ph.tasks.splice(ref.index, 1);
+  const newPhase = {
+    id: task.id, name: task.name, collapsed: false,
+    tasks: task.children || [],
+    ...(task.bg_color ? { bg_color: task.bg_color } : {})
+  };
+  project.phases.splice(phIdx + 1, 0, newPhase);
+  invalidateTaskCaches();
+  saveProject(true); render();
+  showToast('Podfáze povýšena na fázi');
+}
+
 // Find the top-level phase that contains a task (at any nesting depth)
 function findPhaseForTask(taskId) {
   for (const ph of project.phases) {
@@ -8243,6 +8379,11 @@ document.addEventListener('keydown', (e) => {
     if (!isViewer()) { if (selectedColId && selectedTaskIds.size === 0 && !selectedTaskId) deleteColumnData(); else deleteSelectedTasks(); }
   }
   if (e.key === '-' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); if (!isViewer()) deleteSelectedTasks(); }
+  // Tab / Shift+Tab: indent / outdent selected task (like MS Project)
+  if (e.key === 'Tab' && !e.target.matches('input,textarea,[contenteditable]') && selectedTaskId) {
+    e.preventDefault();
+    if (!isViewer()) { if (e.shiftKey) outdentTask(selectedTaskId); else indentTask(selectedTaskId); }
+  }
 });
 
 /* ═══════════════════════════════════════════════════
@@ -8873,13 +9014,17 @@ function showTaskContextMenu(x, y, task) {
   items.push({ label: 'Přidat pod-úkol', fn: `addSubTask('${task.id}')` });
   if (isSummary) {
     items.push({ label: task.collapsed ? 'Rozbalit' : 'Sbalit', fn: `toggleSummaryCollapse('${task.id}')` });
-    items.push({ label: 'Rozbalit souhrnný úkol (na úroveň výše)', fn: `ungroupSummary('${task.id}')` });
+    items.push({ label: 'Uvolnit fázi na vyšší úroveň', fn: `outdentSummaryToPhase('${task.id}')` });
+    items.push({ label: 'Zrušit seskupení (přesunout obsah na úroveň výše)', fn: `ungroupSummary('${task.id}')` });
   }
+  items.push('-');
+  items.push({ label: '→ Odsadit (Tab)', fn: `indentTask('${task.id}')` });
+  items.push({ label: '← Uvolnit (Shift+Tab)', fn: `outdentTask('${task.id}')` });
   items.push('-');
   items.push({ label: '↑ Posunout nahoru', fn: `moveTaskUpDown('${task.id}', -1)` });
   items.push({ label: '↓ Posunout dolů', fn: `moveTaskUpDown('${task.id}', 1)` });
   items.push('-');
-  items.push({ label: 'Smazat úkol', fn: `deleteTask('${task.id}')`, danger: true });
+  items.push({ label: 'Smazat', fn: `deleteTask('${task.id}')`, danger: true });
   showContextMenu(x, y, items);
 }
 
@@ -8963,7 +9108,7 @@ function openMoveSelectionModal() {
       </div>
       <div class="modal-body">
         <div class="form-row single"><div class="form-field">
-          <label class="form-label">Cílová fáze nebo skupina</label>
+          <label class="form-label">Cílová fáze</label>
           <select class="form-select" id="m-move-dest" style="font-size:13px;">${optHtml}</select>
         </div></div>
         <div style="font-size:11px;color:var(--text-muted);margin-top:6px;">Vybrané úkoly se přesunou na konec zvolené fáze nebo skupiny.</div>
@@ -9128,6 +9273,33 @@ function moveTaskUpDown(taskId, dir) {
 /* ═══════════════════════════════════════════════════
    PHASE SORT & DRAG-TO-REORDER
 ═══════════════════════════════════════════════════ */
+function toggleAddPhaseMenu(e) {
+  e.stopPropagation();
+  const menu = document.getElementById('add-phase-menu');
+  if (!menu) return;
+  const open = menu.style.display !== 'none';
+  menu.style.display = open ? 'none' : 'block';
+  if (!open) {
+    const close = (ev) => { if (!menu.contains(ev.target)) { menu.style.display = 'none'; document.removeEventListener('click', close); } };
+    setTimeout(() => document.addEventListener('click', close), 0);
+  }
+}
+
+function openAddSubPhaseFromToolbar() {
+  // Add sub-phase to the last phase, or under the phase of the currently selected task
+  if (_viewerBlock()) return;
+  let targetPhaseId = null;
+  if (selectedTaskId) {
+    const ph = findPhaseForTask(selectedTaskId);
+    if (ph) targetPhaseId = ph.id;
+  }
+  if (!targetPhaseId && project.phases.length > 0) {
+    targetPhaseId = project.phases[project.phases.length - 1].id;
+  }
+  if (!targetPhaseId) { showToast('Nejprve vytvořte fázi'); return; }
+  openAddGroupModal(targetPhaseId);
+}
+
 function togglePhaseSortMenu(e) {
   e.stopPropagation();
   const menu = document.getElementById('phase-sort-menu');
@@ -9177,20 +9349,60 @@ function initRowDrag() {
   const body = document.getElementById('wbs-body');
   let state = null;
 
+  function _cleanupDrag() {
+    document.querySelectorAll('#wbs-body .wbs-row').forEach(r => r.classList.remove('drag-gap-top','drag-gap-bottom','drag-drop-inside'));
+    document.getElementById('wbs-body')?.classList.remove('wbs-drag-active');
+    if (state?.indicator) { state.indicator.remove(); state.indicator = null; }
+    if (state?.row) state.row.classList.remove('row-dragging');
+  }
+
   body.addEventListener('mousedown', (e) => {
-    const handle = e.target.closest('.row-selector');
+    // Trigger from number selector OR ⋮⋮ handle — but NOT on phase rows (they have data-phase-id)
+    const handle = e.target.closest('.row-selector, .row-drag-handle');
     if (!handle) return;
     const row = handle.closest('.wbs-row[data-task-id]');
-    if (!row) return;
+    if (!row) return; // phase rows use data-phase-id, so this skips them
     e.preventDefault();
     state = { taskId: row.dataset.taskId, startX: e.clientX, startY: e.clientY,
-              dragging: false, row, indicator: null, dropPos: null };
+              mode: null, dragging: false, row, indicator: null, dropPos: null };
   });
 
   document.addEventListener('mousemove', (e) => {
     if (!state) return;
+    const dx = e.clientX - state.startX;
+    const dy = e.clientY - state.startY;
+
+    // Determine drag mode on first significant movement
+    if (!state.mode) {
+      if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return; // still in dead zone
+      // Primarily horizontal (>= 2:1 ratio) → indent/outdent mode
+      if (Math.abs(dx) >= Math.abs(dy) * 1.8 && Math.abs(dx) > 12) {
+        state.mode = 'indent';
+        state.indentDir = dx > 0 ? 1 : -1; // +1 = indent right, -1 = outdent left
+      } else {
+        state.mode = 'reorder';
+      }
+    }
+
+    // ── INDENT MODE ──
+    if (state.mode === 'indent') {
+      if (!state.dragging) {
+        state.dragging = true;
+        const isRight = state.indentDir > 0;
+        state.indicator = document.createElement('div');
+        state.indicator.className = 'indent-drag-tip';
+        state.indicator.style.background = isRight ? 'var(--olive)' : 'var(--warning)';
+        state.indicator.style.color = 'white';
+        state.indicator.textContent = isRight ? '→ Odsadit (Tab)' : '← Uvolnit (Shift+Tab)';
+        document.body.appendChild(state.indicator);
+      }
+      state.indicator.style.left = (e.clientX + 18) + 'px';
+      state.indicator.style.top  = (e.clientY - 28) + 'px';
+      return;
+    }
+
+    // ── REORDER MODE ──
     if (!state.dragging) {
-      if (Math.abs(e.clientY - state.startY) < 5 && Math.abs(e.clientX - state.startX) < 5) return;
       state.dragging = true;
       state.row.classList.add('row-dragging');
       document.getElementById('wbs-body')?.classList.add('wbs-drag-active');
@@ -9200,7 +9412,6 @@ function initRowDrag() {
     }
 
     const allRows = [...document.querySelectorAll('#wbs-body .wbs-row[data-task-id]')];
-    // Clear gap/inside classes before reading positions (avoid stale rects)
     allRows.forEach(r => r.classList.remove('drag-gap-top', 'drag-gap-bottom', 'drag-drop-inside'));
     state.dropPos = null;
     let lastAbove = null;
@@ -9210,9 +9421,7 @@ function initRowDrag() {
       if (r === state.row) continue;
       const rect = r.getBoundingClientRect();
       const isSummaryRow = r.classList.contains('is-summary');
-      // Upper zone: drop BEFORE this row
-      const upperBound = rect.top + rect.height * (isSummaryRow ? 0.30 : 0.50);
-      // Middle zone (summary only): drop INSIDE this group
+      const upperBound  = rect.top + rect.height * (isSummaryRow ? 0.30 : 0.50);
       const middleBound = isSummaryRow ? (rect.bottom - rect.height * 0.30) : null;
 
       if (e.clientY < upperBound) {
@@ -9238,9 +9447,7 @@ function initRowDrag() {
 
   document.addEventListener('mouseup', (e) => {
     if (!state) return;
-    document.querySelectorAll('#wbs-body .wbs-row').forEach(r => r.classList.remove('drag-gap-top', 'drag-gap-bottom', 'drag-drop-inside'));
-    document.getElementById('wbs-body')?.classList.remove('wbs-drag-active');
-    if (state.indicator) { state.indicator.remove(); state.indicator = null; }
+    _cleanupDrag();
 
     if (!state.dragging) {
       handleRowSelect(state.taskId, e);
@@ -9248,35 +9455,35 @@ function initRowDrag() {
       return;
     }
 
-    state.row.classList.remove('row-dragging');
+    // ── INDENT MODE action ──
+    if (state.mode === 'indent') {
+      if (state.indentDir > 0) indentTask(state.taskId);
+      else outdentTask(state.taskId);
+      state = null;
+      return;
+    }
 
+    // ── REORDER MODE action ──
     if (state.dropPos && state.dropPos.taskId !== state.taskId) {
       const { taskId: fromId } = state;
       const { taskId: refId, before, inside } = state.dropPos;
-
       const srcRef = findParent(fromId);
       if (srcRef) {
         const [srcTask] = srcRef.container.splice(srcRef.index, 1);
-
         if (inside) {
-          // Drop INTO a summary task: push as last child, expand it
           const target = findTask(refId);
           if (target && target.type === 'summary') {
             if (!target.children) target.children = [];
             target.children.push(srcTask);
             target.collapsed = false;
           } else {
-            srcRef.container.push(srcTask); // fallback
+            srcRef.container.push(srcTask);
           }
         } else {
           const dstRef = findParent(refId);
-          if (dstRef) {
-            dstRef.container.splice(before ? dstRef.index : dstRef.index + 1, 0, srcTask);
-          } else {
-            srcRef.container.push(srcTask);
-          }
+          if (dstRef) dstRef.container.splice(before ? dstRef.index : dstRef.index + 1, 0, srcTask);
+          else srcRef.container.push(srcTask);
         }
-        // Recompute summary dates after move
         project.phases.forEach(ph => ph.tasks.forEach(t => { if (t.type === 'summary') computeSummaryDates(t); }));
         invalidateTaskCaches();
         saveProject(true);
@@ -9295,6 +9502,13 @@ function initPhaseDrag() {
   const body = document.getElementById('wbs-body');
   let state = null;
 
+  function _cleanupPhase() {
+    body.querySelectorAll('.wbs-row').forEach(r => r.classList.remove('drag-gap-top','drag-gap-bottom'));
+    body.classList.remove('wbs-drag-active');
+    if (state?.indicator) { state.indicator.remove(); state.indicator = null; }
+    if (state?.row) state.row.classList.remove('row-dragging');
+  }
+
   body.addEventListener('mousedown', (e) => {
     const handle = e.target.closest('.phase-drag-handle');
     if (!handle) return;
@@ -9303,13 +9517,44 @@ function initPhaseDrag() {
     if (!row) return;
     e.preventDefault();
     state = { phaseId: row.dataset.phaseId, startX: e.clientX, startY: e.clientY,
-              dragging: false, row, indicator: null, dropPhaseId: null, before: true };
+              mode: null, dragging: false, row, indicator: null, dropPhaseId: null, before: true };
   });
 
   document.addEventListener('mousemove', (e) => {
     if (!state) return;
+    const dx = e.clientX - state.startX;
+    const dy = e.clientY - state.startY;
+
+    // Determine drag mode on first significant movement
+    if (!state.mode) {
+      if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
+      if (Math.abs(dx) >= Math.abs(dy) * 1.8 && Math.abs(dx) > 12) {
+        state.mode = 'indent';
+        state.indentDir = dx > 0 ? 1 : -1;
+      } else {
+        state.mode = 'reorder';
+      }
+    }
+
+    // ── INDENT MODE ──
+    if (state.mode === 'indent') {
+      if (!state.dragging) {
+        state.dragging = true;
+        const isRight = state.indentDir > 0;
+        state.indicator = document.createElement('div');
+        state.indicator.className = 'indent-drag-tip';
+        state.indicator.style.background = isRight ? 'var(--olive)' : 'var(--warning)';
+        state.indicator.style.color = 'white';
+        state.indicator.textContent = isRight ? '→ Odsadit do předchozí fáze' : '← Nelze uvolnit fázi';
+        document.body.appendChild(state.indicator);
+      }
+      state.indicator.style.left = (e.clientX + 18) + 'px';
+      state.indicator.style.top  = (e.clientY - 28) + 'px';
+      return;
+    }
+
+    // ── REORDER MODE ──
     if (!state.dragging) {
-      if (Math.abs(e.clientY - state.startY) < 5 && Math.abs(e.clientX - state.startX) < 5) return;
       state.dragging = true;
       state.row.classList.add('row-dragging');
       body.classList.add('wbs-drag-active');
@@ -9333,7 +9578,6 @@ function initPhaseDrag() {
         r.classList.add('drag-gap-top');
         return;
       }
-      // cursor is in the bottom half of this row
       if (i === phaseRows.length - 1 || phaseRows[i + 1] === state.row) {
         state.dropPhaseId = r.dataset.phaseId;
         state.before = false;
@@ -9345,17 +9589,24 @@ function initPhaseDrag() {
 
   document.addEventListener('mouseup', () => {
     if (!state) return;
-    body.querySelectorAll('.wbs-row').forEach(r => r.classList.remove('drag-gap-top', 'drag-gap-bottom'));
-    body.classList.remove('wbs-drag-active');
-    if (state.indicator) { state.indicator.remove(); state.indicator = null; }
-    if (state.row) state.row.classList.remove('row-dragging');
+    _cleanupPhase();
 
-    if (state.dragging && state.dropPhaseId && state.dropPhaseId !== state.phaseId) {
+    if (!state.dragging) { state = null; return; }
+
+    // ── INDENT MODE action ──
+    if (state.mode === 'indent') {
+      if (state.indentDir > 0) indentPhase(state.phaseId);
+      else showToast('Fáze 1. úrovně nelze dále uvolnit — přetáhněte ji dolů nebo přejmenujte');
+      state = null;
+      return;
+    }
+
+    // ── REORDER MODE action ──
+    if (state.dropPhaseId && state.dropPhaseId !== state.phaseId) {
       const fromIdx = project.phases.findIndex(p => p.id === state.phaseId);
       const toIdx   = project.phases.findIndex(p => p.id === state.dropPhaseId);
       if (fromIdx >= 0 && toIdx >= 0) {
         const [phase] = project.phases.splice(fromIdx, 1);
-        // After removing fromIdx, destination index shifts if toIdx > fromIdx
         let insertAt = state.before ? toIdx : toIdx + 1;
         if (toIdx > fromIdx) insertAt--;
         project.phases.splice(Math.max(0, insertAt), 0, phase);
