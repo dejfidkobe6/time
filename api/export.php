@@ -30,12 +30,17 @@ if (!file_exists($secretsFile)) {
 require_once $secretsFile;   // definuje EXPORT_TOKEN a DB_PASS
 
 /* ── Autorizace tokenem ─────────────────────────────────────────────────── */
-// Preferujeme Bearer hlavičku; query ?token= přijímáme přechodně.
-$authHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
+// HTTP_AUTHORIZATION may be missing on shared hosting (Apache mod_php strips it).
+// Fallbacks: REDIRECT_HTTP_AUTHORIZATION (mod_rewrite PassThroughHeaders) or getallheaders().
+$authHeader = $_SERVER['HTTP_AUTHORIZATION']
+    ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION']
+    ?? (function_exists('getallheaders') ? (getallheaders()['Authorization'] ?? '') : '')
+    ?? '';
 if (preg_match('/^Bearer\s+(\S+)$/i', $authHeader, $m)) {
     $requestToken = $m[1];
 } else {
-    $requestToken = is_string($_GET['token'] ?? null) ? $_GET['token'] : '';
+    // Query-string token removed — use Authorization: Bearer <token> header only.
+    $requestToken = '';
 }
 
 function rejectUnauthorized(): never {
