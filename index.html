@@ -8730,6 +8730,29 @@ function runPDFExport() {
   });
 }
 
+function runMobilePDFExport() {
+  closeMobSettings();
+  const ts = document.querySelector('input[name="mob-pdf-ts"]:checked')?.value || timescale;
+  const expandAll = document.getElementById('mob-pdf-expand')?.checked !== false;
+  const fitPage   = document.getElementById('mob-pdf-fit')?.checked !== false;
+
+  // Build a temporary hidden element matching what runPDFExport reads from #active-modal
+  const tempOv = document.createElement('div');
+  tempOv.id = 'active-modal';
+  tempOv.style.display = 'none';
+
+  const mk = (tag, attrs) => Object.assign(document.createElement(tag), attrs);
+  tempOv.appendChild(mk('input', { type:'radio', name:'pdf-ts', value:ts, checked:true }));
+  tempOv.appendChild(mk('input', { type:'checkbox', id:'pdf-expand-all', checked:expandAll }));
+  tempOv.appendChild(mk('input', { type:'checkbox', id:'pdf-fit-page', checked:fitPage }));
+  visibleColumns.filter(c => c !== 'wbs').forEach(col => {
+    const inp = mk('input', { type:'checkbox', name:'pdf-col', value:col, checked:true });
+    tempOv.appendChild(inp);
+  });
+  document.body.appendChild(tempOv);
+  runPDFExport();
+}
+
 /* ═══════════════════════════════════════════════════
    INLINE EDITING
 ═══════════════════════════════════════════════════ */
@@ -10079,6 +10102,9 @@ function openMobSettings() {
     const num = (project.baselines || []).length + 1;
     blInp.placeholder = 'Název (např. Smluvní ' + String(num).padStart(2,'0') + ')';
   }
+  // Sync timescale radio to current state
+  const tsRadio = document.querySelector(`input[name="mob-pdf-ts"][value="${timescale}"]`);
+  if (tsRadio) tsRadio.checked = true;
   document.getElementById('mob-sett-overlay').classList.remove('hidden');
 }
 
@@ -10776,6 +10802,34 @@ init();
         <input type="text" id="mob-baseline-inp" placeholder="Název (např. Smluvní 01)" style="flex:1;padding:8px 10px;border:1.5px solid var(--border);border-radius:10px;background:var(--bg);color:var(--text);font-size:14px;">
         <button onclick="mobSaveBaseline()" style="padding:8px 14px;border-radius:10px;background:var(--olive);color:#fff;border:none;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;">Uložit stav</button>
       </div>
+    </div>
+    <!-- Export PDF -->
+    <div style="padding:14px 20px;border-top:1px solid var(--border);">
+      <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--text-muted);margin-bottom:10px;">Export PDF</div>
+      <div style="font-size:11px;font-weight:700;color:var(--text-muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.4px;">Časová osa</div>
+      <div style="display:flex;gap:6px;margin-bottom:12px;">
+        <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;padding:7px 0;border:1.5px solid var(--border);border-radius:8px;flex:1;justify-content:center;">
+          <input type="radio" name="mob-pdf-ts" value="days"> Dny
+        </label>
+        <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;padding:7px 0;border:1.5px solid var(--border);border-radius:8px;flex:1;justify-content:center;">
+          <input type="radio" name="mob-pdf-ts" value="weeks" checked> Týdny
+        </label>
+        <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;padding:7px 0;border:1.5px solid var(--border);border-radius:8px;flex:1;justify-content:center;">
+          <input type="radio" name="mob-pdf-ts" value="months"> Měsíce
+        </label>
+      </div>
+      <label style="display:flex;align-items:center;gap:10px;font-size:13px;cursor:pointer;margin-bottom:10px;">
+        <input type="checkbox" id="mob-pdf-expand" checked style="width:18px;height:18px;accent-color:var(--olive);">
+        <span>Rozbalit vše před exportem</span>
+      </label>
+      <label style="display:flex;align-items:center;gap:10px;font-size:13px;cursor:pointer;margin-bottom:14px;">
+        <input type="checkbox" id="mob-pdf-fit" checked style="width:18px;height:18px;accent-color:var(--olive);">
+        <span>Automatická velikost stránky</span>
+      </label>
+      <button onclick="runMobilePDFExport()" style="width:100%;padding:12px;background:var(--olive);color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px;flex-shrink:0;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Exportovat PDF
+      </button>
     </div>
     <div style="height:env(safe-area-inset-bottom,0);min-height:8px;"></div>
   </div>
