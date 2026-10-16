@@ -586,15 +586,8 @@ html, body {
   box-shadow: 0 2px 8px rgba(0,0,0,0.2); white-space: nowrap;
 }
 
-/* Gantt summary bar — filled narrow bar at top of row (like MS Project) */
+/* Gantt summary bar — same look as phase bar but lighter border */
 .gantt-row.is-summary { background: var(--bg-hover); }
-.gantt-bar.summary-bar {
-  height: 8px; border-radius: 2px;
-  background: var(--summary-bar-color, rgba(100,130,60,0.55)) !important;
-  border: none !important;
-  position: absolute; top: 3px; left: 0; right: 0;
-  box-sizing: border-box;
-}
 
 /* Context menu items */
 .ctx-item { padding: 8px 16px; cursor: pointer; color: var(--text); transition: background 0.1s; }
@@ -901,7 +894,7 @@ html, body {
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
-  height: 18px;
+  height: calc(var(--row-h, 22px) * 0.75);
   cursor: grab;
 }
 /* Záchytná zóna pruhu — drží se těsně u pruhu a jeho okrajů.
@@ -914,7 +907,10 @@ html, body {
 .gantt-bar-wrap:active { cursor: grabbing; }
 
 .gantt-row.is-phase .gantt-bar-wrap {
-  height: 12px;
+  height: 10px;
+}
+.gantt-row.is-summary .gantt-bar-wrap {
+  height: 10px;
 }
 
 .gantt-bar {
@@ -1772,7 +1768,7 @@ html, body {
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
-  height: 22px;
+  height: calc(var(--row-h, 22px) * 0.75);
   border: 1.5px solid var(--text);
   opacity: 0.65;
   border-radius: 4px;
@@ -1784,7 +1780,7 @@ html, body {
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
-  height: 22px;
+  height: calc(var(--row-h, 22px) * 0.75);
   border-radius: 0 4px 4px 0;
   pointer-events: none;
 }
@@ -1812,7 +1808,7 @@ html, body {
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
-  height: 22px;
+  height: calc(var(--row-h, 22px) * 0.75);
   border-radius: 0 4px 4px 0;
   pointer-events: none;
   box-sizing: border-box;
@@ -5082,9 +5078,8 @@ function renderGanttTaskRowsRecursive(tasks, phase, pi, minD, totalW, container,
         const w = Math.max(6, x2 - x);
         const barWrap = document.createElement('div');
         barWrap.className = 'gantt-bar-wrap';
-        barWrap.style.cssText = `left:${x}px;width:${w}px;height:8px;top:3px;position:absolute;`;
-        barWrap.innerHTML = `<div class="gantt-bar summary-bar" style="--summary-bar-color:${barColor}88;width:100%;height:100%;"></div>`;
-        // Click to select
+        barWrap.style.cssText = `left:${x}px;width:${w}px;`;
+        barWrap.innerHTML = `<div class="gantt-bar" style="background:rgba(255,255,255,0.85);border:1.5px solid ${barColor};border-radius:2px;box-sizing:border-box;opacity:0.88;"></div>`;
         barWrap.addEventListener('click', () => selectTask(task.id));
         tRow.appendChild(barWrap);
       }
