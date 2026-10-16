@@ -3340,22 +3340,99 @@ async function logoutUser() {
    PŘEHLED PROJEKTU
 ═══════════════════════════════════════════════════ */
 function openProjectOverview() {
-  let totalBudget = 0, taskCount = 0, doneCount = 0;
+  let totalBudget = 0, taskCount = 0, doneCount = 0, totalWeight = 0;
   let allDates = [];
   getAllTasks().forEach(t => {
     totalBudget += (t.budget || 0);
     taskCount++;
     if ((t.progress || 0) >= 100) doneCount++;
+    totalWeight += (t.progress || 0);
     if (t.startDate) allDates.push(new Date(t.startDate));
     if (t.endDate)   allDates.push(new Date(t.endDate));
   });
-  const fmt = d => d.toLocaleDateString('cs-CZ', {day:'numeric', month:'long', year:'numeric'});
-  const start = allDates.length ? fmt(new Date(Math.min(...allDates))) : '—';
-  const end   = allDates.length ? fmt(new Date(Math.max(...allDates))) : '—';
+  const avgProgress = taskCount ? Math.round(totalWeight / taskCount) : 0;
+  const fmtLong  = d => d.toLocaleDateString('cs-CZ', {day:'numeric', month:'long', year:'numeric'});
+  const fmtShort = d => d.toLocaleDateString('cs-CZ', {day:'numeric', month:'short', year:'numeric'});
+  const startDate = allDates.length ? new Date(Math.min(...allDates)) : null;
+  const endDate   = allDates.length ? new Date(Math.max(...allDates)) : null;
+  const start = startDate ? fmtLong(startDate) : '—';
+  const end   = endDate   ? fmtLong(endDate)   : '—';
   const budgetFmt = totalBudget >= 1000000
     ? (totalBudget/1000000).toFixed(1) + ' mil. Kč'
     : totalBudget.toLocaleString('cs-CZ') + ' Kč';
 
+  // Mobile: read-only overview, no editing / deleting
+  if (window.innerWidth <= 768) {
+    const phaseRows = project.phases.map((ph, pi) => {
+      let phDone = 0, phTotal = 0;
+      (function rec(tasks) { tasks.forEach(t => { if (t.type !== 'summary') { phTotal++; if ((t.progress||0)>=100) phDone++; } if (t.children) rec(t.children); }); })(ph.tasks||[]);
+      const pct = phTotal ? Math.round(phDone/phTotal*100) : 0;
+      const color = getPhaseColor(ph, pi);
+      const pd = getPhaseDates(ph);
+      return `
+        <div style="padding:12px 0;border-bottom:1px solid var(--border-light);">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+            <div style="width:8px;height:8px;border-radius:50%;background:${color};flex-shrink:0;"></div>
+            <div style="font-size:13px;font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${_esc(ph.name)}</div>
+            <div style="font-size:12px;font-weight:700;color:var(--olive);flex-shrink:0;">${pct}%</div>
+          </div>
+          <div style="height:4px;background:var(--border);border-radius:2px;margin-bottom:5px;">
+            <div style="height:100%;width:${pct}%;background:${color};border-radius:2px;transition:width .3s;"></div>
+          </div>
+          <div style="font-size:10px;color:var(--text-muted);">${pd.start||'—'} → ${pd.end||'—'} &nbsp;·&nbsp; ${phDone}/${phTotal} úkolů</div>
+        </div>`;
+    }).join('');
+
+    openModal(`
+      <div class="modal" style="max-width:440px;">
+        <div class="modal-header">
+          <span class="modal-title">Přehled projektu</span>
+          <button class="modal-close" onclick="closeModal()">×</button>
+        </div>
+        <div class="modal-body" style="padding:0;display:flex;flex-direction:column;">
+          <!-- Header stats -->
+          <div style="padding:16px 20px;background:var(--bg);border-bottom:1px solid var(--border);">
+            <div style="font-size:17px;font-weight:800;margin-bottom:2px;">${_esc(project.name)}</div>
+            ${project.description ? `<div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">${_esc(project.description)}</div>` : ''}
+            <div style="height:6px;background:var(--border);border-radius:3px;margin:10px 0 4px;">
+              <div style="height:100%;width:${avgProgress}%;background:var(--olive);border-radius:3px;"></div>
+            </div>
+            <div style="font-size:11px;color:var(--text-muted);">Celkový postup: <strong style="color:var(--text);">${avgProgress}%</strong></div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--border);border-bottom:1px solid var(--border);">
+            <div style="padding:12px 16px;background:var(--bg-card);">
+              <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-bottom:3px;">Zahájení</div>
+              <div style="font-size:12px;font-weight:600;">${startDate ? fmtShort(startDate) : '—'}</div>
+            </div>
+            <div style="padding:12px 16px;background:var(--bg-card);">
+              <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-bottom:3px;">Dokončení</div>
+              <div style="font-size:12px;font-weight:600;">${endDate ? fmtShort(endDate) : '—'}</div>
+            </div>
+            <div style="padding:12px 16px;background:var(--bg-card);">
+              <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-bottom:3px;">Celkový rozpočet</div>
+              <div style="font-size:13px;font-weight:700;color:var(--olive);">${budgetFmt}</div>
+            </div>
+            <div style="padding:12px 16px;background:var(--bg-card);">
+              <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-bottom:3px;">Úkoly</div>
+              <div style="font-size:13px;font-weight:700;">${doneCount} <span style="color:var(--text-muted);font-weight:400;">/ ${taskCount}</span></div>
+            </div>
+          </div>
+          <!-- Phase breakdown -->
+          <div style="padding:0 20px;overflow-y:auto;max-height:40vh;">
+            <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--text-muted);padding:12px 0 0;">Fáze</div>
+            ${phaseRows}
+          </div>
+        </div>
+        <div class="modal-footer" style="justify-content:flex-end;">
+          <button class="btn btn-secondary" onclick="closeModal();document.getElementById('project-overlay').classList.remove('hidden');showProjectSelector()">Změnit projekt</button>
+          <button class="btn btn-primary" onclick="closeModal()">Zavřít</button>
+        </div>
+      </div>
+    `);
+    return;
+  }
+
+  // Desktop: full edit modal
   const inp = `padding:9px 12px;border:1px solid var(--border);border-radius:10px;background:var(--bg-card);color:var(--text);font-size:13px;font-family:inherit;width:100%;box-sizing:border-box;`;
   const lbl = `font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);margin-bottom:5px;display:block;`;
 
