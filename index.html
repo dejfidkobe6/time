@@ -494,7 +494,6 @@ html, body {
   transition: background 0.1s;
   cursor: pointer;
   position: relative;
-  animation: rowIn 0.2s ease both;
 }
 
 @keyframes rowIn {
@@ -554,13 +553,13 @@ html, body {
 .wbs-row.is-phase { background: var(--bg); height: calc(var(--row-h, 40px) + 4px); }
 .wbs-row.is-phase:hover { background: var(--bg-hover); }
 
-/* Summary task rows — sub-phases, visually between phase-header and plain task */
+/* Summary task rows — sub-phases, subtly distinct from plain tasks */
 .wbs-row.is-summary {
-  background: var(--bg-hover);
-  font-weight: 700;
-  border-top: 1px solid var(--border);
+  background: rgba(0,0,0,0.018);
+  font-weight: 400;
+  border-top: 1px solid var(--border-light);
 }
-.wbs-row.is-summary:hover { background: color-mix(in srgb, var(--bg-hover) 80%, var(--olive) 20%); }
+.wbs-row.is-summary:hover { background: var(--bg-hover); }
 /* Left accent stripe grows with depth so deeper = more prominent */
 .wbs-row.is-summary::before {
   content: '';
@@ -646,8 +645,8 @@ html, body {
   border: none;
   outline: none;
   font-family: var(--font-main);
-  font-size: 11px;
-  font-weight: 600;
+  font-size: var(--row-font, 11px);
+  font-weight: 400;
   color: var(--text);
   width: 100%;
   min-width: 0;
@@ -672,9 +671,9 @@ html, body {
 .wbs-name-input:focus { background: rgba(0,0,0,0.04); cursor: text; }
 
 .wbs-date-cell {
-  font-size: 10px;
+  font-size: var(--col-font, 10px);
   color: var(--text-mid);
-  font-weight: 500;
+  font-weight: 400;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3786,7 +3785,6 @@ function initColResize(hdr) {
 function renderWBSTaskRows(tasks, phase, pi, depth, body) {
   const norm = _nameFilter ? normalizeStr(_nameFilter) : '';
   tasks.forEach((task, ti) => {
-    if (task.type === 'summary') computeSummaryDates(task);
     if (norm && !taskOrDescendantMatchesText(task, norm)) return;
     const tRow = createTaskRow(task, phase, pi, ti, depth);
     body.appendChild(tRow);
@@ -3807,7 +3805,18 @@ function buildRowNumMap() {
 // Task list cache — invalidated at start of each top-level render() and on project mutations
 let _flatCache = null;
 let _leafCache = null;
-function invalidateTaskCaches() { _flatCache = null; _leafCache = null; }
+let _criticalPathCache = null;
+function _recomputeAllSummaryDates() {
+  project.phases.forEach(ph => {
+    (ph.tasks || []).forEach(t => { if (t.type === 'summary') computeSummaryDates(t); });
+  });
+}
+function invalidateTaskCaches() {
+  _flatCache = null;
+  _leafCache = null;
+  _criticalPathCache = null;
+  _recomputeAllSummaryDates();
+}
 function renderWBS() {
   _renderDepth++;
   buildRowNumMap();
@@ -4071,7 +4080,6 @@ function resaveBaseline(id) {
   openBaselinePanel();
 }
 
-let _criticalPathCache = null;
 function getCriticalPath() {
   if (!getSettings().showCriticalPath) return new Set();
   if (!_criticalPathCache) _criticalPathCache = computeCriticalPath();
@@ -4396,7 +4404,6 @@ function dateToX(date, minD) {
 
 function renderGantt() {
   _renderDepth++;
-  _criticalPathCache = null;
   _selGanttRow = null; // DOM is rebuilt, clear stale reference
   const wrap = document.getElementById('gantt-scroll-wrap');
   const savedTop  = wrap ? wrap.scrollTop  : 0;
@@ -4686,9 +4693,12 @@ function initPinchZoom() {
     const raw = startCellW * scale;
     cellW = Math.max(6, Math.min(140, Math.round(raw)));
     const actualScale = cellW / startCellW;
-    // Scale row height proportionally
-    const newRowH = Math.max(20, Math.min(72, Math.round(startRowH * actualScale)));
-    document.documentElement.style.setProperty('--row-h', newRowH + 'px');
+    // Scale row height + font proportionally
+    const newRowH = Math.max(16, Math.min(52, Math.round(startRowH * actualScale)));
+    const root = document.documentElement;
+    root.style.setProperty('--row-h', newRowH + 'px');
+    root.style.setProperty('--row-font', Math.max(8, Math.min(14, Math.round(newRowH * 0.52))) + 'px');
+    root.style.setProperty('--col-font', Math.max(7, Math.min(12, Math.round(newRowH * 0.46))) + 'px');
     // Compute target scroll anchored to finger midpoint (both axes)
     const targetLeft = Math.max(0, startContentMidX * actualScale - startViewportMidX);
     const targetTop  = Math.max(0, startScrollTop  * actualScale + startViewportMidY * (actualScale - 1));
@@ -6229,7 +6239,17 @@ function setTimescale(ts) {
 }
 
 function zoomGantt(dir) {
-  cellW = Math.max(8, Math.min(120, cellW + dir * 8));
+  const newCellW = Math.max(8, Math.min(120, cellW + dir * 8));
+  if (newCellW !== cellW) {
+    const scale = newCellW / cellW;
+    const root = document.documentElement;
+    const curRowH = parseInt(getComputedStyle(root).getPropertyValue('--row-h')) || 22;
+    const newRowH = Math.max(16, Math.min(52, Math.round(curRowH * scale)));
+    root.style.setProperty('--row-h', newRowH + 'px');
+    root.style.setProperty('--row-font', Math.max(8, Math.min(14, Math.round(newRowH * 0.52))) + 'px');
+    root.style.setProperty('--col-font', Math.max(7, Math.min(12, Math.round(newRowH * 0.46))) + 'px');
+  }
+  cellW = newCellW;
   renderGantt();
 }
 
