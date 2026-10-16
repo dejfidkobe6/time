@@ -2761,6 +2761,45 @@ html, body {
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:11px;height:11px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
             </div>
+            <!-- Date-range filter button -->
+            <div style="position:relative;flex-shrink:0;">
+              <button id="date-filter-btn" onclick="toggleDateFilterMenu(event)" title="Filtrovat podle období"
+                style="display:flex;align-items:center;gap:4px;padding:3px 8px;font-size:11px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);cursor:pointer;transition:border-color .15s,color .15s;height:26px;white-space:nowrap;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:11px;height:11px;flex-shrink:0;"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+                <span id="date-filter-label">Období</span>
+              </button>
+              <div id="date-filter-menu" style="display:none;position:absolute;top:calc(100% + 4px);right:0;z-index:300;background:var(--bg);border:1px solid var(--border);border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,0.14);min-width:230px;overflow:hidden;">
+                <div style="padding:6px 0;">
+                  <button class="ctx-item" onclick="applyQuickDateFilter(7,'Týden')">Nejbližší týden</button>
+                  <button class="ctx-item" onclick="applyQuickDateFilter(14,'14 dní')">Nejbližší 14 dní</button>
+                  <button class="ctx-item" onclick="applyQuickDateFilter(30,'Měsíc')">Nejbližší měsíc</button>
+                </div>
+                <div style="border-top:1px solid var(--border);padding:8px 12px;">
+                  <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--text-muted);margin-bottom:7px;">Vlastní období</div>
+                  <div style="display:flex;gap:5px;align-items:center;margin-bottom:6px;">
+                    <input type="date" id="df-start" style="flex:1;padding:4px 6px;font-size:11px;border:1px solid var(--border);border-radius:5px;background:var(--bg);color:var(--text);min-width:0;">
+                    <span style="font-size:10px;color:var(--text-muted);flex-shrink:0;">→</span>
+                    <input type="date" id="df-end" style="flex:1;padding:4px 6px;font-size:11px;border:1px solid var(--border);border-radius:5px;background:var(--bg);color:var(--text);min-width:0;">
+                  </div>
+                  <button onclick="applyCustomDateFilter()" style="width:100%;padding:5px;background:var(--olive);color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;">Použít</button>
+                </div>
+                <div style="border-top:1px solid var(--border);padding:8px 12px;">
+                  <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--text-muted);margin-bottom:7px;">Vlastní interval od dnes</div>
+                  <div style="display:flex;gap:5px;align-items:center;margin-bottom:6px;">
+                    <input type="number" id="df-interval-n" min="1" max="999" value="30" style="width:58px;padding:4px 6px;font-size:11px;border:1px solid var(--border);border-radius:5px;background:var(--bg);color:var(--text);">
+                    <select id="df-interval-unit" style="flex:1;padding:4px 6px;font-size:11px;border:1px solid var(--border);border-radius:5px;background:var(--bg);color:var(--text);">
+                      <option value="days">Dní</option>
+                      <option value="weeks">Týdnů</option>
+                      <option value="months">Měsíců</option>
+                    </select>
+                  </div>
+                  <button onclick="applyIntervalDateFilter()" style="width:100%;padding:5px;background:var(--olive);color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;">Použít</button>
+                </div>
+                <div style="border-top:1px solid var(--border);padding:4px 0;">
+                  <button class="ctx-item" onclick="clearDateFilter()" style="color:var(--text-muted);">Zrušit filtr</button>
+                </div>
+              </div>
+            </div>
             <div class="ml-auto" style="display:flex;gap:6px;align-items:center;">
               <div class="col-picker-wrap">
                 <button class="btn btn-ghost btn-icon" onclick="toggleColumnPicker(event)" title="Sloupce">
@@ -3038,6 +3077,7 @@ if (!visibleColumns.includes('name')) visibleColumns.splice(1, 0, 'name');
 let ganttColorMode = localStorage.getItem('bt_colormode') || 'phase';
 let ganttFilter    = localStorage.getItem('bt_filter')    || 'all';
 let _nameFilter = ''; // textový filtr WBS+Gantt řádků
+let _dateFilter = null; // { start: 'YYYY-MM-DD', end: 'YYYY-MM-DD', label: '...' } | null
 let ganttOpts = (() => { try { const o = JSON.parse(localStorage.getItem('bt_opts') || 'null') || {}; return {deps:true,labels:true,wknd:true,progress:true,delays:true,...o}; } catch(e) { return {deps:true,labels:true,wknd:true,progress:true,delays:true}; } })();
 
 /* ═══════════════════════════════════════════════════
@@ -3786,6 +3826,7 @@ function renderWBSTaskRows(tasks, phase, pi, depth, body) {
   const norm = _nameFilter ? normalizeStr(_nameFilter) : '';
   tasks.forEach((task, ti) => {
     if (norm && !taskOrDescendantMatchesText(task, norm)) return;
+    if (_dateFilter && !taskOrDescendantInDateRange(task, _dateFilter.start, _dateFilter.end)) return;
     const tRow = createTaskRow(task, phase, pi, ti, depth);
     body.appendChild(tRow);
     if (task.type === 'summary' && task.children && task.children.length) {
@@ -3830,7 +3871,7 @@ function renderWBS() {
     const phRow = createPhaseRow(phase, pi);
     body.appendChild(phRow);
 
-    if (!phase.collapsed || _nameFilter) {
+    if (!phase.collapsed || _nameFilter || _dateFilter) {
       renderWBSTaskRows(phase.tasks || [], phase, pi, 0, body);
     }
   });
@@ -4149,6 +4190,15 @@ function taskOrDescendantMatchesText(task, norm) {
     }
   }
   return false;
+}
+function taskOrDescendantInDateRange(task, start, end) {
+  if (task.type === 'summary') {
+    return (task.children || []).some(c => taskOrDescendantInDateRange(c, start, end));
+  }
+  const ts = task.startDate || task.endDate;
+  const te = task.endDate || task.startDate;
+  if (!ts) return false;
+  return ts <= end && (te || ts) >= start;
 }
 
 function createPhaseRow(phase, pi) {
@@ -4919,7 +4969,7 @@ function renderGanttRows(minD, totalW) {
     }
 
     rowOffset++;
-    if (phase.collapsed && !_nameFilter) return;
+    if (phase.collapsed && !_nameFilter && !_dateFilter) return;
 
     renderGanttTaskRowsRecursive(phase.tasks || [], phase, pi, minD, totalW, container, cp);
   });
@@ -4928,8 +4978,8 @@ function renderGanttRows(minD, totalW) {
 function renderGanttTaskRowsRecursive(tasks, phase, pi, minD, totalW, container, cp) {
   const norm = _nameFilter ? normalizeStr(_nameFilter) : '';
   tasks.forEach(task => {
-    if (task.type === 'summary') computeSummaryDates(task);
     if (norm && !taskOrDescendantMatchesText(task, norm)) return;
+    if (_dateFilter && !taskOrDescendantInDateRange(task, _dateFilter.start, _dateFilter.end)) return;
 
     const tRow = document.createElement('div');
     tRow.className = 'gantt-row' + (task.type === 'summary' ? ' is-summary' : '');
@@ -8487,7 +8537,21 @@ function toggleColumn(id, on) {
 document.addEventListener('click', (e) => {
   if (!e.target.closest('.col-picker-wrap')) document.getElementById('col-picker-panel')?.classList.remove('open');
   if (!e.target.closest('.gantt-opts-wrap')) document.getElementById('gantt-opts-panel')?.classList.remove('open');
+  if (!e.target.closest('#date-filter-btn,#date-filter-menu')) {
+    const m = document.getElementById('date-filter-menu');
+    if (m) m.style.display = 'none';
+  }
 });
+
+// Prevent browser zoom everywhere — only HMG Gantt zooms via Ctrl+scroll
+document.addEventListener('wheel', (e) => {
+  if (e.ctrlKey || e.metaKey) e.preventDefault();
+}, { passive: false });
+document.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && ['=', '+', '-', '0'].includes(e.key) && !e.target.matches('input,textarea,select')) {
+    e.preventDefault();
+  }
+}, { capture: true });
 
 /* ═══════════════════════════════════════════════════
    GANTT OPTIONS
@@ -9298,6 +9362,59 @@ function clearNameFilter() {
     const btn = document.getElementById(id);
     if (btn) btn.style.display = 'none';
   });
+  renderWBS(); renderGantt();
+}
+
+/* ── Date-range filter ────────────────────────────────────────────────────── */
+function toggleDateFilterMenu(e) {
+  e.stopPropagation();
+  const menu = document.getElementById('date-filter-menu');
+  menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+}
+function _applyDateFilter(start, end, label) {
+  _dateFilter = { start, end, label };
+  const lbl = document.getElementById('date-filter-label');
+  if (lbl) lbl.textContent = label;
+  const btn = document.getElementById('date-filter-btn');
+  if (btn) { btn.style.borderColor = 'var(--olive)'; btn.style.color = 'var(--olive)'; }
+  const menu = document.getElementById('date-filter-menu');
+  if (menu) menu.style.display = 'none';
+  renderWBS(); renderGantt();
+}
+function applyQuickDateFilter(days, label) {
+  const today = new Date();
+  const start = today.toISOString().slice(0, 10);
+  const end = new Date(today.getTime() + days * 86400000).toISOString().slice(0, 10);
+  _applyDateFilter(start, end, label);
+}
+function applyCustomDateFilter() {
+  const start = document.getElementById('df-start').value;
+  const end   = document.getElementById('df-end').value;
+  if (!start || !end) { showToast('Vyplňte obě data'); return; }
+  if (start > end) { showToast('Začátek musí být před koncem'); return; }
+  const fmt = d => d.slice(5).replace('-', '.');
+  _applyDateFilter(start, end, `${fmt(start)}–${fmt(end)}`);
+}
+function applyIntervalDateFilter() {
+  const n    = Math.max(1, parseInt(document.getElementById('df-interval-n').value) || 30);
+  const unit = document.getElementById('df-interval-unit').value;
+  const today = new Date();
+  const start = today.toISOString().slice(0, 10);
+  let end = new Date(today);
+  if (unit === 'days')   end.setDate(end.getDate() + n);
+  else if (unit === 'weeks') end.setDate(end.getDate() + n * 7);
+  else end.setMonth(end.getMonth() + n);
+  const unitLabel = { days: 'd', weeks: 'w', months: 'm' }[unit];
+  _applyDateFilter(start, end.toISOString().slice(0, 10), `${n}${unitLabel}`);
+}
+function clearDateFilter() {
+  _dateFilter = null;
+  const lbl = document.getElementById('date-filter-label');
+  if (lbl) lbl.textContent = 'Období';
+  const btn = document.getElementById('date-filter-btn');
+  if (btn) { btn.style.borderColor = ''; btn.style.color = ''; }
+  const menu = document.getElementById('date-filter-menu');
+  if (menu) menu.style.display = 'none';
   renderWBS(); renderGantt();
 }
 
