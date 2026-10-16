@@ -496,10 +496,6 @@ html, body {
   position: relative;
 }
 
-@keyframes rowIn {
-  from { opacity: 0; transform: translateX(-8px); }
-  to { opacity: 1; transform: translateX(0); }
-}
 
 .wbs-row:hover { background: var(--bg-hover); }
 .wbs-row.selected { background: rgba(74,83,64,0.08); border-left: 2px solid var(--olive); padding-left: 18px; }
@@ -3733,6 +3729,7 @@ function render() {
   // Invalidate task list caches so all sub-renders share one fresh traversal
   _flatCache = null;
   _leafCache = null;
+  _criticalPathCache = null;
   // Pre-compute summary task dates before any rendering
   project.phases.forEach(ph => {
     (ph.tasks || []).forEach(t => { if (t.type === 'summary') computeSummaryDates(t); });
@@ -8620,12 +8617,14 @@ document.addEventListener('click', (e) => {
   }
 });
 
-// Prevent browser zoom everywhere — only HMG Gantt zooms via Ctrl+scroll
+// Prevent browser zoom inside Gantt area (Ctrl+scroll is handled by ganttScroll listener for zoom)
 document.addEventListener('wheel', (e) => {
-  if (e.ctrlKey || e.metaKey) e.preventDefault();
+  if ((e.ctrlKey || e.metaKey) && e.target.closest('#gantt-scroll-wrap')) e.preventDefault();
 }, { passive: false });
 document.addEventListener('keydown', (e) => {
-  if ((e.ctrlKey || e.metaKey) && ['=', '+', '-', '0'].includes(e.key) && !e.target.matches('input,textarea,select')) {
+  if ((e.ctrlKey || e.metaKey) && ['=', '+', '-', '0'].includes(e.key)
+      && !e.target.matches('input,textarea,select')
+      && e.target.closest('#gantt-scroll-wrap')) {
     e.preventDefault();
   }
 }, { capture: true });
@@ -8911,7 +8910,11 @@ function runMobilePDFExport() {
     tempOv.appendChild(inp);
   });
   document.body.appendChild(tempOv);
-  runPDFExport();
+  try {
+    runPDFExport();
+  } finally {
+    if (document.getElementById('active-modal') === tempOv) tempOv.remove();
+  }
 }
 
 /* ═══════════════════════════════════════════════════
@@ -9460,8 +9463,8 @@ function _applyDateFilter(start, end, label) {
 }
 function applyQuickDateFilter(days, label) {
   const today = new Date();
-  const start = today.toISOString().slice(0, 10);
-  const end = new Date(today.getTime() + days * 86400000).toISOString().slice(0, 10);
+  const start = today.toLocaleDateString('sv-SE');
+  const end = new Date(today.getFullYear(), today.getMonth(), today.getDate() + days).toLocaleDateString('sv-SE');
   _applyDateFilter(start, end, label);
 }
 function applyCustomDateFilter() {
@@ -9476,13 +9479,13 @@ function applyIntervalDateFilter() {
   const n    = Math.max(1, parseInt(document.getElementById('df-interval-n').value) || 30);
   const unit = document.getElementById('df-interval-unit').value;
   const today = new Date();
-  const start = today.toISOString().slice(0, 10);
+  const start = today.toLocaleDateString('sv-SE');
   let end = new Date(today);
   if (unit === 'days')   end.setDate(end.getDate() + n);
   else if (unit === 'weeks') end.setDate(end.getDate() + n * 7);
   else end.setMonth(end.getMonth() + n);
   const unitLabel = { days: 'd', weeks: 'w', months: 'm' }[unit];
-  _applyDateFilter(start, end.toISOString().slice(0, 10), `${n}${unitLabel}`);
+  _applyDateFilter(start, end.toLocaleDateString('sv-SE'), `${n}${unitLabel}`);
 }
 function clearDateFilter() {
   _dateFilter = null;
@@ -10226,6 +10229,7 @@ function tdpInlineEdit(field, taskId) {
     else if (field === 'progress') { task.progress = Math.min(100, Math.max(0, parseInt(inp.value) || 0)); }
     enforceConstraints(task);
     cascadeSuccessors(taskId);
+    invalidateTaskCaches();
     saveProject(true);
     renderGantt();
     openTaskDetailPanel(taskId);
@@ -10873,7 +10877,7 @@ function drpRender() {
     _drp.phase === 1 ? 'Klepněte na datum zahájení' : 'Klepněte na datum ukončení';
   document.getElementById('drp-confirm-btn').disabled = !(_drp.startDate && _drp.endDate && _drp.startDate <= _drp.endDate);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = new Date().toLocaleDateString('sv-SE');
   const firstDay = new Date(_drp.viewYear, _drp.viewMonth, 1);
   const daysInMonth = new Date(_drp.viewYear, _drp.viewMonth + 1, 0).getDate();
   let startDow = firstDay.getDay() - 1; if (startDow < 0) startDow = 6;
@@ -10907,6 +10911,7 @@ function confirmDRP() {
   if (!_drp.lockStart) task.startDate = _drp.startDate;
   task.endDate = _drp.endDate;
   cascadeSuccessors(_drp.taskId);
+  invalidateTaskCaches();
   saveProject(true);
   const id = _drp.taskId;
   closeDRP();

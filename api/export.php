@@ -34,8 +34,7 @@ require_once $secretsFile;   // definuje EXPORT_TOKEN a DB_PASS
 // Fallbacks: REDIRECT_HTTP_AUTHORIZATION (mod_rewrite PassThroughHeaders) or getallheaders().
 $authHeader = $_SERVER['HTTP_AUTHORIZATION']
     ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION']
-    ?? (function_exists('getallheaders') ? (getallheaders()['Authorization'] ?? '') : '')
-    ?? '';
+    ?? (function_exists('getallheaders') ? (array_change_key_case(getallheaders(), CASE_LOWER)['authorization'] ?? '') : '');
 if (preg_match('/^Bearer\s+(\S+)$/i', $authHeader, $m)) {
     $requestToken = $m[1];
 } else {
