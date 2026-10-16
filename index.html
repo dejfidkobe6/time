@@ -496,10 +496,6 @@ html, body {
   position: relative;
 }
 
-@keyframes rowIn {
-  from { opacity: 0; transform: translateX(-8px); }
-  to { opacity: 1; transform: translateX(0); }
-}
 
 .wbs-row:hover { background: var(--bg-hover); }
 .wbs-row.selected { background: rgba(74,83,64,0.08); border-left: 2px solid var(--olive); padding-left: 18px; }
@@ -590,15 +586,8 @@ html, body {
   box-shadow: 0 2px 8px rgba(0,0,0,0.2); white-space: nowrap;
 }
 
-/* Gantt summary bar — filled narrow bar at top of row (like MS Project) */
+/* Gantt summary bar — same look as phase bar but lighter border */
 .gantt-row.is-summary { background: var(--bg-hover); }
-.gantt-bar.summary-bar {
-  height: 8px; border-radius: 2px;
-  background: var(--summary-bar-color, rgba(100,130,60,0.55)) !important;
-  border: none !important;
-  position: absolute; top: 3px; left: 0; right: 0;
-  box-sizing: border-box;
-}
 
 /* Context menu items */
 .ctx-item { padding: 8px 16px; cursor: pointer; color: var(--text); transition: background 0.1s; }
@@ -905,7 +894,7 @@ html, body {
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
-  height: 18px;
+  height: calc(var(--row-h, 22px) * 0.75);
   cursor: grab;
 }
 /* Záchytná zóna pruhu — drží se těsně u pruhu a jeho okrajů.
@@ -918,7 +907,10 @@ html, body {
 .gantt-bar-wrap:active { cursor: grabbing; }
 
 .gantt-row.is-phase .gantt-bar-wrap {
-  height: 12px;
+  height: 10px;
+}
+.gantt-row.is-summary .gantt-bar-wrap {
+  height: 10px;
 }
 
 .gantt-bar {
@@ -1776,7 +1768,7 @@ html, body {
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
-  height: 22px;
+  height: calc(var(--row-h, 22px) * 0.75);
   border: 1.5px solid var(--text);
   opacity: 0.65;
   border-radius: 4px;
@@ -1788,7 +1780,7 @@ html, body {
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
-  height: 22px;
+  height: calc(var(--row-h, 22px) * 0.75);
   border-radius: 0 4px 4px 0;
   pointer-events: none;
 }
@@ -1816,22 +1808,12 @@ html, body {
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
-  height: 22px;
+  height: calc(var(--row-h, 22px) * 0.75);
   border-radius: 0 4px 4px 0;
   pointer-events: none;
   box-sizing: border-box;
 }
-/* On mobile, match the bar's 50%-of-row-height rule */
-@media (max-width: 768px) {
-  .gantt-row:not(.is-phase):not(.is-summary) > .gantt-bl-outline,
-  .gantt-row:not(.is-phase):not(.is-summary) > .gantt-bl-delay,
-  .gantt-row:not(.is-phase):not(.is-summary) > .gantt-bl-save,
-  .gantt-row:not(.is-phase):not(.is-summary) > .gantt-float-bar {
-    height: 50% !important;
-    top: 50% !important;
-    transform: translateY(-50%) !important;
-  }
-}
+/* Baseline/float bars use same 75% formula as bar — base CSS handles it */
 /* Delay cell colors */
 .delay-pos { color: #c0392b; font-weight: 700; }  /* late */
 .delay-neg { color: #27ae60; font-weight: 700; }  /* early */
@@ -2274,6 +2256,7 @@ html, body {
   .view-tab { font-size: 11px; padding: 8px 14px; white-space: nowrap; }
   .view-tab svg { display: none; }
   .ml-auto { display: none !important; }
+  #mob-date-filter-wrap { display: flex !important; }
 
   #wbs-toolbar { display: none !important; }
   #gantt-toolbar { padding: 0 8px; gap: 6px; height: var(--toolbar-h); overflow: visible; }
@@ -2296,12 +2279,7 @@ html, body {
   .bar-resize-l, .bar-resize-r { display: none; }
   .bar-connect-dot { width: 24px; height: 24px; }
 
-  /* Task bars: half row height, vertically centred. Phase/summary keep their own sizing. */
-  .gantt-row:not(.is-phase):not(.is-summary) > .gantt-bar-wrap {
-    height: 50% !important;
-    top: 50% !important;
-    transform: translateY(-50%) !important;
-  }
+  /* Task bars use the same 75% formula as desktop — no mobile override needed */
 
   /* Task detail panel — bottom sheet on mobile */
   #task-detail-panel {
@@ -2655,6 +2633,45 @@ html, body {
       <label style="cursor:pointer;display:flex;align-items:center;gap:6px;">
         <input type="checkbox" id="show-bottom-cf" onchange="toggleBottomCashflow()" style="accent-color:var(--olive);width:14px;height:14px;">
       </label>
+    </div>
+    <!-- Mobile-only date filter in tab bar — shown via CSS on ≤768px -->
+    <div id="mob-date-filter-wrap" style="display:none;align-items:center;flex-shrink:0;margin-left:auto;padding:0 8px;position:relative;">
+      <button id="mob-date-filter-btn" onclick="toggleMobDateFilter(event)" title="Filtrovat podle období"
+        style="display:flex;align-items:center;gap:4px;padding:3px 9px;font-size:10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);cursor:pointer;height:26px;white-space:nowrap;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:11px;height:11px;flex-shrink:0;"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+        <span id="mob-date-filter-label">Období</span>
+      </button>
+      <div id="mob-date-filter-menu" style="display:none;position:fixed;top:88px;right:8px;z-index:400;background:var(--bg);border:1px solid var(--border);border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,0.2);min-width:240px;overflow:hidden;">
+        <div style="padding:6px 0;">
+          <button class="ctx-item" onclick="applyQuickDateFilter(7,'Týden');closeMobDateFilter()">Nejbližší týden</button>
+          <button class="ctx-item" onclick="applyQuickDateFilter(14,'14 dní');closeMobDateFilter()">Nejbližší 14 dní</button>
+          <button class="ctx-item" onclick="applyQuickDateFilter(30,'Měsíc');closeMobDateFilter()">Nejbližší měsíc</button>
+        </div>
+        <div style="border-top:1px solid var(--border);padding:8px 12px;">
+          <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--text-muted);margin-bottom:7px;">Vlastní období</div>
+          <div style="display:flex;gap:5px;align-items:center;margin-bottom:6px;">
+            <input type="date" id="mob-df-start" style="flex:1;padding:4px 6px;font-size:11px;border:1px solid var(--border);border-radius:5px;background:var(--bg);color:var(--text);min-width:0;">
+            <span style="font-size:10px;color:var(--text-muted);flex-shrink:0;">→</span>
+            <input type="date" id="mob-df-end" style="flex:1;padding:4px 6px;font-size:11px;border:1px solid var(--border);border-radius:5px;background:var(--bg);color:var(--text);min-width:0;">
+          </div>
+          <button onclick="applyMobCustomDateFilter()" style="width:100%;padding:5px;background:var(--olive);color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;">Použít</button>
+        </div>
+        <div style="border-top:1px solid var(--border);padding:8px 12px;">
+          <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--text-muted);margin-bottom:7px;">Vlastní interval od dnes</div>
+          <div style="display:flex;gap:5px;align-items:center;margin-bottom:6px;">
+            <input type="number" id="mob-df-interval-n" min="1" max="999" value="30" style="width:58px;padding:4px 6px;font-size:11px;border:1px solid var(--border);border-radius:5px;background:var(--bg);color:var(--text);">
+            <select id="mob-df-interval-unit" style="flex:1;padding:4px 6px;font-size:11px;border:1px solid var(--border);border-radius:5px;background:var(--bg);color:var(--text);">
+              <option value="days">Dní</option>
+              <option value="weeks">Týdnů</option>
+              <option value="months">Měsíců</option>
+            </select>
+          </div>
+          <button onclick="applyMobIntervalDateFilter()" style="width:100%;padding:5px;background:var(--olive);color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;">Použít</button>
+        </div>
+        <div style="border-top:1px solid var(--border);padding:4px 0;">
+          <button class="ctx-item" onclick="clearDateFilter()" style="color:var(--text-muted);">Zrušit filtr</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -3733,6 +3750,7 @@ function render() {
   // Invalidate task list caches so all sub-renders share one fresh traversal
   _flatCache = null;
   _leafCache = null;
+  _criticalPathCache = null;
   // Pre-compute summary task dates before any rendering
   project.phases.forEach(ph => {
     (ph.tasks || []).forEach(t => { if (t.type === 'summary') computeSummaryDates(t); });
@@ -5085,9 +5103,8 @@ function renderGanttTaskRowsRecursive(tasks, phase, pi, minD, totalW, container,
         const w = Math.max(6, x2 - x);
         const barWrap = document.createElement('div');
         barWrap.className = 'gantt-bar-wrap';
-        barWrap.style.cssText = `left:${x}px;width:${w}px;height:8px;top:3px;position:absolute;`;
-        barWrap.innerHTML = `<div class="gantt-bar summary-bar" style="--summary-bar-color:${barColor}88;width:100%;height:100%;"></div>`;
-        // Click to select
+        barWrap.style.cssText = `left:${x}px;width:${w}px;`;
+        barWrap.innerHTML = `<div class="gantt-bar" style="background:rgba(255,255,255,0.85);border:1.5px solid ${barColor};border-radius:2px;box-sizing:border-box;opacity:0.88;"></div>`;
         barWrap.addEventListener('click', () => selectTask(task.id));
         tRow.appendChild(barWrap);
       }
@@ -8618,14 +8635,20 @@ document.addEventListener('click', (e) => {
     const m = document.getElementById('date-filter-menu');
     if (m) m.style.display = 'none';
   }
+  if (!e.target.closest('#mob-date-filter-btn,#mob-date-filter-menu')) {
+    const m = document.getElementById('mob-date-filter-menu');
+    if (m) m.style.display = 'none';
+  }
 });
 
-// Prevent browser zoom everywhere — only HMG Gantt zooms via Ctrl+scroll
+// Prevent browser zoom inside Gantt area (Ctrl+scroll is handled by ganttScroll listener for zoom)
 document.addEventListener('wheel', (e) => {
-  if (e.ctrlKey || e.metaKey) e.preventDefault();
+  if ((e.ctrlKey || e.metaKey) && e.target.closest('#gantt-scroll-wrap')) e.preventDefault();
 }, { passive: false });
 document.addEventListener('keydown', (e) => {
-  if ((e.ctrlKey || e.metaKey) && ['=', '+', '-', '0'].includes(e.key) && !e.target.matches('input,textarea,select')) {
+  if ((e.ctrlKey || e.metaKey) && ['=', '+', '-', '0'].includes(e.key)
+      && !e.target.matches('input,textarea,select')
+      && e.target.closest('#gantt-scroll-wrap')) {
     e.preventDefault();
   }
 }, { capture: true });
@@ -8911,7 +8934,11 @@ function runMobilePDFExport() {
     tempOv.appendChild(inp);
   });
   document.body.appendChild(tempOv);
-  runPDFExport();
+  try {
+    runPDFExport();
+  } finally {
+    if (document.getElementById('active-modal') === tempOv) tempOv.remove();
+  }
 }
 
 /* ═══════════════════════════════════════════════════
@@ -9450,18 +9477,15 @@ function toggleDateFilterMenu(e) {
 }
 function _applyDateFilter(start, end, label) {
   _dateFilter = { start, end, label };
-  const lbl = document.getElementById('date-filter-label');
-  if (lbl) lbl.textContent = label;
-  const btn = document.getElementById('date-filter-btn');
-  if (btn) { btn.style.borderColor = 'var(--olive)'; btn.style.color = 'var(--olive)'; }
-  const menu = document.getElementById('date-filter-menu');
-  if (menu) menu.style.display = 'none';
+  ['date-filter-label','mob-date-filter-label'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = label; });
+  ['date-filter-btn','mob-date-filter-btn'].forEach(id => { const b = document.getElementById(id); if (b) { b.style.borderColor = 'var(--olive)'; b.style.color = 'var(--olive)'; } });
+  ['date-filter-menu','mob-date-filter-menu'].forEach(id => { const m = document.getElementById(id); if (m) m.style.display = 'none'; });
   renderWBS(); renderGantt();
 }
 function applyQuickDateFilter(days, label) {
   const today = new Date();
-  const start = today.toISOString().slice(0, 10);
-  const end = new Date(today.getTime() + days * 86400000).toISOString().slice(0, 10);
+  const start = today.toLocaleDateString('sv-SE');
+  const end = new Date(today.getFullYear(), today.getMonth(), today.getDate() + days).toLocaleDateString('sv-SE');
   _applyDateFilter(start, end, label);
 }
 function applyCustomDateFilter() {
@@ -9476,23 +9500,48 @@ function applyIntervalDateFilter() {
   const n    = Math.max(1, parseInt(document.getElementById('df-interval-n').value) || 30);
   const unit = document.getElementById('df-interval-unit').value;
   const today = new Date();
-  const start = today.toISOString().slice(0, 10);
+  const start = today.toLocaleDateString('sv-SE');
   let end = new Date(today);
   if (unit === 'days')   end.setDate(end.getDate() + n);
   else if (unit === 'weeks') end.setDate(end.getDate() + n * 7);
   else end.setMonth(end.getMonth() + n);
   const unitLabel = { days: 'd', weeks: 'w', months: 'm' }[unit];
-  _applyDateFilter(start, end.toISOString().slice(0, 10), `${n}${unitLabel}`);
+  _applyDateFilter(start, end.toLocaleDateString('sv-SE'), `${n}${unitLabel}`);
 }
 function clearDateFilter() {
   _dateFilter = null;
-  const lbl = document.getElementById('date-filter-label');
-  if (lbl) lbl.textContent = 'Období';
-  const btn = document.getElementById('date-filter-btn');
-  if (btn) { btn.style.borderColor = ''; btn.style.color = ''; }
-  const menu = document.getElementById('date-filter-menu');
-  if (menu) menu.style.display = 'none';
+  ['date-filter-label','mob-date-filter-label'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = 'Období'; });
+  ['date-filter-btn','mob-date-filter-btn'].forEach(id => { const b = document.getElementById(id); if (b) { b.style.borderColor = ''; b.style.color = ''; } });
+  ['date-filter-menu','mob-date-filter-menu'].forEach(id => { const m = document.getElementById(id); if (m) m.style.display = 'none'; });
   renderWBS(); renderGantt();
+}
+function toggleMobDateFilter(e) {
+  e.stopPropagation();
+  const menu = document.getElementById('mob-date-filter-menu');
+  menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+}
+function closeMobDateFilter() {
+  const menu = document.getElementById('mob-date-filter-menu');
+  if (menu) menu.style.display = 'none';
+}
+function applyMobCustomDateFilter() {
+  const start = document.getElementById('mob-df-start').value;
+  const end   = document.getElementById('mob-df-end').value;
+  if (!start || !end || start > end) { showToast('Zadejte platné datum od–do'); return; }
+  const fmt = d => d.slice(5).replace('-', '.');
+  _applyDateFilter(start, end, `${fmt(start)}–${fmt(end)}`);
+}
+function applyMobIntervalDateFilter() {
+  const n    = Math.max(1, parseInt(document.getElementById('mob-df-interval-n').value) || 30);
+  const unit = document.getElementById('mob-df-interval-unit').value;
+  const today = new Date();
+  const start = today.toLocaleDateString('sv-SE');
+  let end = new Date(today);
+  if (unit === 'days')   end.setDate(end.getDate() + n);
+  else if (unit === 'weeks') end.setDate(end.getDate() + n * 7);
+  else end.setMonth(end.getMonth() + n);
+  const unitLabel = { days: 'd', weeks: 'w', months: 'm' }[unit];
+  _applyDateFilter(start, end.toLocaleDateString('sv-SE'), `${n}${unitLabel}`);
 }
 
 function ungroupSummary(taskId) {
@@ -10226,6 +10275,7 @@ function tdpInlineEdit(field, taskId) {
     else if (field === 'progress') { task.progress = Math.min(100, Math.max(0, parseInt(inp.value) || 0)); }
     enforceConstraints(task);
     cascadeSuccessors(taskId);
+    invalidateTaskCaches();
     saveProject(true);
     renderGantt();
     openTaskDetailPanel(taskId);
@@ -10873,7 +10923,7 @@ function drpRender() {
     _drp.phase === 1 ? 'Klepněte na datum zahájení' : 'Klepněte na datum ukončení';
   document.getElementById('drp-confirm-btn').disabled = !(_drp.startDate && _drp.endDate && _drp.startDate <= _drp.endDate);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = new Date().toLocaleDateString('sv-SE');
   const firstDay = new Date(_drp.viewYear, _drp.viewMonth, 1);
   const daysInMonth = new Date(_drp.viewYear, _drp.viewMonth + 1, 0).getDate();
   let startDow = firstDay.getDay() - 1; if (startDow < 0) startDow = 6;
@@ -10907,6 +10957,7 @@ function confirmDRP() {
   if (!_drp.lockStart) task.startDate = _drp.startDate;
   task.endDate = _drp.endDate;
   cascadeSuccessors(_drp.taskId);
+  invalidateTaskCaches();
   saveProject(true);
   const id = _drp.taskId;
   closeDRP();
