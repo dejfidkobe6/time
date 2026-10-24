@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-title" content="BeSix Time">
 <meta name="theme-color" content="#606857">
 <link rel="manifest" href="/manifest.json">
-<link rel="apple-touch-icon" href="/icon-time.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
 <title>BeSix Time — Harmonogram stavby</title>
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&family=Lora:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
@@ -906,6 +906,14 @@ button.ctx-item { background: none; border: none; width: 100%; text-align: left;
   inset: -2px -4px;
 }
 .gantt-bar-wrap:active { cursor: grabbing; }
+/* Bar picked up by touch hold — lifted look while it is being dragged */
+.gantt-bar-wrap.touch-lifted { z-index: 10; }
+.gantt-bar-wrap.touch-lifted .gantt-bar {
+  box-shadow: 0 4px 14px rgba(0,0,0,0.35);
+  outline: 2px solid var(--olive); outline-offset: 1px;
+}
+/* Flexible-duration task ("X") in the WBS duration column */
+.wbs-date-cell.is-flex { color: var(--olive); font-weight: 700; }
 
 .gantt-row.is-phase .gantt-bar-wrap {
   height: 10px;
@@ -2288,8 +2296,8 @@ button.ctx-item { background: none; border: none; width: 100%; text-align: left;
   /* No text labels on bars on mobile — keep bars clean */
   .gantt-bar-label { display: none !important; }
 
-  /* Touch-friendly bars — bigger handles */
-  .gantt-bar-wrap { touch-action: pan-x pan-y; cursor: pointer; }
+  /* Touch-friendly bars — bigger handles; no callout/selection on long-press */
+  .gantt-bar-wrap { touch-action: pan-x pan-y; cursor: pointer; -webkit-touch-callout: none; user-select: none; }
   .bar-resize-l, .bar-resize-r { display: none; }
   .bar-connect-dot { width: 24px; height: 24px; }
 
@@ -4446,7 +4454,7 @@ function createTaskRow(task, phase, pi, ti, depth) {
         : `<span class="cell-editable wbs-date-cell" onclick="inlineEdit(this,'${task.id}','endDate','date');event.stopPropagation();">${formatDateShort(task.endDate)}</span>`;
       case 'duration': return isSummary
         ? `<span class="wbs-date-cell" style="color:var(--text-muted);">${dur + 'd'}</span>`
-        : `<span class="cell-editable wbs-date-cell" onclick="inlineEditDuration(this,'${task.id}');event.stopPropagation();">${dur + 'd'}</span>`;
+        : `<span class="cell-editable wbs-date-cell${task.flexDuration ? ' is-flex' : ''}" onclick="inlineEditDuration(this,'${task.id}');event.stopPropagation();" title="${task.flexDuration ? 'Proměnné trvání (X): konec je pevný, začátek posouvají vazby' : 'Počet dní, nebo X = proměnné trvání'}">${task.flexDuration ? 'X · ' + dur + 'd' : dur + 'd'}</span>`;
       case 'assignee': return `<span class="cell-editable wbs-date-cell" onclick="inlineEdit(this,'${task.id}','assignee','text');event.stopPropagation();" title="${escHtml(task.assignee||'')}">${escHtml((task.assignee||'').substring(0,10) + ((task.assignee||'').length>10?'…':''))}</span>`;
       case 'progress': {
         if (isMilestone) return `<span style="font-size:9px;color:var(--warning);font-weight:700;padding:2px 4px;">MILNÍK</span>`;
@@ -5397,21 +5405,30 @@ function enforceAllConstraints() {
     if (!task || task.manual || !(task.predecessors || []).length) return;
     const newStart = computeConstrainedStart(task);
     if (!newStart || newStart === task.startDate) return;
-    const dur = daysBetween(task.startDate, task.endDate);
-    task.startDate = newStart;
-    task.endDate   = addDays(newStart, dur);
+    setTaskStart(task, newStart);
   });
+}
+
+// Move a task's start. Duration is a fixed property of the task, so the end
+// travels with it — except for flexible tasks (duration entered as "X"),
+// whose end is the anchor and whose duration absorbs the shift.
+function setTaskStart(task, newStart) {
+  if (!newStart || newStart === task.startDate) return;
+  if (task.flexDuration && task.endDate) {
+    task.startDate = newStart;
+    if (task.endDate < newStart) task.endDate = newStart;
+    return;
+  }
+  const dur = (task.startDate && task.endDate) ? daysBetween(task.startDate, task.endDate) : 0;
+  task.startDate = newStart;
+  task.endDate   = addDays(newStart, dur);
 }
 
 /// Enforce predecessor constraints on a single task — strict snap for auto-scheduled tasks
 function enforceConstraints(task) {
   if (task.manual) return;
   const newStart = computeConstrainedStart(task);
-  if (newStart && newStart !== task.startDate) {
-    const dur = daysBetween(task.startDate, task.endDate);
-    task.startDate = newStart;
-    task.endDate   = addDays(newStart, dur);
-  }
+  if (newStart && newStart !== task.startDate) setTaskStart(task, newStart);
 }
 
 function toggleTaskSchedule(taskId) {
@@ -5496,9 +5513,7 @@ function cascadeSuccessors(changedTaskId) {
       if (!(task.predecessors || []).some(p => p.taskId === id)) return;
       const newStart = computeConstrainedStart(task);
       if (!newStart || newStart === task.startDate) return;
-      const dur = daysBetween(task.startDate, task.endDate);
-      task.startDate = newStart;
-      task.endDate   = addDays(newStart, dur);
+      setTaskStart(task, newStart);
       queue.push(task.id);
     });
   }
@@ -5511,9 +5526,7 @@ function cascadeSuccessors(changedTaskId) {
       if (!(task.predecessors || []).some(p => p.phaseId === phId)) return;
       const newStart = computeConstrainedStart(task);
       if (!newStart || newStart === task.startDate) return;
-      const dur = daysBetween(task.startDate, task.endDate);
-      task.startDate = newStart;
-      task.endDate   = addDays(newStart, dur);
+      setTaskStart(task, newStart);
       queue.push(task.id);
     });
   }
@@ -6642,7 +6655,7 @@ function openAddTaskModal(phaseId, parentTaskId) {
         <div class="form-row">
           <div class="form-field">
             <label class="form-label">Zahájení</label>
-            <input class="form-input" type="date" id="m-task-start" value="${today}" oninput="renderWeightChart('m')">
+            <input class="form-input" type="date" id="m-task-start" value="${today}" data-prev="${today}" oninput="renderWeightChart('m')" onchange="modalStartChanged('m')">
           </div>
           <div class="form-field">
             <label class="form-label">Dokončení</label>
@@ -6831,7 +6844,7 @@ function openEditTaskModal(taskId) {
         <div class="form-row">
           <div class="form-field">
             <label class="form-label">Zahájení</label>
-            <input class="form-input" type="date" id="e-task-start" value="${task.startDate||''}" oninput="renderWeightChart('e')">
+            <input class="form-input" type="date" id="e-task-start" value="${task.startDate||''}" data-prev="${task.startDate||''}" data-flex="${task.flexDuration ? '1' : ''}" oninput="renderWeightChart('e')" onchange="modalStartChanged('e')">
           </div>
           <div class="form-field">
             <label class="form-label">Dokončení</label>
@@ -9009,9 +9022,9 @@ function inlineEdit(span, taskId, field, type) {
     let val = input.value;
     if (type === 'number') val = parseFloat(val) || 0;
     if (type === 'range')  val = Math.min(100, Math.max(0, parseInt(val) || 0));
-    task[field] = val;
+    if (field === 'startDate') setTaskStart(task, val); else task[field] = val;
     if (field === 'startDate' || field === 'endDate') {
-      if (task.startDate && task.endDate && task.startDate >= task.endDate) {
+      if (!task.flexDuration && task.startDate && task.endDate && task.startDate >= task.endDate) {
         task.endDate = task.startDate;
         task.type = 'milestone';
       } else if (task.type === 'milestone' && task.startDate !== task.endDate) {
@@ -9057,22 +9070,18 @@ function inlineEditDuration(span, taskId) {
   if (!task || !task.startDate) return;
   const dur = task.endDate ? daysBetween(task.startDate, task.endDate) : 0;
   const input = document.createElement('input');
-  input.type = 'number'; input.className = 'cell-edit-input';
-  input.min = '0'; input.style.width = '54px';
-  input.value = dur;
+  input.type = 'text'; input.className = 'cell-edit-input';
+  input.style.width = '54px';
+  input.placeholder = 'dny / X';
+  input.value = task.flexDuration ? 'X' : dur;
   span.replaceWith(input); input.focus(); input.select();
 
   let committed = false;
   function commit() {
     if (committed) return; committed = true;
-    const d = Math.max(0, parseInt(input.value) || 0);
-    if (d === 0) {
-      task.endDate = task.startDate;
-      task.type = 'milestone';
-    } else {
-      task.endDate = addDays(task.startDate, d);
-      if (task.type === 'milestone') delete task.type;
-    }
+    applyDurationInput(task, input.value);
+    cascadeSuccessors(task.id);
+    invalidateTaskCaches();
     const pending = _nextEdit ? { ..._nextEdit } : null; _nextEdit = null;
     saveProject(true); render();
     if (pending) setTimeout(() => triggerCellEdit(pending.taskId, pending.colId), 0);
@@ -9093,6 +9102,39 @@ function inlineEditDuration(span, taskId) {
       commit();
     }
   });
+}
+
+// Duration field semantics: a number sets a fixed duration (end = start + n,
+// 0 = milestone); "X" marks the task as flexible — its end stays put and the
+// duration stretches/shrinks as predecessors move the start.
+function applyDurationInput(task, raw) {
+  const v = String(raw ?? '').trim();
+  if (/^x$/i.test(v)) {
+    task.flexDuration = true;
+    if (task.type === 'milestone') delete task.type;
+    return;
+  }
+  if (v === '') return;
+  delete task.flexDuration;
+  const d = Math.max(0, parseInt(v) || 0);
+  if (d === 0) {
+    task.endDate = task.startDate;
+    task.type = 'milestone';
+  } else {
+    task.endDate = addDays(task.startDate, d);
+    if (task.type === 'milestone') delete task.type;
+  }
+}
+
+// Add/edit task modal: changing the start carries the end along (fixed duration),
+// unless the task is flexible ("X").
+function modalStartChanged(prefix) {
+  const s = document.getElementById(prefix + '-task-start');
+  const e = document.getElementById(prefix + '-task-end');
+  if (!s || !e || !s.value || !e.value || !s.dataset.prev) return;
+  if (!s.dataset.flex) e.value = addDays(s.value, daysBetween(s.dataset.prev, e.value));
+  s.dataset.prev = s.value;
+  renderWeightChart(prefix);
 }
 
 /* ═══════════════════════════════════════════════════
@@ -10164,7 +10206,7 @@ function openTaskDetailPanel(taskId) {
       </div>
       <div class="tdp-mob-row" onclick="tdpInlineEdit('dur','${taskId}')">
         <span class="tdp-mob-row-lbl">Trvání</span>
-        <span class="tdp-mob-row-val" id="tdp-mob-val-dur">${dur ? dur + ' d' : '—'}</span>
+        <span class="tdp-mob-row-val" id="tdp-mob-val-dur">${task.flexDuration ? 'X · ' + dur + ' d' : (dur ? dur + ' d' : '—')}</span>
         <span class="tdp-mob-row-hint">✎</span>
       </div>
       <div class="tdp-mob-row" onclick="tdpInlineEdit('progress','${taskId}')">
@@ -10210,8 +10252,8 @@ function openTaskDetailPanel(taskId) {
       </div>
       <div class="tdp-row">
         <div class="tdp-field">
-          <span class="tdp-label">Trvání (dny)</span>
-          <input class="tdp-input" id="tdp-dur" type="number" min="0" value="${dur}">
+          <span class="tdp-label">Trvání (dny / X)</span>
+          <input class="tdp-input" id="tdp-dur" type="text" inputmode="text" value="${task.flexDuration ? 'X' : dur}" title="Počet dní, nebo X = proměnné trvání (konec je pevný, začátek posouvají vazby)">
         </div>
         <div class="tdp-field">
           <span class="tdp-label">Typ</span>
@@ -10258,7 +10300,7 @@ function updateTaskPanelLive(startDateStr, endDateStr) {
   if (se) se.value = startDateStr;
   if (ee) ee.value = endDateStr;
   const d = (startDateStr && endDateStr) ? daysBetween(startDateStr, endDateStr) : 0;
-  if (de && d) de.value = d;
+  if (de && d && !/^x$/i.test(de.value.trim())) de.value = d;
   const fmt = s => s ? s.slice(5).replace('-', '.') : '—';
   const li = document.getElementById('tdp-live-info');
   if (li && startDateStr && endDateStr) {
@@ -10299,7 +10341,7 @@ function tdpInlineEdit(field, taskId) {
   if (field === 'name')     { inp.type = 'text';   inp.value = task.name; }
   else if (field === 'start')    { inp.type = 'date';   inp.value = task.startDate || ''; }
   else if (field === 'end')      { inp.type = 'date';   inp.value = task.endDate || ''; }
-  else if (field === 'dur')      { inp.type = 'number'; inp.min = 0; inp.value = dur0; }
+  else if (field === 'dur')      { inp.type = 'text'; inp.placeholder = 'dny / X'; inp.value = task.flexDuration ? 'X' : dur0; }
   else if (field === 'progress') {
     // Slider, same control as the desktop detail panel — drag the thumb, release to save
     inp = document.createElement('input');
@@ -10329,16 +10371,9 @@ function tdpInlineEdit(field, taskId) {
     committed = true;
     pushUndo();
     if (field === 'name') { task.name = inp.value.trim() || task.name; }
-    else if (field === 'start' && inp.value) {
-      task.startDate = inp.value;
-      if (task.endDate && task.startDate > task.endDate) task.endDate = addDays(task.startDate, dur0 || 1);
-    }
+    else if (field === 'start' && inp.value) { setTaskStart(task, inp.value); }
     else if (field === 'end' && inp.value) { task.endDate = inp.value; }
-    else if (field === 'dur') {
-      const d = Math.max(0, parseInt(inp.value) || 0);
-      task.endDate = addDays(task.startDate, d);
-      if (d === 0) task.type = 'milestone';
-    }
+    else if (field === 'dur') { applyDurationInput(task, inp.value); }
     else if (field === 'progress') { task.progress = Math.min(100, Math.max(0, parseInt(inp.value) || 0)); }
     enforceConstraints(task);
     cascadeSuccessors(taskId);
@@ -10385,11 +10420,7 @@ function saveTaskDetailPanel(taskId) {
   if (nameEl) task.name = nameEl.value.trim() || task.name;
   if (startEl && startEl.value) task.startDate = startEl.value;
   if (endEl && endEl.value) task.endDate = endEl.value;
-  if (durEl && durEl.value !== '') {
-    const d = Math.max(0, parseInt(durEl.value) || 0);
-    task.endDate = addDays(task.startDate, d);
-    if (d === 0) task.type = 'milestone';
-  }
+  if (durEl) applyDurationInput(task, durEl.value);
   if (progressEl) task.progress = parseInt(progressEl.value) || 0;
   if (noteEl) task.note = noteEl.value;
   if (typeEl) {
@@ -10631,55 +10662,84 @@ function toggleMobileWBS() {
 /* ═══════════════════════════════════════════════════
    TOUCH SUPPORT FOR GANTT BARS
 ═══════════════════════════════════════════════════ */
+// Touch: hold the bar still for HOLD_MS to pick it up, then drag sideways to
+// move it in time. Any finger movement before the hold completes is treated as
+// a page scroll, so scrolling over bars never shifts a task by accident.
 function addTouchDrag(barWrap, task, minD) {
   if (isViewer()) return;
-  if (window.innerWidth <= 768) return;
-  let startX = 0, origLeft = 0, moved = false, active = false;
+  const HOLD_MS = 280, SLOP = 10;
+  let timer = null, startX = 0, startY = 0, origLeft = 0, picked = false, active = false;
+
+  function reset() {
+    if (timer) { clearTimeout(timer); timer = null; }
+    if (picked) barWrap.classList.remove('touch-lifted');
+    picked = false; active = false;
+  }
+  function abortDrag() {
+    barWrap.style.left = origLeft + 'px';
+    updateTaskPanelLive(task.startDate, task.endDate);
+    reset();
+  }
+  function startFromLeft(left) {
+    const ns = new Date(minD);
+    ns.setDate(ns.getDate() + Math.round(xToDays(left)));
+    return ns.toISOString().split('T')[0];
+  }
 
   barWrap.addEventListener('touchstart', (e) => {
-    // Bail if touch is on a resize handle (use closest for wider hit area)
     if (e.target.closest('.bar-resize-l,.bar-resize-r,.bar-connect-dot')) return;
-    if (e.touches.length !== 1) return;
-    active = true;
+    if (e.touches.length !== 1) { reset(); return; }
     const t = e.touches[0];
-    startX = t.clientX;
+    active = true; picked = false;
+    startX = t.clientX; startY = t.clientY;
     origLeft = parseInt(barWrap.style.left) || 0;
-    moved = false;
+    timer = setTimeout(() => {
+      timer = null;
+      if (!active) return;
+      picked = true;
+      barWrap.classList.add('touch-lifted');
+      hideBarDot();
+      if (navigator.vibrate) navigator.vibrate(12);
+    }, HOLD_MS);
   }, { passive: true });
 
   barWrap.addEventListener('touchmove', (e) => {
-    if (!active || e.touches.length !== 1) return;
-    const dx = e.touches[0].clientX - startX;
-    if (Math.abs(dx) > 8) {
-      moved = true;
-      const newLeft = origLeft + dx;
-      barWrap.style.left = newLeft + 'px';
-      // Live-update task detail panel
-      const origDur = daysBetween(task.startDate, task.endDate);
-      const ns = new Date(minD);
-      ns.setDate(ns.getDate() + Math.round(xToDays(newLeft)));
-      const newStart = ns.toISOString().split('T')[0];
-      updateTaskPanelLive(newStart, addDays(newStart, origDur));
+    if (!active) return;
+    if (e.touches.length !== 1) { picked ? abortDrag() : reset(); return; }
+    const t = e.touches[0];
+    const dx = t.clientX - startX, dy = t.clientY - startY;
+    if (!picked) {
+      if (Math.abs(dx) > SLOP || Math.abs(dy) > SLOP) reset();   // scroll, not a drag
+      return;
     }
+    if (!e.cancelable) { abortDrag(); return; }   // browser already owns this gesture
     e.preventDefault();
+    const newLeft = origLeft + dx;
+    barWrap.style.left = newLeft + 'px';
+    const dur = daysBetween(task.startDate, task.endDate);
+    const newStart = startFromLeft(newLeft);
+    updateTaskPanelLive(newStart, addDays(newStart, dur));
   }, { passive: false });
 
-  barWrap.addEventListener('touchend', () => {
+  barWrap.addEventListener('touchend', (e) => {
     if (!active) return;
-    active = false;
-    if (!moved) return;
-    const newX = parseInt(barWrap.style.left);
+    const wasPicked = picked;
+    const newLeft = parseInt(barWrap.style.left) || 0;
+    reset();
+    if (!wasPicked) return;
+    if (e.cancelable) e.preventDefault();   // no synthetic click → no popup
+    if (newLeft === origLeft) return;
     const dur = daysBetween(task.startDate, task.endDate);
-    const newStart = new Date(minD);
-    newStart.setDate(newStart.getDate() + Math.round(xToDays(newX)));
-    task.startDate = newStart.toISOString().split('T')[0];
-    task.endDate = addDays(task.startDate, dur);
+    task.startDate = startFromLeft(newLeft);
+    task.endDate   = addDays(task.startDate, dur);
     enforceConstraints(task);
     cascadeSuccessors(task.id);
+    invalidateTaskCaches();
     saveProject(true); render();
   });
 
-  barWrap.addEventListener('touchcancel', () => { active = false; });
+  barWrap.addEventListener('touchcancel', () => { picked ? abortDrag() : reset(); });
+  barWrap.addEventListener('contextmenu', (e) => { if (active || picked) e.preventDefault(); });
 }
 
 function addTouchResize(barWrap, task, minD) {

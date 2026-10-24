@@ -1,9 +1,12 @@
-const CACHE = 'besixtime-v3';
+const CACHE = 'besixtime-v4';
 const STATIC = [
   '/',
   '/index.html',
   '/login.php',
   '/icon-time.png',
+  '/icon-time-192.png',
+  '/icon-time-maskable.png',
+  '/apple-touch-icon.png',
   '/icon-time.svg',
   '/manifest.json',
 ];
